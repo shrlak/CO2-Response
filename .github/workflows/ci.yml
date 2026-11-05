@@ -39,8 +39,15 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python acquisition package (for the dashboard-on-Python test)
+        run: pip install -e ../python
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
+        env:
+          CO2R_PYTHON: python
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -48,32 +55,69 @@ jobs:
           path: web/test-results
           retention-days: 7
 
-  bridge:
-    name: Python (bridge smoke test + analysis loader)
+  python:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        include:
+          - { os: windows-latest, python: '3.9' }
+          - { os: windows-latest, python: '3.13' }
+          - { os: macos-latest, python: '3.10' }
+          - { os: macos-latest, python: '3.13' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e "python[test]"
+      - run: python -m pytest python/tests -q
+      - name: Command line works
+        run: |
+          co2r-daq drivers
+          co2r-daq check --driver simulated --seconds 2
+          python analysis/load_session.py sample-data/synthetic_session.csv --breaths breaths.csv
+
+  python-oldest:
+    name: Python 3.9 with the oldest supported packages
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: bridge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      - run: pip install -e python "websockets==11.0.3" "pyserial==3.5" "pandas==2.0.3" "numpy<2" pytest
+      - run: python -m pytest python/tests -q
+
+  bridge:
+    name: Legacy bridge script (relay smoke test)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r requirements.txt
-      - run: python -m py_compile serial_ws_bridge.py
-      - name: Relay simulated lines over WebSocket
+      - run: pip install -r bridge/requirements.txt
+      - name: bridge/serial_ws_bridge.py --simulate serves valid lines
         run: |
-          python serial_ws_bridge.py --simulate &
-          sleep 2
+          python bridge/serial_ws_bridge.py --simulate &
+          BP=$!
+          trap 'kill $BP' EXIT
+          sleep 3
           python - <<'PY'
           import asyncio, websockets
           async def main():
+              lines = []
               async with websockets.connect("ws://127.0.0.1:8765") as ws:
                   await ws.send("INFO")
-                  lines = [await asyncio.wait_for(ws.recv(), 3) for _ in range(50)]
-              assert any(l.startswith("I,FW") for l in lines), lines[:5]
+                  while len(lines) < 100:
+                      lines += str(await asyncio.wait_for(ws.recv(), 3)).split("\n")  # several lines per message
+              assert any(l.startswith("I,FW,co2r-py-") for l in lines), lines[:5]
               data = [l for l in lines if l.startswith("D,")]
-              assert len(data) > 30, len(data)
+              assert len(data) > 50, len(data)
               for l in data:
                   payload, cs = l[1:].split("*")
                   x = 0
@@ -83,11 +127,6 @@ jobs:
               print("bridge OK:", len(data), "valid data lines")
           asyncio.run(main())
           PY
-      - name: Analysis loader reads the sample session
-        run: |
-          pip install -r ../analysis/requirements.txt
-          python ../analysis/load_session.py ../sample-data/synthetic_session.csv --breaths /tmp/breaths.csv
-          test "$(wc -l < /tmp/breaths.csv)" -gt 10
 
   firmware:
     name: Firmware (PlatformIO build + line-format test)

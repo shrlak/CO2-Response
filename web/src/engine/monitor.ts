@@ -135,6 +135,7 @@ export class MonitorEngine {
   private knownPortLabel: string | null = null;
   private awaitingReconnect = false;
   private i2cScan: string | null = null;
+  private adcDetail: string | null = null;
   private adcErrorCount = 0;
   private source: Source | null = null;
   private status: EngineStatus = 'idle';
@@ -335,6 +336,7 @@ export class MonitorEngine {
     this.alarms.setCondition('deviceLost', false, now, 'medium', '');
     this.awaitingReconnect = false;
     this.i2cScan = null;
+    this.adcDetail = null;
     this.adcErrorCount = 0;
     this.source = src;
     this.status = 'connecting';
@@ -524,10 +526,13 @@ export class MonitorEngine {
       case 'error':
         if (p.code === 'ADC_NOT_FOUND') {
           this.adcErrorCount++;
+          // a Python DAQ driver sends its own reason after the code
+          const detail = p.raw.split(',').slice(2).join(',').trim();
+          this.adcDetail = detail || null;
           if (this.alarms.get('adcError')?.state !== 'active')
-            this.alarms.setCondition('adcError', true, now, 'medium', `ADC NOT FOUND: check I2C wiring and power${this.i2cScan ? ` (I2C devices answering: ${this.i2cScan})` : ''}`);
+            this.alarms.setCondition('adcError', true, now, 'medium', detail ? `DAQ NOT FOUND: ${detail}` : `ADC NOT FOUND: check I2C wiring and power${this.i2cScan ? ` (I2C devices answering: ${this.i2cScan})` : ''}`);
         }
-        this.addLog(`Device error: ${p.code}`, 'error');
+        this.addLog(`Device error: ${p.raw.slice(2)}`, 'error');
         this.recorder.event(now, `DEVICE_ERROR ${p.code}`);
         break;
       case 'ack':
@@ -818,6 +823,7 @@ export class MonitorEngine {
             info: this.info,
             adcErrors: this.adcErrorCount - start.adc + (this.alarms.get('adcError')?.state === 'active' ? 1 : 0),
             i2cScan: this.i2cScan,
+            adcDetail: this.adcDetail,
             channels: col.stats(),
           },
           this.effectiveChannels,
@@ -944,7 +950,8 @@ export class MonitorEngine {
       status: this.status,
       statusDetail: this.statusDetail,
       sourceKind: this.source?.kind ?? null,
-      sourceLabel: this.source?.label ?? '',
+      // a Python acquisition server names its device in INFO, e.g. "NI Dev1 (Python)"
+      sourceLabel: this.source?.kind === 'bridge' && this.info?.FW?.startsWith('co2r-py') && this.info.ADC ? `${this.info.ADC} (Python)` : (this.source?.label ?? ''),
       info: this.info,
       rateHz: Number(this.info?.RATE) || 100,
       measuredRateHz: connected ? this.measuredRate : 0,

@@ -38,6 +38,8 @@ export interface LinkStats {
   info: Record<string, string> | null;
   adcErrors: number;
   i2cScan: string | null;
+  /** reason sent by a Python DAQ driver with ADC_NOT_FOUND */
+  adcDetail?: string | null;
   channels: Record<ChannelId, ChannelStats>;
 }
 
@@ -126,7 +128,8 @@ export function analyzeLinkTest(s: LinkStats, channels: ChannelsConfig, barometr
     } else if (scan === 'none') {
       fix = `Nothing answers on the I2C bus. ${fix}`;
     }
-    out.push({ id: 'adc', label: 'ADC board', status: 'fail', result: `Firmware reports ADC_NOT_FOUND${scan ? ` (I2C scan: ${scan})` : ''}`, fix });
+    if (s.adcDetail) fix = `${s.adcDetail}. Check that the DAQ is plugged in, its vendor driver is installed, and the device name in the co2r-daq settings matches (run co2r-daq list).`;
+    out.push({ id: 'adc', label: s.adcDetail ? 'DAQ device' : 'ADC board', status: 'fail', result: s.adcDetail ? 'The Python DAQ driver cannot open the device' : `Firmware reports ADC_NOT_FOUND${scan ? ` (I2C scan: ${scan})` : ''}`, fix });
   }
 
   if (!info) {

@@ -70,7 +70,7 @@ export function ConnectionPanel({ snap }: { snap: Snapshot }) {
           {webSerialSupported() ? (
             <p className="note">Uses Web Serial. Works in desktop Chrome or Edge on https:// pages or localhost. The browser asks which port to use.</p>
           ) : (
-            <p className="warn">This browser has no Web Serial. Use desktop Chrome or Edge, or the Python bridge below.</p>
+            <p className="warn">This browser has no Web Serial. Use desktop Chrome or Edge, or Python acquisition below.</p>
           )}
           <SelectField
             id="baud"
@@ -167,13 +167,13 @@ export function ConnectionPanel({ snap }: { snap: Snapshot }) {
 
         <section className="card">
           <div className="card-head">
-            <h3>Python bridge</h3>
-            <span className="meta">Safari, Firefox, second screen</span>
+            <h3>Python acquisition</h3>
+            <span className="meta">other DAQs, Safari/Firefox, second screen</span>
           </div>
           <p className="note">
-            Run <span className="mono">python bridge/serial_ws_bridge.py --port COM3</span> on the laptop with the Arduino, then connect here.
+            Python reads the hardware and sends the same data here: the Arduino, an NI or LabJack DAQ, or a simulated DAQ. Start it on the computer the hardware is plugged into, for example <span className="mono">co2r-daq serve --driver nidaq --device Dev1</span> or <span className="mono">co2r-daq serve --driver arduino --port COM3</span>. See docs/python-daq.md.
           </p>
-          <Field label="Bridge address" htmlFor="bridge-url">
+          <Field label="Server address" htmlFor="bridge-url" hint="ws://localhost:8765 unless you changed --ws-port or run it on another computer.">
             <input id="bridge-url" type="url" className="wide" value={bridgeUrl} onChange={(e) => setBridgeUrl(e.target.value)} onBlur={() => monitor.updateSettings({ bridgeUrl })} />
           </Field>
           <div className="row-actions">
@@ -184,7 +184,7 @@ export function ConnectionPanel({ snap }: { snap: Snapshot }) {
                 void monitor.connect('bridge');
               }}
             >
-              Connect to bridge
+              Connect to Python
             </button>
           </div>
         </section>

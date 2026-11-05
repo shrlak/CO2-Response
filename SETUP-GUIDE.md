@@ -163,17 +163,21 @@ npm run dev
 
 Open the address it prints, usually `http://localhost:5173`.
 
-**Option C, Safari / Firefox / a second screen:** run the bridge on the computer that has the Arduino:
+**Option C, through Python (Safari, Firefox, a second screen, or a DAQ other than the Arduino):** on the computer the hardware is plugged into:
 
 ```bash
-pip install -r bridge/requirements.txt
+pip install -e python
 ```
 
 ```bash
-python bridge/serial_ws_bridge.py --port COM3
+co2r-daq serve --driver arduino --port COM3
 ```
 
-Use `--list` to see port names. Then in the dashboard go to **Settings → Connection → Python bridge** and connect to `ws://localhost:8765`.
+Use `co2r-daq list` to see port names. Then in the dashboard go to **Settings → Connection → Python acquisition → Connect to Python** (`ws://localhost:8765`).
+
+### Using a different data-acquisition system
+
+The same Python program runs other DAQs instead of the Arduino and ADS1115: NI-DAQmx boards (`--driver nidaq`), LabJack (`--driver labjack`), or any board with a Python library via a small driver file. The sensors connect to the DAQ's first three analog inputs (CO2, flow, pneumotach, in that order), and the monitor, alarms, calibration and recording work unchanged. See **[docs/python-daq.md](docs/python-daq.md)**.
 
 The first time, a banner explains that this is research software; press **I understand**. To try the dashboard without hardware, press **Start simulator**.
 

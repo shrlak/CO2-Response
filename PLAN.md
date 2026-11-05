@@ -25,6 +25,7 @@ All seven phases are built and pushed. What is verified and what still needs har
 | 6 Firmware + hardware link | Firmware builds for Uno/Mega/Nano and its line format matches the dashboard byte for byte. **Not yet run on a real Arduino**: the "< 0.1 % drops over 10 min" check needs hardware. |
 | 7 Recording, deploy, docs | Done. Replay reproduces recorded numbers exactly (tested). Pages deploy runs once Pages is enabled and the work is on `main`. |
 | + Hardware | Hardware check in Diagnostics (link, ADC, per-sensor rail/noise), one-click and automatic USB reconnect, firmware I2C scan and bus timeout. Step-by-step [SETUP-GUIDE.md](SETUP-GUIDE.md) with a wiring diagram. |
+| + Python / other DAQs | `python/` package `co2r` (Python 3.9+): `co2r-daq serve` feeds the dashboard from the Arduino, NI-DAQmx, LabJack or a simulated DAQ; template for any other board; session loader. NI and LabJack drivers are not yet tested on hardware. See [docs/python-daq.md](docs/python-daq.md). |
 | + Data | Each recording is one analysis-ready CSV (format v2), written to browser storage every second (crash-safe) and saved on stop. Data & recordings screen: import, review with charts, export whole/breaths/events/time range, replay, delete. Python loader in `analysis/`. |
 
 **Changes from the plan made during the build**
@@ -377,7 +378,7 @@ This is a research prototype, not a medical device. It must never be the only CO
 - Web Serial needs desktop Chrome/Edge over HTTPS or localhost. Safari/Firefox need the bridge.
 - The alarm look and tones are styled after IEC 60601-1-8 conventions so they feel familiar. They are not certified to that standard.
 
-**Open questions** (each uses the stated default, with a `TODO` in code and a line under README "Assumptions")
+**Open questions** (each uses the stated default, with a `TODO` in code and a line under README "Assumptions"). The full, current list is in [docs/open-questions.md](docs/open-questions.md); discuss and answer them in [issue #4](https://github.com/shrlak/CO2-Response/issues/4).
 
 - [ ] CO2 sensor/capnograph model, its analog output range and scaling
 - [ ] Flow sensor and pneumotach + pressure transducer models

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "co2r"
+version = "0.3.0"
+description = "CO2-Response data acquisition in Python: read an Arduino or another DAQ and feed the CO2-Response monitor. Research use only."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "websockets>=11",
+  "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+nidaq = ["nidaqmx>=0.9"]
+labjack = ["labjack-ljm>=1.21"]
+analysis = ["pandas>=2.0"]
+test = ["pytest>=7", "pandas>=2.0"]
+
+[project.scripts]
+co2r-daq = "co2r.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["co2r*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

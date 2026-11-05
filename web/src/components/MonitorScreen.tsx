@@ -145,7 +145,7 @@ export function MonitorScreen({ snap, theme, openSettings }: Props) {
                   More sources…
                 </button>
               </div>
-              {!webSerialSupported() ? <p className="note">This browser has no Web Serial. Use desktop Chrome or Edge, or run the Python bridge.</p> : null}
+              {!webSerialSupported() ? <p className="note">This browser has no Web Serial. Use desktop Chrome or Edge, or run Python acquisition (Settings → Connection).</p> : null}
             </div>
           </div>
         ) : null}

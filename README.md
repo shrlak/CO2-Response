@@ -18,6 +18,8 @@ A research capnography and flow monitor. An Arduino with a 16-bit ADC samples th
 | Safety | [docs/safety.md](docs/safety.md) |
 | UI mockup (Phase 0) | [docs/design/monitor-mockup.html](docs/design/monitor-mockup.html) |
 | Session files, import/export, analysis | [docs/data-format.md](docs/data-format.md) |
+| Python acquisition and other DAQs | [docs/python-daq.md](docs/python-daq.md) |
+| **Open questions** (answer in [issue #4](https://github.com/shrlak/CO2-Response/issues/4)) | [docs/open-questions.md](docs/open-questions.md) |
 | Sample session | [sample-data/synthetic_session.csv](sample-data/synthetic_session.csv) |
 
 ## Quick start (no hardware)
@@ -48,18 +50,19 @@ Full walkthrough with a wiring diagram and troubleshooting: [SETUP-GUIDE.md](SET
 6. Run **Settings > Diagnostics > Hardware check** and fix anything it flags.
 7. Press **Arm audio** once, then **Alarm limits > Test alarm** to confirm you can see and hear the alarm.
 
-### Safari, Firefox, or a second screen
+### Python acquisition: other DAQs, Safari, Firefox, a second screen
 
-Run the Python bridge on the computer with the Arduino and connect to it from **Settings > Connection > Python bridge**:
+The `co2r` Python package (`python/`, Python 3.9+) reads the hardware and feeds the same dashboard over WebSocket: the Arduino, an **NI-DAQmx** board, a **LabJack**, a simulated DAQ, or any other board through a small driver file. This is the version for a data-acquisition system other than the Arduino + ADS1115.
 
 ```bash
-cd bridge
-pip install -r requirements.txt
-python serial_ws_bridge.py --list
-python serial_ws_bridge.py --port COM3
+pip install -e python
 ```
 
-`--simulate` runs the bridge without hardware. It listens on localhost only unless you pass `--host 0.0.0.0`.
+```bash
+co2r-daq serve --driver nidaq --device Dev1
+```
+
+Then **Settings > Connection > Python acquisition > Connect to Python**. Guide: [docs/python-daq.md](docs/python-daq.md). (`python bridge/serial_ws_bridge.py --port COM3` still works for the Arduino.)
 
 ## The monitor screen
 
@@ -82,7 +85,7 @@ python serial_ws_bridge.py --port COM3
 - **Export** the whole session, the breath table, or the alarms/events table, for the whole session or a zoomed time range
 - **Replay** it through the monitor, or **delete** it
 
-`analysis/load_session.py` loads a session into pandas tables (samples, breaths, events). The format and analysis examples are in [docs/data-format.md](docs/data-format.md).
+`analysis/load_session.py` (or `co2r.session` from the Python package) loads a session into pandas tables (samples, breaths, events). The format and analysis examples are in [docs/data-format.md](docs/data-format.md).
 
 ## Hosting on GitHub Pages
 
@@ -100,9 +103,11 @@ npm run build
 npm run sample-data # regenerate sample-data/synthetic_session.csv
 ```
 
+Python: `pip install -e "python[test]"` then `python -m pytest python/tests` (Python 3.9–3.13).
+
 Firmware: `cd firmware && pio run` builds every board; `g++ -std=c++11 -I CO2Response test/test_line_format.cpp -o t && ./t` checks the firmware's data lines against the dashboard's formatter.
 
-CI (`.github/workflows/ci.yml`) runs lint, typecheck, unit tests and build; the browser smoke tests; the firmware builds and line-format test; and a bridge smoke test.
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, unit tests and build; the browser tests (including the dashboard on the Python server); the Python tests on 3.9–3.13 across Linux, Windows and macOS; the firmware builds and line-format test; and a bridge smoke test.
 
 ### Layout
 
@@ -120,13 +125,14 @@ web/src/storage/   settings, session file format, recorder, session library (Ind
 web/src/components/data/  session review screen
 analysis/          Python loader for session files
 web/public/config/channels.json   sensor scaling defaults (edit without rebuilding)
-bridge/            optional Python serial → WebSocket relay
+python/            co2r Python package: DAQ drivers (Arduino, NI, LabJack, simulated), WebSocket server, session loader
+bridge/            serial_ws_bridge.py, the original Arduino relay (now runs the co2r package)
 docs/              protocol, wiring, calibration, safety, UI mockup
 ```
 
 ## Assumptions
 
-These are placeholders until the open questions in [PLAN.md](PLAN.md) are answered. Each is marked `TODO` in code or config.
+These are placeholders until the [open questions](docs/open-questions.md) are answered ([issue #4](https://github.com/shrlak/CO2-Response/issues/4)). Each is marked `TODO` in code or config.
 
 - **CO2 sensor:** analog output 0–5 V linear, 0–10 % CO2 (`channels.json`: gain 2 %/V). Replace with the real capnograph scaling.
 - **Flow sensor:** bidirectional, 2.5 V = 0 L/min, 40 L/min per volt.

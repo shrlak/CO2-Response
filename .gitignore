@@ -25,3 +25,8 @@ Thumbs.db
 # Recorded sessions (keep data off GitHub; sample-data/ is the exception)
 sessions/
 *.session.csv
+
+# Python package build output
+*.egg-info/
+build/
+.pytest_cache/
