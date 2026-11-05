@@ -63,9 +63,9 @@ describe('SimulatorCore', () => {
     expect(seq.dropped).toBe(0);
   });
 
-  it('puts a disconnected CO2 sensor on the low rail', () => {
+  it('puts a disconnected CO2 sensor on the high rail (pull-up)', () => {
     const core = new SimulatorCore(defaultEncoders, { scenario: 'co2Disconnect' });
-    for (const l of run(core, 1)) if (l.kind === 'data') expect(l.volts[0]).toBe(0);
+    for (const l of run(core, 1)) if (l.kind === 'data') expect(l.volts[0]).toBe(5);
   });
 
   it('sends nothing in the no-data scenario', () => {

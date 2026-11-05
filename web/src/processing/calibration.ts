@@ -97,3 +97,13 @@ export function syringeK(paSeconds: number, volumeL: number): number {
   if (Math.abs(paSeconds) < 1e-6) throw new Error('No pressure was recorded during the stroke. Check the pneumotach tubing and push the syringe again.');
   return (60 * volumeL) / Math.abs(paSeconds);
 }
+
+/**
+ * k1 for the full flow model (k1·ΔP + k2·ΔP·|ΔP|) from one syringe stroke, holding k2.
+ * @param a1 ∫ΔP dt over the stroke, Pa·s
+ * @param a2 ∫ΔP·|ΔP| dt over the stroke, Pa²·s
+ */
+export function syringeK1(a1: number, a2: number, volumeL: number, k2: number): number {
+  if (Math.abs(a1) < 1e-6) throw new Error('No pressure was recorded during the stroke. Check the pneumotach tubing and push the syringe again.');
+  return (60 * volumeL * Math.sign(a1) - k2 * a2) / a1;
+}

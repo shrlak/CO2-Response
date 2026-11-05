@@ -51,7 +51,8 @@ export class SimulatorCore {
     if (!this.streaming || this.model.params.scenario === 'noData') return [];
 
     const volts = [
-      s.co2Pct === null ? this.railLowV : this.clampV(this.encoders.co2(s.co2Pct)),
+      // unplugged capnograph: the recommended pull-up drives CH0 to the high rail
+      s.co2Pct === null ? this.railHighV : this.clampV(this.encoders.co2(s.co2Pct)),
       this.clampV(this.encoders.flow(s.flowLpm)),
       this.clampV(this.encoders.pneumo(s.pneumoPa)),
     ];

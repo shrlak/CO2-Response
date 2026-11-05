@@ -182,6 +182,14 @@ describe('RailMonitor', () => {
     expect(r.push(3, 4.999)).toBe(false);
     expect(r.push(5.1, 4.999)).toBe(true);
   });
+
+  it('can ignore the low rail (a capnograph reads 0 V at 0 % CO2)', () => {
+    const r = new RailMonitor(0, 5, 0.005, 2, 'high');
+    expect(r.push(0, 0)).toBe(false);
+    expect(r.push(10, 0)).toBe(false);
+    expect(r.push(11, 5)).toBe(false);
+    expect(r.push(13, 5)).toBe(true);
+  });
 });
 
 describe('Pipeline (simulator → parser → processing)', () => {
@@ -216,5 +224,17 @@ describe('Pipeline (simulator → parser → processing)', () => {
     expect(last.stuck.co2).toBe(true);
     expect(last.co2MmHg).toBeNaN();
     expect(last.valid.flow).toBe(true);
+  });
+
+  it('keeps CO2 valid at 0 % during inspiration (no gaps at the low rail)', () => {
+    const core = new SimulatorCore(defaultEncoders, { scenario: 'normal' });
+    const p = new Pipeline(cloneChannels(DEFAULT_CHANNELS), DEFAULT_PROCESSING);
+    let invalid = 0;
+    for (let i = 0; i < 2000; i++)
+      for (const l of core.nextSample()) {
+        const d = parseLine(l);
+        if (d.kind === 'data' && !p.process(d.tMs, d.volts).valid.co2) invalid++;
+      }
+    expect(invalid).toBe(0);
   });
 });

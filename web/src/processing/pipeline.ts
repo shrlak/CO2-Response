@@ -59,11 +59,8 @@ export class Pipeline {
     const { filterHz, sampleRateHz } = this.opts;
     const a = this.channels.adc;
     this.filters = { co2: new LowPass(filterHz, sampleRateHz), flow: new LowPass(filterHz, sampleRateHz), pneumo: new LowPass(filterHz, sampleRateHz) };
-    this.rails = {
-      co2: new RailMonitor(a.railLowV, a.railHighV, a.railToleranceV),
-      flow: new RailMonitor(a.railLowV, a.railHighV, a.railToleranceV),
-      pneumo: new RailMonitor(a.railLowV, a.railHighV, a.railToleranceV),
-    };
+    const rail = (id: ChannelId) => new RailMonitor(a.railLowV, a.railHighV, a.railToleranceV, 2, this.channels.channels[id].railCheck ?? 'both');
+    this.rails = { co2: rail('co2'), flow: rail('flow'), pneumo: rail('pneumo') };
     this.detector.opts = { deadbandLpm: this.opts.deadbandLpm, minBreathSec: this.opts.minBreathSec };
   }
 
@@ -94,7 +91,7 @@ export class Pipeline {
       const finite = Number.isFinite(v);
       stuck[id] = finite ? this.rails[id].push(tSec, v) : false;
       // A sample at the rail is not trusted even before the 2 s hold elapses.
-      const atRail = finite && RailMonitor.atRail(v, a.railLowV, a.railHighV, a.railToleranceV);
+      const atRail = finite && RailMonitor.atRail(v, a.railLowV, a.railHighV, a.railToleranceV, ch.railCheck ?? 'both');
       valid[id] = finite && !atRail;
       let y = valid[id] ? applyCalibration(ch.calibration, v) - ch.zeroOffset : NaN;
       if (this.opts.filterOn) y = valid[id] ? this.filters[id].process(y) : (this.filters[id].reset(), NaN);
