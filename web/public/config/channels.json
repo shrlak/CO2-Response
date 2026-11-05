@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "adc": {
+    "type": "ADS1115",
+    "railLowV": 0.0,
+    "railHighV": 5.0,
+    "railToleranceV": 0.005,
+    "note": "TODO: confirm ADC board and supply. ADS1115 at GAIN_TWOTHIRDS reads 0-6.144 V but inputs must stay below VDD (5 V)."
+  },
+  "channels": {
+    "co2": {
+      "index": 0,
+      "label": "CO2",
+      "unit": "%",
+      "calibration": { "type": "linear", "gain": 2.0, "offset": 0.0 },
+      "zeroOffset": 0,
+      "calibratedAt": null,
+      "note": "TODO: assumed capnograph analog out 0-5 V = 0-10 % CO2. Replace with the real sensor's scaling."
+    },
+    "flow": {
+      "index": 1,
+      "label": "Flow",
+      "unit": "L/min",
+      "calibration": { "type": "linear", "gain": 40.0, "offset": -100.0 },
+      "zeroOffset": 0,
+      "calibratedAt": null,
+      "note": "TODO: assumed bidirectional sensor, 2.5 V = 0 L/min, 40 L/min per volt."
+    },
+    "pneumo": {
+      "index": 2,
+      "label": "Pneumotach",
+      "unit": "Pa",
+      "calibration": { "type": "linear", "gain": 200.0, "offset": -500.0 },
+      "zeroOffset": 0,
+      "flowModel": { "k1": 0.2, "k2": 0.0 },
+      "calibratedAt": null,
+      "note": "TODO: assumed differential transducer, 2.5 V = 0 Pa, 200 Pa per volt. Flow = k1 x dP + k2 x dP|dP| (L/min); find k1 with a 3 L syringe."
+    }
+  }
+}
