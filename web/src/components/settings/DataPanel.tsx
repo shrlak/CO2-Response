@@ -3,7 +3,7 @@ import { monitor, type Snapshot } from '../../engine/monitor';
 import { breathsCsv, eventsCsv, sessionFileName } from '../../storage/csv';
 import { downloadText, saveBlob } from '../../storage/download';
 import type { SessionRecord } from '../../storage/library';
-import { Field } from '../fields';
+import { Field, ToggleField } from '../fields';
 import { duration, fmt, hms } from '../format';
 import { toggleRecording } from '../recording';
 import { showToast } from '../toast';
@@ -111,6 +111,13 @@ export function DataPanel({ snap, openReview }: { snap: Snapshot; openReview: (i
           <Field label="Study code" htmlFor="study" hint="Goes in the file name and header. Letters, numbers and dashes work best.">
             <input id="study" type="text" className="wide" value={code} maxLength={40} disabled={rec.active} onChange={(e) => setCode(e.target.value)} onBlur={() => monitor.updateSettings({ studyCode: code.trim() })} />
           </Field>
+          <ToggleField
+            id="autorecord"
+            label="Start recording when the Arduino connects"
+            checked={s.autoRecord}
+            onChange={(v) => monitor.updateSettings({ autoRecord: v })}
+            hint="Useful for overnight runs: connecting (or reconnecting after an unplug) starts a recording if none is running."
+          />
           {rec.active ? (
             <p>
               Recording for <b>{duration(snap.now - rec.startedAt)}</b>, {mb(rec.bytes)} so far{rec.stored ? ', saved to this browser every second.' : '.'}

@@ -127,10 +127,16 @@ export function MonitorScreen({ snap, theme, openSettings }: Props) {
             <div className="connect-card">
               <h2>{snap.status === 'error' ? 'Connection lost' : 'No signal source'}</h2>
               {snap.statusDetail ? <p className="err">{snap.statusDetail}</p> : null}
+              {snap.awaitingReconnect ? <p className="warn">Waiting for the Arduino to be plugged back in…</p> : null}
               <p>Connect the Arduino over USB, or start the simulator to try the monitor without hardware. Waveforms and alarms start as soon as data arrives.</p>
               <div className="actions">
-                <button className="btn primary" disabled={!webSerialSupported()} onClick={() => void monitor.connect('serial')}>
-                  Connect Arduino (USB)
+                {snap.knownPort ? (
+                  <button className="btn primary" onClick={() => void monitor.reconnectKnownPort()}>
+                    Reconnect {snap.knownPort}
+                  </button>
+                ) : null}
+                <button className={`btn ${snap.knownPort ? '' : 'primary'}`} disabled={!webSerialSupported()} onClick={() => void monitor.connect('serial')}>
+                  {snap.knownPort ? 'Choose another port…' : 'Connect Arduino (USB)'}
                 </button>
                 <button className="btn" onClick={() => void monitor.connect('simulator')}>
                   Start simulator

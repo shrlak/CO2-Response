@@ -48,6 +48,10 @@ export interface Settings {
   studyCode: string;
   baudRate: number;
   bridgeUrl: string;
+  /** reconnect by itself when the same Arduino is plugged back in */
+  autoReconnect: boolean;
+  /** start recording as soon as an Arduino or bridge connects */
+  autoRecord: boolean;
   sim: SimSettings;
 }
 
@@ -76,6 +80,8 @@ export const DEFAULT_SETTINGS: Settings = {
   studyCode: 'STUDY-01',
   baudRate: 115200,
   bridgeUrl: 'ws://localhost:8765',
+  autoReconnect: true,
+  autoRecord: false,
   sim: { scenario: 'normal', rr: 15, etco2: 38, vtMl: 500 },
 };
 

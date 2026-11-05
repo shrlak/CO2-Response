@@ -229,14 +229,14 @@ export class AlarmEngine {
     this.records.delete(id);
   }
 
-  /** Active before resolved, then by priority, then newest first. */
+  /**
+   * Display order: active high, active medium, then latched (resolved but not yet
+   * acknowledged) high and medium, then advisories, newest first within each group.
+   * A latched alarm still needs someone to see it, so it outranks any advisory.
+   */
   list(): AlarmRecord[] {
-    return [...this.records.values()].sort(
-      (a, b) =>
-        (a.state === 'active' ? 0 : 1) - (b.state === 'active' ? 0 : 1) ||
-        RANK[a.priority] - RANK[b.priority] ||
-        b.since - a.since,
-    );
+    const group = (r: AlarmRecord) => (r.priority === 'advisory' ? 4 : (r.state === 'active' ? 0 : 2) + RANK[r.priority]);
+    return [...this.records.values()].sort((a, b) => group(a) - group(b) || b.since - a.since);
   }
 
   /** Highest priority among active alarms, used to pick the tone. */

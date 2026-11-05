@@ -3,6 +3,16 @@ import type { Source, SourceEvents } from './types';
 
 export const webSerialSupported = (): boolean => typeof navigator !== 'undefined' && 'serial' in navigator;
 
+export interface PortId {
+  usbVendorId?: number;
+  usbProductId?: number;
+}
+
+export const portLabel = (id: PortId): string =>
+  id.usbVendorId ? `Arduino (USB ${id.usbVendorId.toString(16).padStart(4, '0')}:${(id.usbProductId ?? 0).toString(16).padStart(4, '0')})` : 'Arduino (USB)';
+
+export const samePort = (a: PortId, b: PortId): boolean => a.usbVendorId === b.usbVendorId && a.usbProductId === b.usbProductId;
+
 /** Arduino over USB with the Web Serial API (desktop Chrome / Edge, HTTPS or localhost). */
 export class SerialSource implements Source {
   readonly kind = 'serial' as const;
@@ -18,19 +28,26 @@ export class SerialSource implements Source {
     }
   };
 
-  constructor(private baudRate = 115200) {}
+  /** @param grantedPort a port the user already chose before (reconnect without the picker) */
+  constructor(
+    private baudRate = 115200,
+    private grantedPort: SerialPort | null = null,
+  ) {}
+
+  get serialPort(): SerialPort | null {
+    return this.port;
+  }
 
   async start(events: SourceEvents): Promise<void> {
     if (!webSerialSupported()) throw new Error('This browser has no Web Serial. Use desktop Chrome or Edge, or the Python bridge.');
     this.events = events;
     // requestPort must be the first await so it still counts as part of the click.
-    const port = await navigator.serial.requestPort();
+    const port = this.grantedPort ?? (await navigator.serial.requestPort());
     events.onStatus('connecting');
     await port.open({ baudRate: this.baudRate, bufferSize: 65536 });
     this.port = port;
     this.closing = false;
-    const info = port.getInfo();
-    if (info.usbVendorId) this.label = `Arduino (USB ${info.usbVendorId.toString(16).padStart(4, '0')}:${(info.usbProductId ?? 0).toString(16).padStart(4, '0')})`;
+    this.label = portLabel(port.getInfo());
     navigator.serial.addEventListener('disconnect', this.onDisconnect);
     events.onStatus('connected');
     this.readDone = this.readLoop();
@@ -49,6 +66,8 @@ export class SerialSource implements Source {
         if (done) break;
         if (value) split.push(value, (l) => this.events?.onLine(l));
       }
+      // the stream ended without us closing it: the board was unplugged or reset
+      if (!this.closing) this.events?.onStatus('error', 'Device stopped sending (USB unplugged or board reset)');
     } catch (e) {
       if (!this.closing) this.events?.onStatus('error', `Serial read failed: ${(e as Error).message}`);
     } finally {

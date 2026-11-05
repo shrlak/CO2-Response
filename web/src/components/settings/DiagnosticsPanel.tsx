@@ -1,6 +1,7 @@
 import type { Snapshot } from '../../engine/monitor';
 import { monitor } from '../../engine/monitor';
 import { fmt, hms } from '../format';
+import { HardwareCheck } from './HardwareCheck';
 
 export function DiagnosticsPanel({ snap }: { snap: Snapshot }) {
   const stat = (k: string, v: string) => (
@@ -13,6 +14,7 @@ export function DiagnosticsPanel({ snap }: { snap: Snapshot }) {
     <div>
       <h2>Diagnostics</h2>
       <p className="lead">Link quality and the raw stream, for checking wiring and firmware.</p>
+      <HardwareCheck snap={snap} />
       <div className="stats">
         {stat('Samples received', String(snap.received))}
         {stat('Dropped (sequence gaps)', `${snap.dropped} (${fmt(snap.dropRate * 100, 3)} %)`)}

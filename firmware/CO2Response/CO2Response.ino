@@ -11,6 +11,8 @@
 
 #include <Arduino.h>
 
+#include <Wire.h>
+
 #include "ads1115_driver.h"
 #include "config.h"
 #include "line_format.h"
@@ -26,6 +28,7 @@ static uint32_t nextUs = 0;
 static uint16_t seq = 0;
 static uint32_t lastErrMs = 0;
 static uint32_t lastOverrunMs = 0;
+static uint8_t scanCountdown = 0;
 
 static char cmd[32];
 static uint8_t cmdLen = 0;
@@ -45,7 +48,28 @@ static void sendInfo() {
   Serial.print(F(",RATE,"));
   Serial.print(rateHz);
   Serial.print(F(",BAUD,"));
-  Serial.println(BAUD_RATE);
+  Serial.print(BAUD_RATE);
+  adc->printInfo(Serial);
+  Serial.println();
+}
+
+// List every I2C address that answers, so a wrong ADDR pin or a missing wire is
+// obvious in the dashboard (Settings > Diagnostics): "I,I2C_SCAN,0x49" or "none".
+static void i2cScan() {
+  Serial.print(F("I,I2C_SCAN,"));
+  bool any = false;
+  for (uint8_t a = 1; a < 127; a++) {
+    Wire.beginTransmission(a);
+    if (Wire.endTransmission() == 0) {
+      if (any) Serial.print(' ');
+      Serial.print(F("0x"));
+      if (a < 16) Serial.print('0');
+      Serial.print(a, HEX);
+      any = true;
+    }
+  }
+  if (!any) Serial.print(F("none"));
+  Serial.println();
 }
 
 static void setRate(uint16_t hz) {
@@ -95,8 +119,12 @@ static void pollSerial() {
 void setup() {
   Serial.begin(BAUD_RATE);
   adcOk = adc->begin();
-  if (adcOk) sendInfo();
-  else Serial.println(F("E,ADC_NOT_FOUND"));
+  if (adcOk) {
+    sendInfo();
+  } else {
+    Serial.println(F("E,ADC_NOT_FOUND"));
+    i2cScan();
+  }
   setRate(rateHz);
 }
 
@@ -108,8 +136,15 @@ void loop() {
     if (millis() - lastErrMs >= 1000) {
       lastErrMs = millis();
       adcOk = adc->begin();
-      if (adcOk) sendInfo();
-      else Serial.println(F("E,ADC_NOT_FOUND"));
+      if (adcOk) {
+        sendInfo();
+      } else {
+        Serial.println(F("E,ADC_NOT_FOUND"));
+        if (++scanCountdown >= 5) {  // re-scan every 5 s
+          scanCountdown = 0;
+          i2cScan();
+        }
+      }
     }
     return;
   }

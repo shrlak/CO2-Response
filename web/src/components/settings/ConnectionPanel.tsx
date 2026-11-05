@@ -80,9 +80,21 @@ export function ConnectionPanel({ snap }: { snap: Snapshot }) {
             onChange={(v) => monitor.updateSettings({ baudRate: v })}
             hint="Must match BAUD_RATE in firmware/include/config.h."
           />
+          <ToggleField
+            id="autoreconnect"
+            label="Reconnect when plugged back in"
+            checked={s.autoReconnect}
+            onChange={(v) => monitor.updateSettings({ autoReconnect: v })}
+            hint="If the USB cable comes out, the device-disconnected alarm sounds; plugging the same Arduino back in reconnects without a click, and recording continues."
+          />
           <div className="row-actions">
-            <button className="btn primary" disabled={!webSerialSupported()} onClick={() => void monitor.connect('serial')}>
-              Connect Arduino
+            {snap.knownPort ? (
+              <button className="btn primary" onClick={() => void monitor.reconnectKnownPort()}>
+                Reconnect {snap.knownPort}
+              </button>
+            ) : null}
+            <button className={`btn ${snap.knownPort ? '' : 'primary'}`} disabled={!webSerialSupported()} onClick={() => void monitor.connect('serial')}>
+              {snap.knownPort ? 'Choose another port…' : 'Connect Arduino'}
             </button>
           </div>
         </section>

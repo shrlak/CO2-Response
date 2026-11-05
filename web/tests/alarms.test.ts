@@ -152,14 +152,15 @@ describe('AlarmEngine: technical alarms and ordering', () => {
     expect(e.get('audioOff')).toBeUndefined();
   });
 
-  it('orders active before resolved, then high, medium, advisory', () => {
+  it('orders active alarms, then latched ones, then advisories', () => {
     const { e } = make({ delayBreaths: 1 });
     e.setCondition('dropped', true, 0, 'advisory', 'x');
     e.setCondition('noData', true, 1, 'medium', 'x');
     e.setCondition('railCo2', true, 2, 'medium', 'x');
     e.setCondition('railCo2', false, 3, 'medium', 'x');
     e.onBreath(60, 4);
-    expect(e.list().map((a) => a.id)).toEqual(['co2High', 'noData', 'dropped', 'railCo2']);
+    // the latched railCo2 still needs acknowledging, so it outranks the advisory
+    expect(e.list().map((a) => a.id)).toEqual(['co2High', 'noData', 'railCo2', 'dropped']);
     expect(e.activePriority()).toBe('high');
   });
 });

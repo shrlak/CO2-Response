@@ -3,7 +3,7 @@ import '@fontsource/barlow-semi-condensed/500.css';
 import '@fontsource/barlow-semi-condensed/600.css';
 import '@fontsource/barlow-semi-condensed/700.css';
 import './styles.css';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlarmSlot } from './components/AlarmSlot';
 import { Header } from './components/Header';
 import { MonitorScreen } from './components/MonitorScreen';
@@ -15,7 +15,7 @@ import { monitor, useMonitor } from './engine/useMonitor';
 import type { ThemePref } from './storage/settings';
 
 function useResolvedTheme(pref: ThemePref): 'dark' | 'light' {
-  const query = typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const query = useMemo(() => (typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null), []);
   const [systemDark, setSystemDark] = useState(query?.matches ?? true);
   useEffect(() => {
     if (!query) return;

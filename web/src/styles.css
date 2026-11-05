@@ -329,3 +329,17 @@ table.sessions td { white-space: nowrap; }
 .review-chart .u-legend { display: table; font-size: 13px; color: var(--muted); }
 .review-chart .u-select { background: color-mix(in srgb, var(--co2) 18%, transparent); }
 .linkish { background: none; border: none; padding: 0; color: var(--advisory); text-decoration: underline; font-family: var(--font-mono); font-size: 12.5px; }
+
+/* ---------- hardware check ---------- */
+.progress { height: 6px; background: var(--panel-3); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.progress > div { height: 100%; background: var(--co2); transition: width 0.25s linear; }
+.verdict { font-weight: 600; margin: 6px 0 2px; }
+.verdict.pass { color: var(--ok); }
+.verdict.warn { color: var(--alarm-med); }
+.verdict.fail { color: var(--alarm-high); }
+.chip.st-pass { color: var(--ok); border-color: var(--ok); }
+.chip.st-warn { color: var(--alarm-med); border-color: var(--alarm-med); }
+.chip.st-fail { color: var(--alarm-high); border-color: var(--alarm-high); }
+.chip.st-info { color: var(--advisory); border-color: var(--advisory); }
+table.checks td { vertical-align: top; padding: 6px 4px; }
+table.checks td:nth-child(3) { min-width: 260px; }

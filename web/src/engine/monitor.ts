@@ -10,7 +10,8 @@ import type { SweepRenderer } from '../render/sweep';
 import type { Encoders } from '../sim/simulatorCore';
 import { BridgeSource } from '../sources/bridge';
 import { ReplaySource } from '../sources/replay';
-import { SerialSource } from '../sources/serial';
+import { portLabel, samePort, SerialSource, webSerialSupported, type PortId } from '../sources/serial';
+import { analyzeLinkTest, LinkTestCollector, type CheckResult } from './linkTest';
 import { SimulatorSource } from '../sources/simulator';
 import type { Source, SourceKind, SourceStatus } from '../sources/types';
 import type { ParsedSession } from '../storage/csv';
@@ -93,6 +94,10 @@ export interface Snapshot {
   channels: ChannelsConfig;
   usingFileCalibration: boolean;
   replayProgress: number | null;
+  /** a previously chosen Arduino that can be reopened without the port picker */
+  knownPort: string | null;
+  awaitingReconnect: boolean;
+  i2cScan: string | null;
 }
 
 const IDS: ChannelId[] = ['co2', 'flow', 'pneumo'];
@@ -127,6 +132,10 @@ export class MonitorEngine {
   private libraryVersion = 0;
 
   private fileChannels: ChannelsConfig | null = null;
+  private knownPortLabel: string | null = null;
+  private awaitingReconnect = false;
+  private i2cScan: string | null = null;
+  private adcErrorCount = 0;
   private source: Source | null = null;
   private status: EngineStatus = 'idle';
   private statusDetail = '';
@@ -185,6 +194,10 @@ export class MonitorEngine {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && this.status === 'connected') void this.requestWakeLock();
       });
+      if (webSerialSupported()) {
+        navigator.serial.addEventListener('connect', (e) => void this.onUsbConnect(e.target as SerialPort));
+        navigator.serial.addEventListener('disconnect', () => void this.refreshKnownPort());
+      }
       this.startRenderLoop();
     }
   }
@@ -255,6 +268,7 @@ export class MonitorEngine {
    */
   async init(): Promise<SessionRecord[]> {
     initDownloads();
+    await this.refreshKnownPort();
     if (!loadSavedChannels()) {
       this.channels = await loadDefaultChannels();
       this.pipeline.setChannels(this.effectiveChannels);
@@ -278,12 +292,12 @@ export class MonitorEngine {
 
   // ---------- connection ----------
 
-  async connect(kind: SourceKind, opts: { session?: ParsedSession; fileName?: string; speed?: number; useFileCalibration?: boolean } = {}): Promise<void> {
+  async connect(kind: SourceKind, opts: { session?: ParsedSession; fileName?: string; speed?: number; useFileCalibration?: boolean; port?: SerialPort } = {}): Promise<void> {
     // Build the source before any await: the serial port picker needs the click's user activation.
     let src: Source;
     switch (kind) {
       case 'serial':
-        src = new SerialSource(this.settings.baudRate);
+        src = new SerialSource(this.settings.baudRate, opts.port ?? null);
         break;
       case 'simulator':
         src = new SimulatorSource(simulatorEncoders(), { ...this.settings.sim, seed: Date.now() & 0xffff }, DEFAULT_CHANNELS.adc.railLowV, DEFAULT_CHANNELS.adc.railHighV);
@@ -319,6 +333,9 @@ export class MonitorEngine {
     this.lastValidWall = { co2: 0, flow: 0, pneumo: 0 };
     for (const set of this.renderers.values()) for (const r of set) r.clear();
     this.alarms.setCondition('deviceLost', false, now, 'medium', '');
+    this.awaitingReconnect = false;
+    this.i2cScan = null;
+    this.adcErrorCount = 0;
     this.source = src;
     this.status = 'connecting';
     this.statusDetail = '';
@@ -350,10 +367,68 @@ export class MonitorEngine {
       await src.send('INFO');
       await src.send('START');
     }
+    if (src instanceof SerialSource && src.serialPort) {
+      const id = src.serialPort.getInfo();
+      try {
+        localStorage.setItem('co2r.lastPort', JSON.stringify({ usbVendorId: id.usbVendorId, usbProductId: id.usbProductId }));
+      } catch {
+        /* storage blocked */
+      }
+      this.knownPortLabel = portLabel(id);
+    }
     this.addLog(`Connected: ${src.label}`);
     this.recorder.event(Date.now(), `CONNECTED ${src.label}`);
     void this.requestWakeLock();
+    if ((kind === 'serial' || kind === 'bridge') && this.settings.autoRecord && !this.recorder.active) await this.startRecording();
     this.emit();
+  }
+
+  // ---------- USB port memory and auto-reconnect ----------
+
+  private lastPortId(): PortId | null {
+    try {
+      const s = localStorage.getItem('co2r.lastPort');
+      return s ? (JSON.parse(s) as PortId) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** A port the user already granted that matches the last Arduino used, if it is plugged in. */
+  async findKnownPort(): Promise<SerialPort | null> {
+    if (!webSerialSupported()) return null;
+    const want = this.lastPortId();
+    try {
+      const ports = await navigator.serial.getPorts();
+      return (want ? ports.find((p) => samePort(p.getInfo(), want)) : undefined) ?? (ports.length === 1 ? ports[0] : null);
+    } catch {
+      return null;
+    }
+  }
+
+  private async refreshKnownPort(): Promise<void> {
+    const p = await this.findKnownPort();
+    this.knownPortLabel = p ? portLabel(p.getInfo()) : null;
+    this.emit();
+  }
+
+  /** One click, no picker: reopen the Arduino used last time. */
+  async reconnectKnownPort(): Promise<void> {
+    const port = await this.findKnownPort();
+    if (port) await this.connect('serial', { port });
+    else await this.connect('serial');
+  }
+
+  private async onUsbConnect(port: SerialPort): Promise<void> {
+    await this.refreshKnownPort();
+    if (!this.awaitingReconnect || this.source || !this.settings.autoReconnect) return;
+    const want = this.lastPortId();
+    if (want && !samePort(port.getInfo(), want)) return;
+    this.addLog('Arduino plugged back in: reconnecting');
+    // give the board a moment to boot after it enumerates
+    await new Promise((r) => setTimeout(r, 1500));
+    if (this.source || !this.awaitingReconnect) return;
+    await this.connect('serial', { port });
   }
 
   private onSourceStatus(s: SourceStatus, detail?: string): void {
@@ -361,6 +436,10 @@ export class MonitorEngine {
     if (s === 'error') {
       this.status = 'error';
       this.statusDetail = detail ?? 'Connection error';
+      if (this.source?.kind === 'serial' && this.settings.autoReconnect) {
+        this.awaitingReconnect = true;
+        this.statusDetail += '. Reconnects by itself when the Arduino is plugged back in.';
+      }
       this.alarms.setCondition('deviceLost', true, now, 'medium', `DEVICE DISCONNECTED: ${this.statusDetail}`);
       this.addLog(this.statusDetail, 'error');
       void this.stopSource(this.statusDetail, true);
@@ -377,6 +456,7 @@ export class MonitorEngine {
 
   /** User-initiated disconnect. */
   async disconnect(): Promise<void> {
+    this.awaitingReconnect = false;
     await this.stopSource('Disconnected');
   }
 
@@ -429,13 +509,24 @@ export class MonitorEngine {
         this.onData(p.seq, p.tMs, p.volts, now);
         break;
       case 'info': {
-        this.info = p.fields;
+        if (p.fields.I2C_SCAN !== undefined) {
+          this.i2cScan = p.fields.I2C_SCAN;
+          this.addLog(`Device I2C scan: ${this.i2cScan}`, 'error');
+          if (this.alarms.get('adcError')?.state === 'active')
+            this.alarms.setCondition('adcError', true, now, 'medium', `ADC NOT FOUND: I2C devices answering: ${this.i2cScan}. See Settings > Diagnostics`);
+          break;
+        }
+        this.info = { ...(this.info ?? {}), ...p.fields };
         this.pipeline.setOptions(this.processingOptions());
         this.addLog(`Device: ${p.raw}`);
         break;
       }
       case 'error':
-        if (p.code === 'ADC_NOT_FOUND') this.alarms.setCondition('adcError', true, now, 'medium', 'ADC NOT FOUND: check I2C wiring and power');
+        if (p.code === 'ADC_NOT_FOUND') {
+          this.adcErrorCount++;
+          if (this.alarms.get('adcError')?.state !== 'active')
+            this.alarms.setCondition('adcError', true, now, 'medium', `ADC NOT FOUND: check I2C wiring and power${this.i2cScan ? ` (I2C devices answering: ${this.i2cScan})` : ''}`);
+        }
         this.addLog(`Device error: ${p.code}`, 'error');
         this.recorder.event(now, `DEVICE_ERROR ${p.code}`);
         break;
@@ -695,6 +786,50 @@ export class MonitorEngine {
     }
   }
 
+  // ---------- hardware check ----------
+
+  /**
+   * Watch the live stream for `seconds` and judge the link and wiring.
+   * Resolves early with what was seen if cancelled.
+   */
+  runHardwareCheck(seconds: number, onProgress?: (fraction: number) => void): { done: Promise<CheckResult[]>; cancel: () => void } {
+    if (this.status !== 'connected') return { done: Promise.reject(new Error('Connect the Arduino (or the simulator) first.')), cancel: () => {} };
+    const col = new LinkTestCollector(this.effectiveChannels);
+    const start = { received: this.seq.received, dropped: this.seq.dropped, bad: this.badLines, adc: this.adcErrorCount };
+    const off = this.onSample((p) => col.sample(p.tSec, p.volts));
+    const t0 = Date.now();
+    let finish: () => void = () => {};
+    const done = new Promise<CheckResult[]>((resolve) => {
+      const timer = setInterval(() => {
+        const f = Math.min(1, (Date.now() - t0) / (seconds * 1000));
+        onProgress?.(f);
+        if (f >= 1) finish();
+      }, 250);
+      finish = () => {
+        clearInterval(timer);
+        off();
+        const results = analyzeLinkTest(
+          {
+            seconds: (Date.now() - t0) / 1000,
+            spanSec: col.spanSec,
+            received: this.seq.received - start.received,
+            dropped: this.seq.dropped - start.dropped,
+            badLines: this.badLines - start.bad,
+            info: this.info,
+            adcErrors: this.adcErrorCount - start.adc + (this.alarms.get('adcError')?.state === 'active' ? 1 : 0),
+            i2cScan: this.i2cScan,
+            channels: col.stats(),
+          },
+          this.effectiveChannels,
+          this.settings.processing.barometricMmHg,
+        );
+        this.addLog(`Hardware check (${seconds} s): ${results.map((r) => `${r.label} ${r.status}`).join('; ')}`);
+        resolve(results);
+      };
+    });
+    return { done, cancel: () => finish() };
+  }
+
   // ---------- calibration helpers ----------
 
   onSample(fn: (p: Processed) => void): () => void {
@@ -830,6 +965,9 @@ export class MonitorEngine {
       channels: this.channels,
       usingFileCalibration: this.fileChannels !== null,
       replayProgress: this.source instanceof ReplaySource ? this.source.progress : null,
+      knownPort: this.knownPortLabel,
+      awaitingReconnect: this.awaitingReconnect,
+      i2cScan: this.i2cScan,
     };
   }
 }
