@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .. import __version__
-from ..storage.session_file import Range, breaths_csv, event_type, events_csv, export_session_parts, summarize
+from ..storage.session_file import Range, breaths_csv, clean_breaths, event_type, events_csv, export_session_parts, summarize
 from .charts import ReviewChart, elapsed
 from .dom import actions, btn, byid, css_var, data, download, esc, stat
 from .views import duration, fmt, stamp
@@ -53,7 +53,7 @@ class ReviewView:
             stat(k, v)
             for k, v in [
                 ("Length", duration(summ.duration_s * 1000)),
-                ("Breaths", str(summ.breaths)),
+                ("Breaths", f"{summ.breaths - summ.rejected}" + (f" ({summ.rejected} noisy left out)" if summ.rejected else "")),
                 ("EtCO2 mean (min–max)", f"{fmt(summ.etco2_mean, 1)} ({fmt(summ.etco2_min)}–{fmt(summ.etco2_max)}) mmHg"),
                 ("RR mean", f"{fmt(summ.rr, 1)} /min"),
                 ("VT mean", f"{fmt(summ.vt)} mL"),
@@ -91,7 +91,7 @@ class ReviewView:
         if self.parsed is None:
             return
         s = self.parsed
-        b = s.breaths
+        b = clean_breaths(s)  # breaths left out as noisy, artifact or outlier are not drawn
         bt = np.asarray([x.time_s for x in b], float)
 
         def arr(xs):

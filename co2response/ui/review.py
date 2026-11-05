@@ -25,6 +25,7 @@ from ..storage.session_file import (
     ParsedSession,
     Range,
     breaths_csv,
+    clean_breaths,
     event_type,
     events_csv,
     summarize,
@@ -208,7 +209,7 @@ class ReviewScreen(QFrame):
         stats.set_all(
             [
                 ("Length", duration(summ.duration_s * 1000)),
-                ("Breaths", str(summ.breaths)),
+                ("Breaths", f"{summ.breaths - summ.rejected}" + (f" ({summ.rejected} noisy left out)" if summ.rejected else "")),
                 ("EtCO2 mean (min–max)", f"{fmt(summ.etco2_mean, 1)} ({fmt(summ.etco2_min)}–{fmt(summ.etco2_max)}) mmHg"),
                 ("RR mean", f"{fmt(summ.rr, 1)} /min"),
                 ("VT mean", f"{fmt(summ.vt)} mL"),
@@ -225,7 +226,7 @@ class ReviewScreen(QFrame):
         lay.addLayout(hbox(self.zoom_note, self.whole_btn, stretch_end=True))
 
         p = theme.current
-        b = s.breaths
+        b = clean_breaths(s)  # breaths left out as noisy, artifact or outlier are not drawn
         bt = [x.time_s for x in b]
         lay.addWidget(label("ETCO2 AND RR PER BREATH", "h3"))
         self.p1 = DualPlot("EtCO2 mmHg", "RR /min", 200, self._on_zoom)

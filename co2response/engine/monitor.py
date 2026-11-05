@@ -56,7 +56,7 @@ NAN = float("nan")
 MAX_TREND = 20000
 MAX_TRACE = 4 * 3600 * 2  # 4 h at 2 Hz
 MAX_WAVE = 6000
-TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum")
+TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum", "noisyBreaths")
 
 
 def _now_ms() -> int:
@@ -88,6 +88,8 @@ class Numbers:
     vt: float = NAN
     mv: float = NAN
     volts: list[float] = field(default_factory=list)
+    #: why the latest breath was left out of the numbers, if it was
+    rejected: str = ""
 
 
 @dataclass
@@ -98,6 +100,8 @@ class TrendPoint:
     mv: float
     vt: float
     rr: float
+    #: the breath's quality; only "ok" points are drawn (see processing/denoise.py)
+    quality: str = "ok"
 
 
 @dataclass
@@ -275,6 +279,9 @@ class MonitorEngine:
         self._last_data_wall = 0.0
         self._last_valid_wall = {cid: 0.0 for cid in CHANNEL_IDS}
         self._last_breath_wall = 0.0
+        self._last_good_wall = 0.0
+        self._recent_quality: collections.deque[str] = collections.deque(maxlen=5)
+        self._trend_of: dict[int, TrendPoint] = {}
         self._last: Processed | None = None
         self._flow_peak_cur = -math.inf
         self._flow_peak_last = NAN
@@ -288,8 +295,10 @@ class MonitorEngine:
         self._connected_at = 0.0
         self._handshake_retried = False
 
-        #: breaths on the device clock (cleared on every new connection)
+        #: breaths on the device clock (cleared on every new connection), all of them
         self.breaths: list[Breath] = []
+        #: the breaths that passed the noise screen: everything shown is computed from these
+        self.good: list[Breath] = []
         #: per-breath trend on the wall clock (kept across reconnects)
         self.trend: list[TrendPoint] = []
         #: continuous CO2 behind the trend: wall s, peak mmHg per 0.5 s
@@ -471,6 +480,9 @@ class MonitorEngine:
         self._bad_lines = 0
         self._bad_times.clear()
         self.breaths = []
+        self.good = []
+        self._recent_quality.clear()
+        self._trend_of = {}
         self._last = None
         self._flow_peak_cur = -math.inf
         self._flow_peak_last = NAN
@@ -592,6 +604,9 @@ class MonitorEngine:
         src = self._source
         if src is None:
             return
+        now = self.clock()
+        for pr in self.pipeline.flush():  # the last 30 ms the spike filter still held
+            self._use(pr, now)
         self._source = None
         try:
             if src.kind == "serial":
@@ -673,17 +688,24 @@ class MonitorEngine:
         self._seq.push(seq, t_ms)
         if self.alarms.is_active("adcError"):
             self.alarms.set_condition("adcError", False, now, "medium", "")
-        pr = self.pipeline.process(t_ms, volts)
-        self._last = pr
-        for cid in CHANNEL_IDS:
-            if pr.valid[cid]:
-                self._last_valid_wall[cid] = now
-
         self._rate_count += 1
         if now - self._rate_window_start >= 2000:
             self._measured_rate = (self._rate_count * 1000) / (now - self._rate_window_start)
             self._rate_count = 0
             self._rate_window_start = now
+
+        # cleaned first: spike removal and filtering happen inside the pipeline, and
+        # each breath is screened before anything below interprets it
+        pr = self.pipeline.process(t_ms, volts, seq)
+        if pr is not None:  # None while the spike filter fills (the first 30 ms)
+            self._use(pr, now)
+
+    def _use(self, pr: Processed, now: float) -> None:
+        """Everything that interprets a cleaned sample."""
+        self._last = pr
+        for cid in CHANNEL_IDS:
+            if pr.valid[cid]:
+                self._last_valid_wall[cid] = now
 
         if not self.frozen:
             w = self.waves
@@ -708,11 +730,14 @@ class MonitorEngine:
             self._trace_max = -math.inf
             self._trace_start = now
 
+        if pr.outlier is not None:
+            self._on_outlier(pr.outlier, now)
         if pr.breath is not None:
             self._on_breath(pr.breath, now)
         self.alarms.on_live_co2(pr.co2_mmhg, now)
 
-        self.recorder.sample(now, t_ms, seq, volts, pr.co2_mmhg, pr.co2_pct, pr.flow_lpm, pr.pneumo_pa, pr.pneumo_lpm)
+        # the raw volts are recorded as received, so a session can be re-analysed
+        self.recorder.sample(now, pr.t_ms, pr.seq, pr.volts, pr.co2_mmhg, pr.co2_pct, pr.flow_lpm, pr.pneumo_pa, pr.pneumo_lpm)
         for fn in list(self._sample_listeners):
             fn(pr)
 
@@ -720,18 +745,46 @@ class MonitorEngine:
         self.breaths.append(b)
         if len(self.breaths) > 2000:
             del self.breaths[:500]
-        self._last_breath_wall = now
-        self._flow_peak_last = self._flow_peak_cur
+        self._last_breath_wall = now  # any breath, even a noisy one, means the subject breathed
+        self._recent_quality.append(b.quality)
+        peak = self._flow_peak_cur
         self._flow_peak_cur = -math.inf
-        mv = minute_ventilation(self.breaths, b.t_end)
-        rr = respiratory_rate(self.breaths)
-        self.trend.append(TrendPoint(now / 1000, b.etco2, mv, b.vt_ml, rr))
+        if b.quality == "ok":
+            self.good.append(b)
+            if len(self.good) > 2000:
+                del self.good[:500]
+            self._last_good_wall = now
+            self._flow_peak_last = peak
+        else:
+            self._add_log(f"Breath left out ({b.quality}): {b.reason}")
+        mv = minute_ventilation(self.good, b.t_end)
+        rr = respiratory_rate(self.good)
+        tp = TrendPoint(now / 1000, b.etco2, mv, b.vt_ml, rr, b.quality)
+        self.trend.append(tp)
         if len(self.trend) > MAX_TREND:
             del self.trend[:1000]
+        self._trend_of[id(b)] = tp
+        if len(self._trend_of) > 20:
+            del self._trend_of[next(iter(self._trend_of))]
         self.trend_version += 1
         # recorded on the sample that completed the breath (written right after this)
-        self.recorder.breath(b.etco2, b.fico2, rr, b.vt_ml, mv, b.peak_insp_lpm)
-        self.alarms.on_breath(b.etco2, now)
+        b.rec_n = self.recorder.breath(b.etco2, b.fico2, rr, b.vt_ml, mv, b.peak_insp_lpm, b.quality)
+        # a noisy or artifact breath would give false EtCO2 alarms; a run of them raises
+        # the technical alarm in tick() instead, so the alarm system is never silently blind
+        if b.quality == "ok":
+            self.alarms.on_breath(b.etco2, now)
+
+    def _on_outlier(self, b: Breath, now: float) -> None:
+        """A breath that looked fine turned out to be an isolated EtCO2 jump."""
+        tp = self._trend_of.get(id(b))
+        if tp is not None:
+            tp.quality = "outlier"
+        if b in self.good:
+            self.good.remove(b)
+        self.trend_version += 1
+        self._add_log(f"Breath left out (outlier): {b.reason}")
+        if b.rec_n is not None:
+            self.recorder.event(now, f"BREATH_REJECTED {b.rec_n} outlier: {b.reason}")
 
     def take_waves(self) -> dict[str, list[float]]:
         """Display values since the last call, per channel (for the sweep waveforms)."""
@@ -770,6 +823,10 @@ class MonitorEngine:
             self._bad_times.popleft()
         nb = len(self._bad_times)
         a.set_condition("checksum", connected and nb > 0, now, "advisory", f"{nb} corrupt line{'' if nb == 1 else 's'} in the last minute")
+
+        bad = sum(1 for q in self._recent_quality if q in ("noisy", "artifact"))
+        noisy = connected and (bad >= 3 or (a.is_active("noisyBreaths") and bad > 1))
+        a.set_condition("noisyBreaths", noisy, now, "medium", f"SIGNAL TOO NOISY: {bad} of the last {len(self._recent_quality)} breaths left out of EtCO2 and its alarms")
 
         a.tick(now)
 
@@ -955,7 +1012,7 @@ class MonitorEngine:
         acc = [0.0, 0, 0.0, 0]
 
         def on(p: Processed) -> None:
-            v = p.volts[index] if index < len(p.volts) else NAN
+            v = p.clean[index] if index < len(p.clean) else NAN
             if math.isfinite(v):
                 acc[0] += v
                 acc[1] += 1
@@ -1002,24 +1059,27 @@ class MonitorEngine:
         now = self.clock()
         connected = self._status == "connected"
         stale = {cid: not connected or now - self._last_valid_wall[cid] > 2000 for cid in CHANNEL_IDS}
-        last_b = self.breaths[-1] if self.breaths else None
+        # numbers come only from breaths that passed the noise screen
+        last_b = self.good[-1] if self.good else None
         last_period = last_b.period_sec if last_b else 4
-        breath_stale = last_b is None or now - self._last_breath_wall > max(15000, 3000 * last_period) or not connected
+        breath_stale = last_b is None or now - self._last_good_wall > max(15000, 3000 * last_period) or not connected
+        last_any = self.breaths[-1] if self.breaths else None
         L = self._last
         pct = self.settings.co2_unit == "%"
         n = Numbers(
             co2_live=NAN if stale["co2"] or L is None else (L.co2_pct if pct else L.co2_mmhg),
             etco2=NAN if breath_stale or stale["co2"] else last_b.etco2,
-            etco2_median=NAN if breath_stale or stale["co2"] else etco2_median(self.breaths),
-            rr=NAN if breath_stale else respiratory_rate(self.breaths),
+            etco2_median=NAN if breath_stale or stale["co2"] else etco2_median(self.good),
+            rr=NAN if breath_stale else respiratory_rate(self.good),
             fico2=NAN if breath_stale or stale["co2"] else last_b.fico2,
             flow=NAN if stale["flow"] or L is None else L.flow_lpm,
             peak_flow=NAN if breath_stale or stale["flow"] else self._flow_peak_last,
             pneumo_flow=NAN if stale["pneumo"] or L is None else L.pneumo_lpm,
             pneumo_pa=NAN if stale["pneumo"] or L is None else L.pneumo_pa,
             vt=NAN if breath_stale or stale["pneumo"] else last_b.vt_ml,
-            mv=NAN if breath_stale or stale["pneumo"] or L is None else minute_ventilation(self.breaths, L.t_sec),
+            mv=NAN if breath_stale or stale["pneumo"] or L is None else minute_ventilation(self.good, L.t_sec),
             volts=list(L.volts) if L else [],
+            rejected=f"{last_any.quality}: {last_any.reason}" if connected and last_any is not None and last_any.quality != "ok" else "",
         )
         rec = self.recorder
         src = self._source

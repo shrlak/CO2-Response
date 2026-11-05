@@ -159,7 +159,11 @@ class TrendPanel(QFrame):
         now_s = s.now / 1000
         minutes = st.trend_minutes
         t0 = now_s - minutes * 60 if minutes > 0 else (e.trend[0].t if e.trend else now_s - 60)
-        pts = [q for q in e.trend if q.t >= t0]
+        window = [q for q in e.trend if q.t >= t0]
+        # noise removal: breaths left out as noisy, artifact or outlier are not drawn
+        pts = [q for q in window if q.quality == "ok"]
+        left_out = len(window) - len(pts)
+        removed = f" · {left_out} noisy breath{'s' if left_out != 1 else ''} left out" if left_out else ""
 
         if self.stack.currentIndex() == 0:
             p = theme.current
@@ -210,7 +214,7 @@ class TrendPanel(QFrame):
                 pi.addItem(line)
                 self.marker_lines.append(line)
             span = f"{minutes:g} min" if minutes > 0 else "whole session"
-            self.meta.setText(f"{span} · one point per breath · {len(pts)} breaths")
+            self.meta.setText(f"{span} · one point per breath · {len(pts)} breaths{removed}")
         else:
             xy = sorted(((q.etco2, q.mv) for q in pts if math.isfinite(q.etco2) and math.isfinite(q.mv)), key=lambda a: a[0])
             xs = [a[0] for a in xy]
@@ -220,7 +224,7 @@ class TrendPanel(QFrame):
             pi = self.resp.getPlotItem()
             if fit:
                 self.resp_fit.setData(xs, [fit.slope * x + fit.intercept for x in xs])
-                self.meta.setText(f"MV (L/min) vs EtCO2 (mmHg) · slope {fmt(fit.slope, 2)} L/min/mmHg · r² {fmt(fit.r2, 2)} · n {len(xs)}")
+                self.meta.setText(f"MV (L/min) vs EtCO2 (mmHg) · slope {fmt(fit.slope, 2)} L/min/mmHg · r² {fmt(fit.r2, 2)} · n {len(xs)}{removed}")
             else:
                 self.resp_fit.setData([], [])
                 self.meta.setText("MV vs EtCO2 · needs at least 3 breaths")

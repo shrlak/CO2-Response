@@ -262,7 +262,8 @@ def _install_actions(app: WebApp) -> None:
         t = nn(ev.target)
         typing = t is not None and (t.tagName in ("INPUT", "TEXTAREA", "SELECT") or t.isContentEditable)
         if typing or ev.metaKey or ev.ctrlKey or ev.altKey:
-            if ev.key == "Enter" and t is not None and t.id == "mark-label":
+            # Enter commits a typed value: leave the field so the page can redraw with it
+            if ev.key == "Enter" and t is not None and t.tagName == "INPUT" and (t.id == "mark-label" or t.hasAttribute("data-change")):
                 t.blur()
             return
         if ev.key in ("m", "M") and app.screen == "monitor" and app.hotkey_mark:

@@ -156,7 +156,7 @@ def test_record_import_review(win, tmp_path):
     win.toggle_recording()
     rec = e.library.list()[0]
     text = e.library.path(rec).read_text()
-    assert text.startswith("# CO2-Response session,v2") and "MARK Event 1" in text and "RECORDING_STOPPED" in text
+    assert text.startswith("# CO2-Response session,v3") and "MARK Event 1" in text and "RECORDING_STOPPED" in text
 
     win.open_settings("data")
     page = win.settings_screen.pages["data"]

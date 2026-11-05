@@ -409,6 +409,8 @@ class SettingsView:
             + (number_field("Filter cutoff", "proc", p.filter_hz, "Hz", None, "filthz", 1, 40, 0.5, "filter_hz") if p.filter_on else "")
             + number_field("Breath detection deadband", "proc-db", round(p.deadband_lpm / 60, 3), "L/s", "Flow must pass ± this to count as a new inspiration. Raise it if noise is counted as breaths.", "deadband", 0.005, 0.5, 0.005)
             + number_field("Minimum breath length", "proc", p.min_breath_sec, "s", None, "minbreath", 0.3, 5, 0.1, "min_breath_sec")
+            + field("Remove spikes (Hampel filter)", toggle("proc-bool", p.despike, "despike", "despike"), 'Replaces single glitchy samples with the median of their neighbours before anything is calculated. Keeps real fast changes such as the capnogram upstroke. Adds 30 ms of delay.', "despike")
+            + field("Leave noisy breaths out", toggle("proc-bool", p.reject_bad_breaths, "reject", "reject_bad_breaths"), 'Each breath is checked before it is used: too noisy (signal-to-noise below 8), a partial breath with no alveolar plateau, an impossible value, or an isolated EtCO2 jump. Those breaths are left out of the numbers, the EtCO2 trend, the response plot and the EtCO2 alarms, but stay in the recording, marked. A run of them raises a technical alarm.', "reject")
             + "</div>"
         )
 

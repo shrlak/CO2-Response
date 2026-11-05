@@ -318,7 +318,7 @@ class MonitorView:
                 alarm=("high" if co2_alarm.priority == "high" else "medium") if co2_alarm else None,
                 flash=bool(co2_alarm and not co2_alarm.acknowledged),
                 limits=(lim(st.alarms.high_mm_hg), lim(st.alarms.low_mm_hg)),
-                qualifier="no CO2 signal" if sc["co2"] else f"median 3 br: {fmt(disp(n.etco2_median), digits)}",
+                qualifier="no CO2 signal" if sc["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br: {fmt(disp(n.etco2_median), digits)}",
                 raw=raw("co2"),
             ),
             "rr": tile_html("rr", "RR", "/min", fmt(n.rr), alarm="high" if apnea else None, flash=bool(apnea and not apnea.acknowledged), qualifier="no breath detected" if n.rr != n.rr and s.status == "connected" else ""),
@@ -415,7 +415,11 @@ class MonitorView:
         now_s = s.now / 1000
         minutes = st.trend_minutes
         t0 = now_s - minutes * 60 if minutes > 0 else (e.trend[0].t if e.trend else now_s - 60)
-        pts = [q for q in e.trend if q.t >= t0]
+        window = [q for q in e.trend if q.t >= t0]
+        # noise removal: breaths left out as noisy, artifact or outlier are not drawn
+        pts = [q for q in window if q.quality == "ok"]
+        left_out = len(window) - len(pts)
+        removed = f" · {left_out} noisy breath{'s' if left_out != 1 else ''} left out" if left_out else ""
         if self.tab == "trend":
             tt = [t for t in e.trace_t if t >= t0]
             vv = e.trace_v[len(e.trace_v) - len(tt) :] if tt else []
@@ -435,13 +439,13 @@ class MonitorView:
                 pct,
             )
             span = f"{minutes:g} min" if minutes > 0 else "whole session"
-            byid("trend-meta").textContent = f"{span} · one point per breath · {len(pts)} breaths"
+            byid("trend-meta").textContent = f"{span} · one point per breath · {len(pts)} breaths{removed}"
         else:
             xy = sorted(((q.etco2, q.mv) for q in pts if math.isfinite(q.etco2) and math.isfinite(q.mv)), key=lambda a: a[0])
             xs, ys = [a for a, _ in xy], [b for _, b in xy]
             fit = linear_fit(xs, ys)
             self.resp.draw(xs, ys, fit)
-            byid("trend-meta").textContent = f"MV (L/min) vs EtCO2 (mmHg) · slope {fmt(fit.slope, 2)} L/min/mmHg · r² {fmt(fit.r2, 2)} · n {len(xs)}" if fit else "MV vs EtCO2 · needs at least 3 breaths"
+            byid("trend-meta").textContent = f"MV (L/min) vs EtCO2 (mmHg) · slope {fmt(fit.slope, 2)} L/min/mmHg · r² {fmt(fit.r2, 2)} · n {len(xs)}{removed}" if fit else "MV vs EtCO2 · needs at least 3 breaths"
 
 
 def install_monitor_actions(app: "WebApp") -> None:

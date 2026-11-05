@@ -70,6 +70,10 @@ class ProcessingOptions:
     deadband_lpm: float = 3
     #: breaths shorter than this (s) are treated as noise
     min_breath_sec: float = 1
+    #: remove single-sample spikes (Hampel filter) before anything else
+    despike: bool = True
+    #: leave noisy, artifact and outlier breaths out of the numbers, graphs and EtCO2 alarms
+    reject_bad_breaths: bool = True
 
 
 @dataclass

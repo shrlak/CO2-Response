@@ -353,7 +353,7 @@ class MonitorScreen(QWidget):
             alarm=("high" if co2_alarm.priority == "high" else "medium") if co2_alarm else None,
             flash=bool(co2_alarm and not co2_alarm.acknowledged and blink_fast),
             limits=(lim(st.alarms.high_mm_hg), lim(st.alarms.low_mm_hg)),
-            qualifier="no CO2 signal" if s.stale["co2"] else f"median 3 br: {fmt(disp(n.etco2_median), digits)}",
+            qualifier="no CO2 signal" if s.stale["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br: {fmt(disp(n.etco2_median), digits)}",
             raw=raw("co2"),
         )
         t["rr"].set(fmt(n.rr), alarm="high" if apnea else None, flash=bool(apnea and not apnea.acknowledged and blink_fast), qualifier="no breath detected" if n.rr != n.rr and s.status == "connected" else "")

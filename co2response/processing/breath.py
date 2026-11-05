@@ -33,6 +33,19 @@ class Breath:
     peak_insp_lpm: float
     #: which signal found the breath: 'flow' or 'co2'
     detected_by: str
+    #: fraction of the expiration with CO2 at ≥ 90 % of EtCO2 (an alveolar plateau)
+    plateau: float = NAN
+    #: median expiratory CO2 above half its peak, mmHg: the plateau level, which noise
+    #: barely moves (unlike the peak, EtCO2)
+    level: float = NAN
+    #: noise during the breath (σ of the unfiltered signal): CO2 mmHg, flow L/min
+    noise_co2: float = NAN
+    noise_flow: float = NAN
+    #: 'ok', 'noisy', 'artifact' or 'outlier' (see denoise.py); only 'ok' is interpreted
+    quality: str = "ok"
+    reason: str = ""
+    #: the breath's number in the recording, if one was running
+    rec_n: int | None = None
 
 
 class BreathDetector:
@@ -51,6 +64,7 @@ class BreathDetector:
         self._fi = NAN
         self._et = NAN
         self._last_et = NAN
+        self._exp_co2: list[float] = []
 
     def reset(self) -> None:
         self._mode = None
@@ -62,6 +76,12 @@ class BreathDetector:
         out = None
         if self._start is not None and self._mode is not None:
             flow_mode = self._mode == "flow"
+            exp = self._exp_co2
+            plateau = level = NAN
+            if exp and math.isfinite(self._et):
+                plateau = sum(1 for c in exp if c >= 0.9 * self._et) / len(exp)
+                top = sorted(c for c in exp if c >= 0.5 * self._et)
+                level = top[len(top) // 2] if top else NAN
             out = Breath(
                 t_start=self._start,
                 t_end=t,
@@ -71,6 +91,8 @@ class BreathDetector:
                 vt_ml=self._vt_l * 1000 if flow_mode else NAN,
                 peak_insp_lpm=self._peak if flow_mode else NAN,
                 detected_by=self._mode,
+                plateau=plateau,
+                level=level,
             )
             if math.isfinite(self._et):
                 self._last_et = self._et
@@ -80,6 +102,7 @@ class BreathDetector:
         self._peak = 0.0
         self._fi = NAN
         self._et = NAN
+        self._exp_co2 = []
         return out
 
     def push(self, t: float, flow: float, co2: float) -> Breath | None:
@@ -122,6 +145,8 @@ class BreathDetector:
         if math.isfinite(co2):
             if self._phase == "exp":
                 self._et = max(self._et, co2) if math.isfinite(self._et) else co2
+                if len(self._exp_co2) < 20000:
+                    self._exp_co2.append(co2)
             if self._phase == "insp":
                 self._fi = min(self._fi, co2) if math.isfinite(self._fi) else co2
         return breath

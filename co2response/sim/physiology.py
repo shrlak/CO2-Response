@@ -16,6 +16,7 @@ SCENARIOS: list[tuple[str, str]] = [
     ("co2Disconnect", "CO2 sensor disconnected"),
     ("noData", "Device stops sending"),
     ("noisy", "Noisy signal + line errors"),
+    ("artifacts", "Spikes + partial breaths"),
 ]
 
 
@@ -81,6 +82,7 @@ class PhysioModel:
         self._qe = 0.0
         self._tau = 0.5
         self._apnea_co2 = 0.0
+        self._shallow = False
         self._reset_breathing()
 
     def set_params(self, **patch) -> None:
@@ -112,6 +114,9 @@ class PhysioModel:
         self._tau = te / 5
         c = 0.06
         self._qe = (vt_l * 60) / ((self._tau * self._tau) / (self._tau + c))
+        # "artifacts": about one breath in seven is a partial breath that never reaches
+        # an alveolar plateau, so its CO2 peak under-reads (a classic capnography artifact)
+        self._shallow = p.scenario == "artifacts" and self._rand() < 0.15
 
     def _noise(self, scale: float) -> float:
         return (self._rand() - 0.5) * 2 * scale
@@ -146,6 +151,9 @@ class PhysioModel:
                 flow = -self._qe * math.exp(-e / self._tau) * (1 - math.exp(-e / 0.06))
                 up = 1 / (1 + math.exp(-(e - 0.28) / 0.04))
                 co2 = up * (self._et - 3 + 3 * (e / te))
+            if self._shallow:
+                flow *= 0.35
+                co2 = co2 if x < self._ti else 0.6 * self._et * ((x - self._ti) / (self._period - self._ti)) ** 2
             self._apnea_co2 = co2
 
         flow_lpm = flow + self._noise(0.6 * noisy)

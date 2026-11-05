@@ -200,8 +200,8 @@ def test_co2_ramp_alarms_within_a_breath_or_two_of_crossing_the_limit():
             d = parse_line(line)
             if d.kind != "data":
                 continue
-            p = pipe.process(d.t_ms, d.volts)
-            if p.breath:
+            p = pipe.process(d.t_ms, d.volts, d.seq)
+            if p is not None and p.breath:
                 ets.append(p.breath.etco2)
                 e.on_breath(p.breath.etco2, d.t_ms)
                 if e.is_active("co2High"):

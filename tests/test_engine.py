@@ -154,7 +154,7 @@ def test_record_stop_import_review_export(tmp_path):
     assert res.path is not None and res.path.exists() and res.path.parent == tmp_path / "sessions"
     assert res.file_name.startswith("co2r_STUDY-01_") and res.file_name.endswith(".csv")
     text = res.path.read_text()
-    assert text.startswith("# CO2-Response session,v2")
+    assert text.startswith("# CO2-Response session,v3")
     assert "MARK Event 1" in text and "MARK_RENAMED 1 drug given" in text and "RECORDING_STOPPED" in text
     lib = e.library
     assert [(r.status, r.stats["breaths"] > 3) for r in lib.list()] == [("complete", True)]

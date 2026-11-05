@@ -184,7 +184,7 @@ def test_record_import_review_and_persistence(page, site_url, tmp_path):
     saved = tmp_path / "reimported.csv"
     d.save_as(saved)
     text = saved.read_text()
-    assert text.startswith("# CO2-Response session,v2") and "MARK Event 1" in text and "RECORDING_STOPPED" in text
+    assert text.startswith("# CO2-Response session,v3") and "MARK Event 1" in text and "RECORDING_STOPPED" in text
 
     page.locator('[data-act="open-settings"]').last.click()
     page.locator("#nav-data").click()
@@ -205,7 +205,7 @@ def test_record_import_review_and_persistence(page, site_url, tmp_path):
     sync_api.expect(page.locator(".review .loglist")).to_contain_text("MARK Event 1")
     assert page.locator(".review-chart canvas").count() == 3
     with page.expect_download() as dl2:
-        page.get_by_role("button", name="Breaths (.csv)").click()
+        page.get_by_role("button", name="Breaths (.csv)", exact=True).click()
     assert dl2.value.suggested_filename == "reimported_breaths.csv"
 
     # sessions survive a reload (kept in the browser's IndexedDB)

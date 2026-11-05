@@ -52,6 +52,10 @@ class SimulatorCore:
             self._clamp(self.encoders.flow(s.flow_lpm)),
             self._clamp(self.encoders.pneumo(s.pneumo_pa)),
         ]
+        if self.model.params.scenario == "artifacts" and self._rand() < 0.01:
+            # a glitchy ADC conversion: one sample on one channel jumps by 1–2 V
+            ch = min(2, int(self._rand() * 3))
+            volts[ch] = self._clamp(volts[ch] + (1 + self._rand()) * (1 if self._rand() < 0.5 else -1))
         line = format_data_line(seq, self._t_ms, volts)
 
         if self.model.params.scenario == "noisy":

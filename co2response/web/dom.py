@@ -137,10 +137,13 @@ def set_text(i: str, text: str) -> None:
 
 
 def editing_inside(i: str) -> bool:
-    """True while the user is typing in a field inside element ``i``."""
+    """True while the user is typing in a field inside element ``i`` (a switch or a
+    drop-down that keeps focus after it was used does not count)."""
     a = nn(document.activeElement)
     el = byid(i)
-    return a is not None and el is not None and a.tagName in ("INPUT", "TEXTAREA", "SELECT") and el.contains(a)
+    if a is None or el is None or not el.contains(a):
+        return False
+    return a.tagName == "TEXTAREA" or (a.tagName == "INPUT" and str(a.type) not in ("checkbox", "radio", "button", "range", "file"))
 
 
 def toast(msg: str, ms: int = 3500) -> None:

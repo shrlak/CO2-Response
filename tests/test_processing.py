@@ -212,7 +212,10 @@ def run_sim(scenario, seconds):
             d = parse_line(line)
             if d.kind != "data":
                 continue
-            last = p.process(d.t_ms, d.volts)
+            out = p.process(d.t_ms, d.volts, d.seq)
+            if out is None:
+                continue  # the spike filter is still filling
+            last = out
             if last.breath:
                 breaths.append(last.breath)
     return breaths, last
@@ -240,6 +243,7 @@ def test_keeps_co2_valid_at_0_pct_during_inspiration():
     for _ in range(2000):
         for line in core.next_sample():
             d = parse_line(line)
-            if d.kind == "data" and not p.process(d.t_ms, d.volts).valid["co2"]:
+            out = p.process(d.t_ms, d.volts, d.seq) if d.kind == "data" else None
+            if out is not None and not out.valid["co2"]:
                 invalid += 1
     assert invalid == 0

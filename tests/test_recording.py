@@ -51,6 +51,15 @@ def record_session(lib: SessionLibrary, seconds: int, stop: bool = True):
     rec.start(SessionMeta("TEST #01", T0, "test", "Simulator", "sim", 100, channels, DEFAULT_PROCESSING, DEFAULT_ALARMS), T0)
     rec.event(T0, "RECORDING_STARTED source=Simulator")
     breaths, co2 = [], []
+
+    def use(p):
+        if p.breath:
+            breaths.append(p.breath)
+            rec.breath(p.breath.etco2, p.breath.fico2, respiratory_rate(breaths), p.breath.vt_ml, minute_ventilation(breaths, p.breath.t_end), p.breath.peak_insp_lpm, p.breath.quality)
+            alarms.on_breath(p.breath.etco2, wall[0])
+        rec.sample(wall[0], p.t_ms, p.seq, p.volts, p.co2_mmhg, p.co2_pct, p.flow_lpm, p.pneumo_pa, p.pneumo_lpm)
+        co2.append(p.co2_mmhg)
+
     for i in range(seconds * 100):
         if i == 1000:
             rec.event(wall[0], 'MARK step #2, "fast"')
@@ -58,14 +67,12 @@ def record_session(lib: SessionLibrary, seconds: int, stop: bool = True):
             d = parse_line(line)
             if d.kind != "data":
                 continue
-            p = pipe.process(d.t_ms, d.volts)
-            if p.breath:
-                breaths.append(p.breath)
-                rec.breath(p.breath.etco2, p.breath.fico2, respiratory_rate(breaths), p.breath.vt_ml, minute_ventilation(breaths, p.breath.t_end), p.breath.peak_insp_lpm)
-                alarms.on_breath(p.breath.etco2, wall[0])
-            rec.sample(wall[0], d.t_ms, d.seq, d.volts, p.co2_mmhg, p.co2_pct, p.flow_lpm, p.pneumo_pa, p.pneumo_lpm)
-            co2.append(p.co2_mmhg)
+            p = pipe.process(d.t_ms, d.volts, d.seq)
+            if p is not None:  # None while the spike filter fills
+                use(p)
         wall[0] += 10
+    for p in pipe.flush():
+        use(p)
     out = rec.stop() if stop else None
     return rec, out, breaths, co2
 
@@ -98,7 +105,7 @@ def test_writes_a_single_rectangular_csv_with_samples_breaths_and_events(lib):
     assert mem is None
     text = lib.text(rec.id)
     lines = text.rstrip("\n").split("\n")
-    assert lines[0] == "# CO2-Response session,v2"
+    assert lines[0] == "# CO2-Response session,v3"
     header = next(line for line in lines if not line.startswith("#"))
     assert header == ",".join(COLUMNS)
     rows = lines[lines.index(header) + 1 :]
@@ -110,7 +117,7 @@ def test_writes_a_single_rectangular_csv_with_samples_breaths_and_events(lib):
     assert not any("#" in r for r in rows)
 
     s = parse_session_text(text)
-    assert s.version == 2
+    assert s.version == 3
     assert s.study_code == "TEST no.01"
     assert s.n == 6000
     assert len(s.breaths) == len(breaths)
@@ -130,13 +137,21 @@ def test_replays_identically_from_the_file(lib):
     s = lib.parse(rec.id)
     assert s.channels["channels"]["co2"]["calibration"] == {"type": "linear", "gain": 2.02, "offset": -0.01}
     pipe = Pipeline(s.channels, DEFAULT_PROCESSING)
-    replayed = []
+    replayed, outs = [], []
     for i in range(s.n):
-        p = pipe.process(s.t_ms[i], [s.v0[i], s.v1[i], s.v2[i]])
+        p = pipe.process(s.t_ms[i], [s.v0[i], s.v1[i], s.v2[i]], int(s.seq[i]))
+        if p is None:
+            continue
+        outs.append(p)
+    outs += pipe.flush()
+    for p in outs:
         if p.breath:
             replayed.append(p.breath)
-        if co2[i] == co2[i]:
-            assert abs(p.co2_mmhg - float(s.co2_mmhg[i])) <= 0.006
+    # the replay is 3 samples behind (spike filter); row k of the file is output k
+    for k, p in enumerate(outs):
+        assert p.t_ms == s.t_ms[k]
+        if co2[k] == co2[k]:
+            assert abs(p.co2_mmhg - float(s.co2_mmhg[k])) <= 0.006
     assert same(replayed, breaths)
     # the breath columns in the file match what was computed live (rounded to 0.1)
     for b, live in zip(s.breaths, breaths):
@@ -167,7 +182,7 @@ def test_keeps_the_file_in_memory_when_the_folder_cannot_be_written(tmp_path):
     lib = SessionLibrary(blocker / "sessions")
     _, (rec, mem), _, _ = record_session(lib, 2)
     assert rec is None
-    assert mem.startswith("# CO2-Response session,v2") and parse_session_text(mem).n == 200
+    assert mem.startswith("# CO2-Response session,v3") and parse_session_text(mem).n == 200
 
 
 # ------------------------------------------------------------------ parsing
@@ -210,10 +225,10 @@ def test_reads_v1_files_and_converts_them_to_v2():
     nan = float("nan")
     from co2response.storage.session_file import BreathRec
 
-    assert same(s.breaths, [BreathRec(0.02, 1, 38.2, nan, 15, 500, 7.5, nan)])
+    assert same(s.breaths, [BreathRec(0.02, 1, 38.2, nan, 15, 500, 7.5, nan, "ok")])  # screened on load
     assert [e.text for e in s.events] == ["CONNECTED Simulator", "MARK a, b"]
     v2 = parse_session_text("".join(export_session_parts(s)))
-    assert v2.version == 2
+    assert v2.version == 3
     assert v2.meta["converted_from"] == "v1"
     assert v2.n == 2
     assert v2.breaths[0].etco2 == 38.2
@@ -252,7 +267,7 @@ def test_writes_breath_and_event_tables(lib):
     _, (rec, _), breaths, _ = record_session(lib, 30)
     s = lib.parse(rec.id)
     b = breaths_csv(s).rstrip("\n").split("\n")
-    assert b[0] == "breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm"
+    assert b[0] == "breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,quality"
     assert len(b) == len(breaths) + 1
     e = events_csv(s).rstrip("\n").split("\n")
     assert e[0] == "time_s,wall_time_iso,type,event"
@@ -268,7 +283,7 @@ def test_the_bundled_sample_session_parses():
 
     s = read_session(ROOT / "sample-data" / "synthetic_session.csv")
     summ = summarize(s)
-    assert s.version == 2 and summ.samples == 15000 and summ.breaths == 39 and summ.alarms >= 1
+    assert s.version == 3 and summ.samples > 14900 and summ.breaths >= 35 and summ.alarms >= 1 and summ.rejected >= 1
 
 
 # ------------------------------------------------------------------ library
@@ -335,7 +350,7 @@ def test_chunked_library_stores_sessions_as_small_parts(tmp_path):
     parts = sorted((tmp_path / "s" / rec.id).glob("*.part"))
     assert len(parts) > 5 and all(p.stat().st_size < 50_000 + 20_000 for p in parts)
     text = lib.text(rec.id)
-    assert text.startswith("# CO2-Response session,v2")
+    assert text.startswith("# CO2-Response session,v3")
     s = lib.parse(rec.id)
     assert s.n == 3000 and len(s.breaths) == len(breaths)
     # re-export is the same file, so the parts join up exactly

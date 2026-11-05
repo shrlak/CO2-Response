@@ -5,8 +5,13 @@
     time_s,wall_time_iso,t_ms,seq,v0,…    header row
     <one row per sample>                  every row has the same columns
 
-- Breath metrics (breath … peak_insp_lpm) are filled only on the sample row where that
-  breath was completed; they are empty elsewhere.
+- Breath metrics (breath … breath_quality) are filled only on the sample row where that
+  breath was completed; they are empty elsewhere. ``breath_quality`` is ok, noisy,
+  artifact or outlier (see co2response/processing/denoise.py); an ``outlier`` is decided
+  one breath later and written as a ``BREATH_REJECTED <n> outlier: …`` event. Only
+  ``ok`` breaths are meant to be analysed; the others are kept so nothing is lost.
+- The calibrated columns (co2_mmHg … pneumo_lpm) are after spike removal and filtering;
+  v0–v2 are the raw volts exactly as the device sent them.
 - ``event`` holds alarms, markers, connections etc. on the sample row where they happened
   (several are joined with " | "). Events while no data was flowing get a row of their
   own with only time_s, wall_time_iso and event.
@@ -17,7 +22,7 @@
 pandas: ``pd.read_csv(path, comment='#')``     MATLAB: ``readtable(path, 'CommentStyle', '#')``
 Free text never contains '#' (it is replaced), so comment='#' is safe on every row.
 
-v1 files (the first format, with breaths as event rows) still import.
+v1 and v2 files (earlier formats) still import; their breaths are screened when read.
 Full description: docs/data-format.md
 """
 
@@ -39,7 +44,7 @@ from ..protocol import SeqTracker
 from ..settings import to_dict
 
 NAN = float("nan")
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 
 COLUMNS = (
     "time_s",
@@ -61,6 +66,7 @@ COLUMNS = (
     "vt_ml",
     "mv_lpm",
     "peak_insp_lpm",
+    "breath_quality",
     "event",
 )
 
@@ -88,6 +94,7 @@ class BreathCells:
     vt: float
     mv: float
     peak: float
+    quality: str = "ok"
 
 
 _NEG_ZERO = re.compile(r"-0(\.0*)?")
@@ -170,6 +177,7 @@ def format_row(
                 num(b.vt, 0) if b else "",
                 num(b.mv, 2) if b else "",
                 num(b.peak, 1) if b else "",
+                b.quality if b else "",
                 ev,
             )
         )
@@ -219,6 +227,8 @@ class BreathRec:
     vt: float
     mv: float
     peak: float
+    #: ok, noisy, artifact or outlier; "" if the file did not say (screened on load)
+    quality: str = ""
 
 
 @dataclass
@@ -368,6 +378,7 @@ class SessionParser:
                         _f(f[ix["vt_ml"]]),
                         _f(f[ix["mv_lpm"]]),
                         _f(f[ix["peak_insp_lpm"]]),
+                        f[ix["breath_quality"]],
                     )
                 )
         ev = f[ix["event"]]
@@ -377,6 +388,25 @@ class SessionParser:
                     self._breaths.append(_parse_v1_breath(text, t, len(self._breaths) + 1))
                 else:
                     self._events.append(EventRec(t, text))
+
+    def _apply_quality(self) -> None:
+        """Outliers decided after their row was written, and screening for older files."""
+        by_n = {b.n: b for b in self._breaths}
+        for e in self._events:
+            if e.text.startswith("BREATH_REJECTED "):
+                parts = e.text.split()
+                try:
+                    b = by_n.get(float(parts[1]))
+                except (IndexError, ValueError):
+                    continue
+                if b is not None and len(parts) > 2:
+                    b.quality = parts[2].rstrip(":")
+        if any(b.quality == "" for b in self._breaths):
+            from ..processing.denoise import screen_series
+
+            q = screen_series([b.etco2 for b in self._breaths], [b.quality for b in self._breaths])
+            for b, x in zip(self._breaths, q):
+                b.quality = x
 
     def finish(self) -> ParsedSession:
         if self._rest:
@@ -390,6 +420,7 @@ class SessionParser:
                 channels = validate_channels(json.loads(self.meta["channels"]))
             except ValueError:
                 channels = None
+        self._apply_quality()
         c = self._cols
         time_s = np.frombuffer(c["time_s"], dtype=np.float64).copy()
         last_event = self._events[-1].time_s if self._events else 0
@@ -503,7 +534,7 @@ def export_session_parts(s: ParsedSession, rng: Range | None = None, app_version
         while bi < len(breaths) and breaths[bi].time_s <= t + 1e-9:
             b = breaths[bi]
             bi += 1
-            breath = BreathCells(b.n, b.etco2, b.fico2, b.rr, b.vt, b.mv, b.peak)
+            breath = BreathCells(b.n, b.etco2, b.fico2, b.rr, b.vt, b.mv, b.peak, b.quality or "ok")
         if not _in_range(t, rng):
             continue
         buf.append(format_row(t, wall(t), tm, sq, [a0, a1, a2], cm, cp, fl, pp, pl, breath, evs))
@@ -520,15 +551,36 @@ def write_session(s: ParsedSession, path, rng: Range | None = None, app_version:
             f.write(part)
 
 
-def breaths_csv(s: ParsedSession, rng: Range | None = None) -> str:
-    """One row per breath: the table most analyses start from."""
-    rows = ["breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm"]
+def is_clean(b: BreathRec) -> bool:
+    """A breath that passed the noise screen (the ones to analyse)."""
+    return b.quality in ("ok", "")
+
+
+def clean_breaths(s: ParsedSession) -> list[BreathRec]:
+    return [b for b in s.breaths if is_clean(b)]
+
+
+def breaths_csv(s: ParsedSession, rng: Range | None = None, clean_only: bool = False) -> str:
+    """One row per breath: the table most analyses start from. ``quality`` says which
+    breaths passed the noise screen; ``clean_only`` leaves the others out."""
+    rows = ["breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,quality"]
     for b in s.breaths:
-        if not _in_range(b.time_s, rng):
+        if not _in_range(b.time_s, rng) or (clean_only and not is_clean(b)):
             continue
         rows.append(
             ",".join(
-                [js_num(b.n), to_fixed(b.time_s, 3), iso_ms(s.started_ms + b.time_s * 1000), num(b.etco2, 1), num(b.fico2, 1), num(b.rr, 1), num(b.vt, 0), num(b.mv, 2), num(b.peak, 1)]
+                [
+                    js_num(b.n),
+                    to_fixed(b.time_s, 3),
+                    iso_ms(s.started_ms + b.time_s * 1000),
+                    num(b.etco2, 1),
+                    num(b.fico2, 1),
+                    num(b.rr, 1),
+                    num(b.vt, 0),
+                    num(b.mv, 2),
+                    num(b.peak, 1),
+                    b.quality or "ok",
+                ]
             )
         )
     return "\n".join(rows) + "\n"
@@ -553,6 +605,8 @@ class SessionSummary:
     duration_s: float
     samples: int
     breaths: int
+    #: breaths left out as noisy, artifact or outlier
+    rejected: int
     alarms: int
     markers: int
     dropped: int
@@ -577,21 +631,23 @@ def summarize(s: ParsedSession) -> SessionSummary:
     seq = SeqTracker()
     for q, t in zip(s.seq.tolist(), s.t_ms.tolist()):
         seq.push(q, t)
-    et = [b.etco2 for b in s.breaths if math.isfinite(b.etco2)]
+    good = clean_breaths(s)  # statistics only from breaths that passed the noise screen
+    et = [b.etco2 for b in good if math.isfinite(b.etco2)]
     span = float(s.t_ms[-1] - s.t_ms[0]) if s.n > 1 else 0.0
     return SessionSummary(
         duration_s=s.duration_s,
         samples=s.n,
         breaths=len(s.breaths),
+        rejected=len(s.breaths) - len(good),
         alarms=sum(1 for e in s.events if e.text.startswith("ALARM_START") and " test " not in e.text),
         markers=sum(1 for e in s.events if e.text.startswith("MARK ")),
         dropped=seq.dropped,
         etco2_mean=_mean(et),
         etco2_min=min(et) if et else NAN,
         etco2_max=max(et) if et else NAN,
-        rr=_mean(b.rr for b in s.breaths),
-        vt=_mean(b.vt for b in s.breaths),
-        mv=_mean(b.mv for b in s.breaths),
+        rr=_mean(b.rr for b in good),
+        vt=_mean(b.vt for b in good),
+        mv=_mean(b.mv for b in good),
         rate_hz=js_round(((s.n - 1) * 1000) / span) if span > 0 else 0,
     )
 

@@ -86,12 +86,14 @@ class SessionRecorder:
         self._buf.append(s)
         self._buf_bytes += len(s)
 
-    def breath(self, etco2: float, fico2: float, rr: float, vt: float, mv: float, peak: float) -> None:
-        """A breath completed on the sample about to be recorded."""
+    def breath(self, etco2: float, fico2: float, rr: float, vt: float, mv: float, peak: float, quality: str = "ok") -> int | None:
+        """A breath completed on the sample about to be recorded. Returns its number in
+        the file (None when not recording)."""
         if not self.active:
-            return
+            return None
         self.breaths += 1
-        self._pending_breath = BreathCells(self.breaths, etco2, fico2, rr, vt, mv, peak)
+        self._pending_breath = BreathCells(self.breaths, etco2, fico2, rr, vt, mv, peak, quality)
+        return self.breaths
 
     def event(self, wall_ms: float, text: str) -> None:
         if not self.active:
