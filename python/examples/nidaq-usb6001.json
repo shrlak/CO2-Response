@@ -1,0 +1,9 @@
+{
+  "driver": "nidaq",
+  "device": "Dev1",
+  "channels": ["ai0", "ai1", "ai2"],
+  "range": [0, 5],
+  "terminal": "RSE",
+  "rate": 100,
+  "oversample": 10
+}

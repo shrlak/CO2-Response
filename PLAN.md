@@ -25,6 +25,7 @@ All seven phases are built and pushed. What is verified and what still needs har
 | 6 Firmware + hardware link | Firmware builds for Uno/Mega/Nano and its line format matches the dashboard byte for byte. **Not yet run on a real Arduino**: the "< 0.1 % drops over 10 min" check needs hardware. |
 | 7 Recording, deploy, docs | Done. Replay reproduces recorded numbers exactly (tested). Pages deploy runs once Pages is enabled and the work is on `main`. |
 | + Hardware | Hardware check in Diagnostics (link, ADC, per-sensor rail/noise), one-click and automatic USB reconnect, firmware I2C scan and bus timeout. Step-by-step [SETUP-GUIDE.md](SETUP-GUIDE.md) with a wiring diagram. |
+| + Python / other DAQs | `python/` package `co2r` (Python 3.9+): `co2r-daq serve` feeds the dashboard from the Arduino, NI-DAQmx, LabJack or a simulated DAQ; template for any other board; session loader. NI and LabJack drivers are not yet tested on hardware. See [docs/python-daq.md](docs/python-daq.md). |
 | + Data | Each recording is one analysis-ready CSV (format v2), written to browser storage every second (crash-safe) and saved on stop. Data & recordings screen: import, review with charts, export whole/breaths/events/time range, replay, delete. Python loader in `analysis/`. |
 
 **Changes from the plan made during the build**

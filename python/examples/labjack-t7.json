@@ -1,0 +1,8 @@
+{
+  "driver": "labjack",
+  "device": "ANY",
+  "channels": ["AIN0", "AIN1", "AIN2"],
+  "range": [-10, 10],
+  "rate": 100,
+  "oversample": 10
+}

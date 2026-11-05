@@ -99,3 +99,12 @@ describe('LineSplitter', () => {
     expect(out).toEqual(['D,1,10,1*AA', 'I,FW,1']);
   });
 });
+
+describe('shared protocol fixtures (docs/protocol-fixtures.json)', () => {
+  // The same vectors are checked by the Python package (python/tests/test_protocol.py)
+  // so the dashboard, firmware formatter and Python acquisition stay byte-identical.
+  it('formats every fixture line exactly', async () => {
+    const fx = (await import('../../docs/protocol-fixtures.json')).default as { format: { seq: number; tMs: number; volts: number[]; line: string }[] };
+    for (const f of fx.format) expect(formatDataLine(f.seq, f.tMs, f.volts)).toBe(f.line);
+  });
+});

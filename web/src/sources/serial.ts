@@ -39,7 +39,7 @@ export class SerialSource implements Source {
   }
 
   async start(events: SourceEvents): Promise<void> {
-    if (!webSerialSupported()) throw new Error('This browser has no Web Serial. Use desktop Chrome or Edge, or the Python bridge.');
+    if (!webSerialSupported()) throw new Error('This browser has no Web Serial. Use desktop Chrome or Edge, or Python acquisition (co2r-daq).');
     this.events = events;
     // requestPort must be the first await so it still counts as part of the click.
     const port = this.grantedPort ?? (await navigator.serial.requestPort());

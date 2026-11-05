@@ -1,8 +1,13 @@
 # Serial protocol
 
-One protocol is shared by the firmware (`firmware/src/main.cpp`), the dashboard parser
-(`web/src/protocol/protocol.ts`), the simulator (`web/src/sim/`) and the optional bridge
-(`bridge/serial_ws_bridge.py`). Change it here first.
+One protocol is shared by the firmware (`firmware/CO2Response/`), the dashboard parser
+(`web/src/protocol/protocol.ts`), the simulator (`web/src/sim/`) and the Python acquisition
+package (`python/co2r/protocol.py`), which also produces it for other DAQs. Change it here first.
+
+`docs/protocol-fixtures.json` holds shared test vectors. The dashboard, the firmware's formatter
+and the Python package are all tested against them, so their lines stay byte-identical.
+Numbers are formatted with 4 decimals, rounding halves away from zero (as JavaScript's
+`toFixed` and the firmware's `lroundf` do; Python's own formatting would round halves to even).
 
 ## Transport
 
@@ -55,7 +60,7 @@ Diagnostics and in the hardware check. An ADS1115 answers at 0x48 (ADDR to GND),
 
 | Code | Meaning |
 | --- | --- |
-| `ADC_NOT_FOUND` | The ADC did not answer on I2C. The device sends this once a second (with an `I2C_SCAN` every 5 s), keeps retrying, and does not stream until the ADC answers. |
+| `ADC_NOT_FOUND[,reason]` | The ADC did not answer on I2C (or, from the Python package, the DAQ could not be opened; the reason follows the code). The device sends this once a second (with an `I2C_SCAN` every 5 s), keeps retrying, and does not stream until the ADC answers. |
 | `BAD_RATE` | `RATE` was outside the supported range (1–200 Hz). |
 | `UNKNOWN_CMD` | The command was not recognized. |
 | `OVERRUN` | Sampling fell behind schedule; slots were skipped (also visible as `seq` gaps). |
