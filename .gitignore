@@ -1,0 +1,27 @@
+# Node / Vite
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+web/test-results/
+web/playwright-report/
+
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# Recorded sessions (keep data off GitHub; sample-data/ is the exception)
+sessions/
+*.session.csv
