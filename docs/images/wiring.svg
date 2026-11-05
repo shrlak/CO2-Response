@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1130 650" width="1130" height="650" font-family="Helvetica, Arial, sans-serif" font-size="14">
+  <title>CO2-Response wiring: computer, Arduino Uno, ADS1115 ADC and three sensors</title>
+  <rect width="1130" height="650" fill="#ffffff"/>
+  <text x="30" y="40" font-size="20" font-weight="bold" fill="#111">CO2-Response wiring (default: Arduino Uno + ADS1115 16-bit ADC)</text>
+  <text x="30" y="62" font-size="13" fill="#555">Schematic, not to scale. Match pins by their printed labels; the order on your boards may differ.</text>
+
+  <!-- 5 V bus (top) -->
+  <polyline points="530,240 530,120 1090,120 1090,395" fill="none" stroke="#d62828" stroke-width="3"/>
+  <line x1="1090" y1="310" x2="1070" y2="310" stroke="#d62828" stroke-width="3"/>
+  <line x1="1090" y1="395" x2="1070" y2="395" stroke="#d62828" stroke-width="3"/>
+  <text x="640" y="112" fill="#d62828" font-weight="bold">5 V</text>
+
+  <!-- GND bus (bottom) -->
+  <polyline points="385,470 385,585 860,585 860,275" fill="none" stroke="#111" stroke-width="3"/>
+  <line x1="860" y1="275" x2="900" y2="275" stroke="#111" stroke-width="3"/>
+  <line x1="860" y1="350" x2="900" y2="350" stroke="#111" stroke-width="3"/>
+  <line x1="860" y1="430" x2="900" y2="430" stroke="#111" stroke-width="3"/>
+  <text x="640" y="604" fill="#111" font-weight="bold">GND (common ground for everything)</text>
+
+  <!-- computer -->
+  <rect x="30" y="195" width="180" height="120" rx="8" fill="#eef2f6" stroke="#333" stroke-width="2"/>
+  <text x="120" y="225" text-anchor="middle" font-weight="bold">Computer</text>
+  <text x="120" y="247" text-anchor="middle" font-size="13">Chrome or Edge</text>
+  <text x="120" y="266" text-anchor="middle" font-size="13">CO2-Response dashboard</text>
+  <text x="120" y="290" text-anchor="middle" font-size="12" fill="#555">on battery for live studies</text>
+  <!-- USB -->
+  <line x1="210" y1="255" x2="270" y2="255" stroke="#777" stroke-width="7" stroke-linecap="round"/>
+  <text x="240" y="244" text-anchor="middle" font-size="12" fill="#555">USB</text>
+
+  <!-- Arduino -->
+  <rect x="270" y="170" width="230" height="300" rx="8" fill="#e6f2f5" stroke="#00708a" stroke-width="2"/>
+  <rect x="262" y="238" width="22" height="34" fill="#bbb" stroke="#555"/>
+  <text x="385" y="200" text-anchor="middle" font-weight="bold" fill="#00586c">Arduino Uno</text>
+  <text x="385" y="218" text-anchor="middle" font-size="11" fill="#00586c">Nano: same pins · Mega: SDA 20, SCL 21</text>
+  <g font-size="13" text-anchor="end">
+    <text x="490" y="245">5V</text>
+    <text x="490" y="285">GND</text>
+    <text x="490" y="335">A4 / SDA</text>
+    <text x="490" y="375">A5 / SCL</text>
+  </g>
+  <text x="385" y="460" text-anchor="middle" font-size="13">GND</text>
+  <text x="300" y="300" font-size="12" fill="#555">CO2Response.ino</text>
+  <text x="300" y="316" font-size="12" fill="#555">115200 baud</text>
+  <g fill="#333"><circle cx="500" cy="240" r="4"/><circle cx="500" cy="280" r="4"/><circle cx="500" cy="330" r="4"/><circle cx="500" cy="370" r="4"/><circle cx="385" cy="470" r="4"/></g>
+
+  <!-- Arduino to ADS1115 -->
+  <line x1="500" y1="240" x2="600" y2="240" stroke="#d62828" stroke-width="3"/>
+  <line x1="500" y1="280" x2="600" y2="280" stroke="#111" stroke-width="3"/>
+  <line x1="500" y1="330" x2="600" y2="330" stroke="#1f5fd1" stroke-width="3"/>
+  <line x1="500" y1="370" x2="600" y2="370" stroke="#8a3ffc" stroke-width="3"/>
+  <polyline points="600,420 570,420 570,585" fill="none" stroke="#111" stroke-width="3"/>
+  <g fill="#111"><circle cx="530" cy="240" r="5" fill="#d62828"/><circle cx="570" cy="585" r="5"/><circle cx="385" cy="585" r="0"/></g>
+
+  <!-- ADS1115 -->
+  <rect x="600" y="200" width="180" height="280" rx="8" fill="#f2ecfb" stroke="#5b2a9e" stroke-width="2"/>
+  <text x="690" y="228" text-anchor="middle" font-weight="bold" fill="#4a1f86">ADS1115</text>
+  <text x="690" y="300" text-anchor="middle" font-size="12" fill="#4a1f86">I2C address 0x48</text>
+  <text x="690" y="316" text-anchor="middle" font-size="12" fill="#4a1f86">(ADDR to GND)</text>
+  <g font-size="13">
+    <text x="610" y="245">VDD</text>
+    <text x="610" y="285">GND</text>
+    <text x="610" y="335">SDA</text>
+    <text x="610" y="375">SCL</text>
+    <text x="610" y="425">ADDR</text>
+    <text x="610" y="460" fill="#888">ALRT (not used)</text>
+  </g>
+  <g font-size="13" text-anchor="end">
+    <text x="772" y="255">A0</text>
+    <text x="772" y="335">A1</text>
+    <text x="772" y="415">A2</text>
+    <text x="772" y="455" fill="#888">A3 spare</text>
+  </g>
+  <g fill="#333"><circle cx="600" cy="240" r="4"/><circle cx="600" cy="280" r="4"/><circle cx="600" cy="330" r="4"/><circle cx="600" cy="370" r="4"/><circle cx="600" cy="420" r="4"/><circle cx="780" cy="250" r="4"/><circle cx="780" cy="330" r="4"/><circle cx="780" cy="410" r="4"/><circle cx="780" cy="450" r="4"/></g>
+
+  <!-- signal wires -->
+  <line x1="780" y1="250" x2="900" y2="250" stroke="#b58900" stroke-width="3"/>
+  <line x1="780" y1="330" x2="900" y2="330" stroke="#0089a8" stroke-width="3"/>
+  <line x1="780" y1="410" x2="900" y2="410" stroke="#1e8e3e" stroke-width="3"/>
+
+  <!-- 1 MOhm pull-up on A0 -->
+  <line x1="820" y1="250" x2="820" y2="215" stroke="#b58900" stroke-width="2"/>
+  <polyline points="820,215 812,210 828,200 812,190 828,180 812,170 828,160 820,155" fill="none" stroke="#333" stroke-width="2"/>
+  <line x1="820" y1="155" x2="820" y2="120" stroke="#d62828" stroke-width="2"/>
+  <circle cx="820" cy="250" r="5" fill="#b58900"/>
+  <circle cx="820" cy="120" r="5" fill="#d62828"/>
+  <text x="772" y="182" text-anchor="end" font-size="12">1 MΩ pull-up</text>
+  <text x="772" y="196" text-anchor="end" font-size="11" fill="#555">(unplugged = alarm)</text>
+
+  <!-- sensors -->
+  <rect x="900" y="193" width="170" height="97" rx="6" fill="#fff8db" stroke="#b58900" stroke-width="2"/>
+  <text x="985" y="212" text-anchor="middle" font-weight="bold" fill="#7a5c00">Capnograph</text>
+  <text x="985" y="228" text-anchor="middle" font-size="11" fill="#7a5c00">own power supply</text>
+  <text x="910" y="255" font-size="12">analog out</text>
+  <text x="910" y="280" font-size="12">GND</text>
+
+  <rect x="900" y="295" width="170" height="80" rx="6" fill="#e3f6fa" stroke="#0089a8" stroke-width="2"/>
+  <text x="985" y="368" text-anchor="middle" font-weight="bold" fill="#005f75">Flow sensor</text>
+  <text x="1062" y="314" font-size="12" text-anchor="end">+5 V</text>
+  <text x="910" y="335" font-size="12">out</text>
+  <text x="910" y="355" font-size="12">GND</text>
+
+  <rect x="900" y="383" width="170" height="80" rx="6" fill="#e6f5ea" stroke="#1e8e3e" stroke-width="2"/>
+  <text x="985" y="455" text-anchor="middle" font-weight="bold" fill="#14632b">Pressure transducer</text>
+  <text x="1062" y="399" font-size="12" text-anchor="end">+5 V</text>
+  <text x="910" y="415" font-size="12">out</text>
+  <text x="910" y="435" font-size="12">GND</text>
+
+  <!-- pneumotach and tubing -->
+  <line x1="955" y1="463" x2="955" y2="508" stroke="#666" stroke-width="5"/>
+  <line x1="1015" y1="463" x2="1015" y2="508" stroke="#666" stroke-width="5"/>
+  <text x="962" y="490" font-size="11" fill="#555">P1</text>
+  <text x="1022" y="490" font-size="11" fill="#555">P2</text>
+  <rect x="905" y="508" width="160" height="34" rx="16" fill="#f2f2f2" stroke="#333" stroke-width="2"/>
+  <text x="985" y="530" text-anchor="middle" font-size="12">Pneumotachograph</text>
+  <text x="985" y="560" text-anchor="middle" font-size="11" fill="#555">airway flow → ΔP across the screen</text>
+
+  <!-- legend -->
+  <g font-size="12">
+    <text x="30" y="500" font-weight="bold" font-size="13">Key</text>
+    <line x1="30" y1="520" x2="60" y2="520" stroke="#d62828" stroke-width="3"/><text x="68" y="524">5 V supply</text>
+    <line x1="30" y1="540" x2="60" y2="540" stroke="#111" stroke-width="3"/><text x="68" y="544">ground</text>
+    <line x1="30" y1="560" x2="60" y2="560" stroke="#1f5fd1" stroke-width="3"/><text x="68" y="564">I2C SDA</text>
+    <line x1="30" y1="580" x2="60" y2="580" stroke="#8a3ffc" stroke-width="3"/><text x="68" y="584">I2C SCL</text>
+    <line x1="170" y1="520" x2="200" y2="520" stroke="#b58900" stroke-width="3"/><text x="208" y="524">CO2 signal → A0</text>
+    <line x1="170" y1="540" x2="200" y2="540" stroke="#0089a8" stroke-width="3"/><text x="208" y="544">flow signal → A1</text>
+    <line x1="170" y1="560" x2="200" y2="560" stroke="#1e8e3e" stroke-width="3"/><text x="208" y="564">pneumotach signal → A2</text>
+    <line x1="170" y1="580" x2="200" y2="580" stroke="#777" stroke-width="6"/><text x="208" y="584">USB cable</text>
+    <text x="30" y="612" fill="#555">Dots are connections; lines that cross without a dot are not connected.</text>
+    <text x="30" y="630" fill="#555">Every sensor output must stay between 0 and 5 V. Sensors shown are examples: follow each datasheet for its supply.</text>
+  </g>
+</svg>

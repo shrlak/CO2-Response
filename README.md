@@ -4,10 +4,13 @@ CMU BME 26-27 Capstone Project
 
 A research capnography and flow monitor. An Arduino with a 16-bit ADC samples three analog sensors (end-tidal CO2, a flow sensor and a pneumotachograph) and streams volts over USB. A browser app shows them like a bedside patient monitor: sweeping waveforms, large numbers, an EtCO2 trend, a ventilatory-response plot, and visual + audible CO2 alarms.
 
+> **Setting up the hardware or running a session?** Start with the step-by-step **[setup and operating guide](SETUP-GUIDE.md)**: wiring the sensors to the ADC board and the Arduino, loading the firmware, connecting to the computer, checking, calibrating, and running a session.
+
 > **Research use only.** This is not a medical device and must never be the only CO2 monitor on a person or animal. Keep a certified monitor as the primary alarm. The alarm here works only while the browser tab is open, the computer is awake and audio is armed. See [docs/safety.md](docs/safety.md).
 
 | | |
 | --- | --- |
+| **Setup and operating guide** | [SETUP-GUIDE.md](SETUP-GUIDE.md) |
 | Build plan | [PLAN.md](PLAN.md) |
 | Serial protocol | [docs/protocol.md](docs/protocol.md) |
 | Wiring | [docs/wiring.md](docs/wiring.md) |
@@ -33,6 +36,8 @@ To try a recorded session, go to **Settings > Connection > Replay** and choose `
 
 ## Using it with the Arduino
 
+Full walkthrough with a wiring diagram and troubleshooting: [SETUP-GUIDE.md](SETUP-GUIDE.md). In short:
+
 1. Wire the sensors to the ADS1115 and the ADS1115 to the Arduino ([docs/wiring.md](docs/wiring.md)).
 2. Flash the firmware. Either:
    - PlatformIO: `cd firmware && pio run -e uno -t upload` (environments: `uno`, `mega`, `nano`), or
@@ -40,7 +45,8 @@ To try a recorded session, go to **Settings > Connection > Replay** and choose `
 3. Open the dashboard in **desktop Chrome or Edge** (Web Serial does not exist in Safari or Firefox). It must be served from `https://` (GitHub Pages) or `localhost`.
 4. Press **Connect Arduino (USB)** and pick the port. The dashboard sends `INFO` and `START`; the header shows the sample rate and dropped-sample count.
 5. Calibrate each channel in **Settings > Calibration** ([docs/calibration.md](docs/calibration.md)).
-6. Press **Arm audio** once, then **Alarm limits > Test alarm** to confirm you can see and hear the alarm.
+6. Run **Settings > Diagnostics > Hardware check** and fix anything it flags.
+7. Press **Arm audio** once, then **Alarm limits > Test alarm** to confirm you can see and hear the alarm.
 
 ### Safari, Firefox, or a second screen
 

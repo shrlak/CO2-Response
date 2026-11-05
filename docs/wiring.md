@@ -1,6 +1,10 @@
 # Wiring
 
+Quick reference. The step-by-step version, with checks and troubleshooting, is in the [setup and operating guide](../SETUP-GUIDE.md).
+
 Default hardware: Arduino Uno + ADS1115 16-bit ADC breakout over I2C. Change `firmware/CO2Response/config.h` if yours differs.
+
+![Wiring diagram](images/wiring.svg)
 
 ## ADS1115 to Arduino
 
@@ -32,6 +36,6 @@ Default hardware: Arduino Uno + ADS1115 16-bit ADC breakout over I2C. Change `fi
 
 ## Checking the wiring
 
-1. Flash the firmware and open the dashboard. If the header never shows a sample rate and **Settings > Diagnostics** shows `E,ADC_NOT_FOUND`, the ADC is not answering on I2C: check power, SDA/SCL and the ADDR pin.
+1. Flash the firmware, connect, and run **Settings > Diagnostics > Hardware check**. If the ADC is not answering, the check shows the firmware's I2C scan: `none` means no power or SDA/SCL not connected; `0x49`–`0x4B` means the ADDR pin is not on GND.
 2. In **Settings > Display & units**, turn on **Show raw volts** to see each channel's voltage under its number.
 3. A channel pinned at 0 V or 5 V for 2 s raises an "AT ADC RAIL" technical alarm (CO2 only at 5 V).
