@@ -378,7 +378,7 @@ This is a research prototype, not a medical device. It must never be the only CO
 - Web Serial needs desktop Chrome/Edge over HTTPS or localhost. Safari/Firefox need the bridge.
 - The alarm look and tones are styled after IEC 60601-1-8 conventions so they feel familiar. They are not certified to that standard.
 
-**Open questions** (each uses the stated default, with a `TODO` in code and a line under README "Assumptions")
+**Open questions** (each uses the stated default, with a `TODO` in code and a line under README "Assumptions"). The full, current list is in [docs/open-questions.md](docs/open-questions.md); discuss and answer them in [issue #4](https://github.com/shrlak/CO2-Response/issues/4).
 
 - [ ] CO2 sensor/capnograph model, its analog output range and scaling
 - [ ] Flow sensor and pneumotach + pressure transducer models

@@ -19,6 +19,7 @@ A research capnography and flow monitor. An Arduino with a 16-bit ADC samples th
 | UI mockup (Phase 0) | [docs/design/monitor-mockup.html](docs/design/monitor-mockup.html) |
 | Session files, import/export, analysis | [docs/data-format.md](docs/data-format.md) |
 | Python acquisition and other DAQs | [docs/python-daq.md](docs/python-daq.md) |
+| **Open questions** (answer in [issue #4](https://github.com/shrlak/CO2-Response/issues/4)) | [docs/open-questions.md](docs/open-questions.md) |
 | Sample session | [sample-data/synthetic_session.csv](sample-data/synthetic_session.csv) |
 
 ## Quick start (no hardware)
@@ -131,7 +132,7 @@ docs/              protocol, wiring, calibration, safety, UI mockup
 
 ## Assumptions
 
-These are placeholders until the open questions in [PLAN.md](PLAN.md) are answered. Each is marked `TODO` in code or config.
+These are placeholders until the [open questions](docs/open-questions.md) are answered ([issue #4](https://github.com/shrlak/CO2-Response/issues/4)). Each is marked `TODO` in code or config.
 
 - **CO2 sensor:** analog output 0–5 V linear, 0–10 % CO2 (`channels.json`: gain 2 %/V). Replace with the real capnograph scaling.
 - **Flow sensor:** bidirectional, 2.5 V = 0 L/min, 40 L/min per volt.
