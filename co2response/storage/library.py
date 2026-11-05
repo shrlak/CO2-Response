@@ -211,3 +211,111 @@ class SessionLibrary:
             return used, free
         except OSError:
             return None
+
+
+class ChunkedSessionLibrary(SessionLibrary):
+    """The same library, with each session stored as a folder of parts of about
+    ``part_size`` bytes instead of one file.
+
+    Used by the browser build: its storage (IndexedDB behind Pyodide's file system)
+    rewrites a whole file every time it changes, so appending to one growing file
+    every second would rewrite the entire recording each second. With parts, only
+    the newest small part is rewritten. ``text()`` and ``parse()`` still give the
+    single CSV file.
+    """
+
+    PART_SIZE = 256 * 1024
+
+    def _parts(self, rec: SessionRecord) -> list[Path]:
+        d = self.path(rec)
+        return sorted(d.glob("*.part")) if d.is_dir() else []
+
+    def path(self, rec: SessionRecord) -> Path:
+        return self.folder / rec.id
+
+    def list(self) -> list[SessionRecord]:
+        out = [r for r in self._load().values() if r.status == "recording" or self.path(r).is_dir()]
+        return sorted(out, key=lambda r: r.started_at, reverse=True)
+
+    def _unique_name(self, file_name: str) -> str:
+        p = Path(file_name)
+        name, k = p.name, 2
+        taken = {r.file_name for r in self._load().values()}
+        while name in taken:
+            name = f"{p.stem}-{k}{p.suffix}"
+            k += 1
+        return name
+
+    def create(self, file_name: str, study_code: str, started_at: float, source: str, status: str = "recording") -> SessionRecord:
+        self.folder.mkdir(parents=True, exist_ok=True)
+        rec = SessionRecord(new_id(), self._unique_name(file_name), study_code, started_at, None, status, source, 0, self.clock(), {})
+        self.path(rec).mkdir(parents=True, exist_ok=True)
+        self.put(rec)
+        return rec
+
+    def _write(self, rec: SessionRecord, text: str) -> None:
+        """Append text, starting a new part whenever the current one is full."""
+        parts = self._parts(rec)
+        n = len(parts)
+        last = parts[-1] if parts else None
+        room = self.PART_SIZE - last.stat().st_size if last is not None else 0
+        rec.bytes += len(text.encode("utf-8"))
+        while text:
+            if last is None or room <= 0:
+                last = self.path(rec) / f"{n:06d}.part"
+                n += 1
+                room = self.PART_SIZE
+            # split at a line end when possible, so every part holds whole rows
+            cut = len(text) if len(text) <= room else (text.rfind("\n", 0, room) + 1 or room)
+            with open(last, "a", encoding="utf-8", newline="") as f:
+                f.write(text[:cut])
+            text = text[cut:]
+            room = 0 if text else room - cut
+
+    def append(self, rec: SessionRecord, text: str) -> None:
+        self._write(rec, text)
+        rec.last_write_at = self.clock()
+        self.put(rec)
+
+    def read_chunks(self, sid: str, size: int = 1 << 20):
+        rec = self.get(sid)
+        if rec is None:
+            return
+        for p in self._parts(rec):
+            with open(p, encoding="utf-8", newline="") as f:
+                yield f.read()
+
+    def delete(self, sid: str) -> None:
+        rec = self._load().pop(sid, None)
+        if rec is not None:
+            shutil.rmtree(self.path(rec), ignore_errors=True)
+            self._save()
+
+    def import_text(self, text: str, file_name: str) -> tuple[SessionRecord, ParsedSession]:
+        """Store a session file given as text (the browser reads uploads as text)."""
+        parser = SessionParser()
+        parser.push(text)
+        parsed = parser.finish()  # raises before anything is stored if it is not a session
+        rec = self.create(file_name, parsed.study_code, parsed.started_ms or self.clock(), "", status="imported")
+        for i in range(0, len(text), self.PART_SIZE):
+            self._write(rec, text[i : i + self.PART_SIZE])
+        rec.ended_at = rec.started_at + parsed.duration_s * 1000
+        rec.source = f"Imported · {parsed.meta.get('source', 'unknown source')}"
+        rec.stats = summarize(parsed).as_stats()
+        rec.last_write_at = self.clock()
+        self.put(rec)
+        return rec, parsed
+
+    def import_file(self, src, file_name: str | None = None) -> tuple[SessionRecord, ParsedSession]:
+        src = Path(src)
+        try:
+            text = src.read_text(encoding="utf-8")
+        except UnicodeDecodeError as e:
+            raise ValueError("This is not a text file. Is it a CO2-Response session file?") from e
+        return self.import_text(text, file_name or src.name)
+
+    def usage(self) -> tuple[int, int] | None:
+        try:
+            return sum(p.stat().st_size for r in self.list() for p in self._parts(r)), 0
+        except OSError:
+            return None

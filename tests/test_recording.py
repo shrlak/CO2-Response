@@ -322,3 +322,29 @@ def test_sample_script_reproduces_the_committed_sample_file(tmp_path):
         return re.sub(r"^# app_version,.*$", "", p.read_text(), count=1, flags=re.M)
 
     assert body(out) == body(ROOT / "sample-data" / "synthetic_session.csv")
+
+
+def test_chunked_library_stores_sessions_as_small_parts(tmp_path):
+    """The browser build's library: same behaviour, the file split into parts."""
+    from co2response.storage.library import ChunkedSessionLibrary
+
+    lib = ChunkedSessionLibrary(tmp_path / "s")
+    lib.PART_SIZE = 50_000
+    _, (rec, mem), breaths, _ = record_session(lib, 30)
+    assert mem is None and rec.status == "complete"
+    parts = sorted((tmp_path / "s" / rec.id).glob("*.part"))
+    assert len(parts) > 5 and all(p.stat().st_size < 50_000 + 20_000 for p in parts)
+    text = lib.text(rec.id)
+    assert text.startswith("# CO2-Response session,v2")
+    s = lib.parse(rec.id)
+    assert s.n == 3000 and len(s.breaths) == len(breaths)
+    # re-export is the same file, so the parts join up exactly
+    assert "".join(export_session_parts(s, app_version="test")) == text
+
+    rec2, _ = lib.import_text(text, rec.file_name)
+    assert rec2.file_name.endswith("-2.csv") and rec2.stats["samples"] == 3000 and lib.text(rec2.id) == text
+    with pytest.raises(ValueError, match="not a CO2-Response session"):
+        lib.import_text("a,b\n1,2\n", "x.csv")
+    assert len(lib.list()) == 2
+    lib.delete(rec.id)
+    assert [r.id for r in ChunkedSessionLibrary(tmp_path / "s").list()] == [rec2.id]

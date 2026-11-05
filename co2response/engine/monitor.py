@@ -236,6 +236,7 @@ class MonitorEngine:
         port_lister: Callable[[], list[PortInfo]] = list_ports,
         sessions_dir: Path | None = None,
         prevent_sleep: bool = True,
+        library_factory: Callable[..., SessionLibrary] = SessionLibrary,
     ) -> None:
         self.clock = clock
         self.store = store or SettingsStore()
@@ -245,12 +246,15 @@ class MonitorEngine:
         self.audio = audio if audio is not None else AlarmAudio()
         self.audio.volume = self.settings.alarms.volume
         self._sessions_override = Path(sessions_dir) if sessions_dir else None
-        self.library = SessionLibrary(self.sessions_dir, clock)
+        self._library_factory = library_factory
+        self.library = library_factory(self.sessions_dir, clock)
         self.recorder = SessionRecorder(self.library, clock)
         self.port_lister = port_lister
         self.prevent_sleep = prevent_sleep
         #: bumps whenever the session library changes, so lists can refresh
         self.library_version = 0
+        #: the advisory shown while no sound output is armed
+        self.audio_off_message = "Audible alarm NOT armed: no sound output found. Press Arm audio."
         #: called with the message when a high-priority alarm starts (the window flashes)
         self.high_alarm_listeners: list[Callable[[str], None]] = []
 
@@ -352,7 +356,7 @@ class MonitorEngine:
         if nxt.processing != prev.processing:
             self.pipeline.set_options(self._processing_options())
         if nxt.sessions_dir != prev.sessions_dir and not self.recorder.active:
-            self.library = SessionLibrary(self.sessions_dir, self.clock)
+            self.library = self._library_factory(self.sessions_dir, self.clock)
             self.recorder.library = self.library
             self.library_changed()
 
@@ -438,6 +442,17 @@ class MonitorEngine:
         if self._source is not None:
             self._stop_source("Switched source")
         return self._start_source(src, session, use_file_calibration, auto)
+
+    def connect_source(self, src: Source, session: ParsedSession | None = None, use_file_calibration: bool = True, auto: bool = False) -> bool:
+        """Connect a source that was made elsewhere (e.g. a browser serial port the
+        user picked, already open). Returns True on success."""
+        if self._source is not None:
+            self._stop_source("Switched source")
+        return self._start_source(src, session, use_file_calibration, auto)
+
+    @property
+    def awaiting_reconnect(self) -> bool:
+        return self._awaiting_reconnect
 
     def _seconds(self) -> float:
         return self.clock() / 1000
@@ -748,7 +763,7 @@ class MonitorEngine:
         since_breath = (now - self._last_breath_wall) / 1000
         a.set_condition("apnea", apnea_sec > 0 and connected and fresh and signal and since_breath > apnea_sec, now, "high", f"APNEA: no breath for {math.floor(since_breath)} s")
 
-        a.set_condition("audioOff", not self.audio.armed, now, "advisory", "Audible alarm NOT armed: no sound output found. Press Arm audio.")
+        a.set_condition("audioOff", not self.audio.armed, now, "advisory", self.audio_off_message)
         dr = self._seq.drop_rate
         a.set_condition("dropped", connected and self._seq.received > 500 and dr > 0.001, now, "advisory", f"Dropped samples {dr * 100:.2f} % ({self._seq.dropped})")
         while self._bad_times and self._bad_times[0] < now - 60000:
