@@ -8,7 +8,9 @@ import { AlarmSlot } from './components/AlarmSlot';
 import { Header } from './components/Header';
 import { MonitorScreen } from './components/MonitorScreen';
 import { SettingsScreen, type SettingsTab } from './components/settings/SettingsScreen';
+import { ReviewScreen } from './components/data/ReviewScreen';
 import { Toast } from './components/Toast';
+import { showToast } from './components/toast';
 import { monitor, useMonitor } from './engine/useMonitor';
 import type { ThemePref } from './storage/settings';
 
@@ -59,11 +61,14 @@ function ResearchBanner() {
 export function App() {
   const snap = useMonitor();
   const theme = useResolvedTheme(snap.settings.theme);
-  const [screen, setScreen] = useState<'monitor' | 'settings'>('monitor');
+  const [screen, setScreen] = useState<'monitor' | 'settings' | 'review'>('monitor');
   const [tab, setTab] = useState<SettingsTab>('connection');
+  const [reviewId, setReviewId] = useState<string | null>(null);
 
   useEffect(() => {
-    void monitor.init().then(() => {
+    void monitor.init().then((recovered) => {
+      if (recovered.length)
+        showToast(`Recovered ${recovered.length} recording${recovered.length > 1 ? 's' : ''} left unfinished when the page closed. Find ${recovered.length > 1 ? 'them' : 'it'} in Settings > Data & recordings.`, 9000);
       const q = new URLSearchParams(location.search);
       if (q.has('sim') || location.hash === '#sim') void monitor.connect('simulator');
     });
@@ -83,8 +88,30 @@ export function App() {
             setScreen('settings');
           }}
         />
+      ) : screen === 'settings' ? (
+        <SettingsScreen
+          snap={snap}
+          tab={tab}
+          setTab={setTab}
+          onBack={() => setScreen('monitor')}
+          openReview={(id) => {
+            setReviewId(id);
+            setScreen('review');
+          }}
+        />
       ) : (
-        <SettingsScreen snap={snap} tab={tab} setTab={setTab} onBack={() => setScreen('monitor')} />
+        <ReviewScreen
+          id={reviewId!}
+          theme={theme}
+          onBack={() => {
+            setTab('data');
+            setScreen('settings');
+          }}
+          onReplay={(session, fileName) => {
+            void monitor.connect('replay', { session, fileName, speed: 1, useFileCalibration: true });
+            setScreen('monitor');
+          }}
+        />
       )}
       <Toast />
     </div>

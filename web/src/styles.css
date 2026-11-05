@@ -307,3 +307,25 @@ table.pts input[type='number'] { width: 100px; min-height: 30px; }
   .flash, .flash-slow { animation: none; }
   .tile.alarm-high, .tile.alarm-medium { outline: 4px solid var(--on-alarm); outline-offset: -4px; }
 }
+
+/* ---------- data & review ---------- */
+.menu {
+  position: absolute; z-index: 25; top: calc(100% + 4px); right: 0; min-width: 230px; display: grid;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 4px;
+}
+.menu button { text-align: left; background: none; border: none; padding: 8px 10px; border-radius: 3px; white-space: nowrap; }
+.menu button:hover { background: var(--panel-3); }
+.chip { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--muted); color: var(--muted); white-space: nowrap; }
+.chip.recording { color: var(--alarm-high); border-color: var(--alarm-high); }
+.chip.complete { color: var(--ok); border-color: var(--ok); }
+.chip.interrupted { color: var(--alarm-med); border-color: var(--alarm-med); }
+.chip.imported { color: var(--advisory); border-color: var(--advisory); }
+table.sessions td { white-space: nowrap; }
+.dropzone.drag { outline: 2px dashed var(--co2); outline-offset: -6px; }
+.review h3 { margin-top: 10px; }
+.review-head { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 10px; }
+.review-head h2 { margin: 0; overflow-wrap: anywhere; }
+.review-chart { width: 100%; margin: 4px 0 8px; }
+.review-chart .u-legend { display: table; font-size: 13px; color: var(--muted); }
+.review-chart .u-select { background: color-mix(in srgb, var(--co2) 18%, transparent); }
+.linkish { background: none; border: none; padding: 0; color: var(--advisory); text-decoration: underline; font-family: var(--font-mono); font-size: 12.5px; }

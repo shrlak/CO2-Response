@@ -49,7 +49,7 @@ jobs:
           retention-days: 7
 
   bridge:
-    name: Python bridge (syntax + simulate smoke test)
+    name: Python (bridge smoke test + analysis loader)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -83,6 +83,11 @@ jobs:
               print("bridge OK:", len(data), "valid data lines")
           asyncio.run(main())
           PY
+      - name: Analysis loader reads the sample session
+        run: |
+          pip install -r ../analysis/requirements.txt
+          python ../analysis/load_session.py ../sample-data/synthetic_session.csv --breaths /tmp/breaths.csv
+          test "$(wc -l < /tmp/breaths.csv)" -gt 10
 
   firmware:
     name: Firmware (PlatformIO build + line-format test)

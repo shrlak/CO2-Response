@@ -6,20 +6,20 @@ import { CalibrationPanel } from './CalibrationPanel';
 import { ConnectionPanel } from './ConnectionPanel';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { DisplayPanel } from './DisplayPanel';
-import { SessionPanel } from './SessionPanel';
+import { DataPanel } from './DataPanel';
 
-export type SettingsTab = 'connection' | 'calibration' | 'alarms' | 'display' | 'session' | 'diagnostics';
+export type SettingsTab = 'connection' | 'calibration' | 'alarms' | 'display' | 'data' | 'diagnostics';
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'connection', label: 'Connection' },
   { id: 'calibration', label: 'Calibration' },
   { id: 'alarms', label: 'Alarms' },
   { id: 'display', label: 'Display & units' },
-  { id: 'session', label: 'Session & recording' },
+  { id: 'data', label: 'Data & recordings' },
   { id: 'diagnostics', label: 'Diagnostics' },
 ];
 
-export function SettingsScreen({ snap, tab, setTab, onBack }: { snap: Snapshot; tab: SettingsTab; setTab: (t: SettingsTab) => void; onBack: () => void }) {
+export function SettingsScreen({ snap, tab, setTab, onBack, openReview }: { snap: Snapshot; tab: SettingsTab; setTab: (t: SettingsTab) => void; onBack: () => void; openReview: (id: string) => void }) {
   return (
     <div className="settings-screen">
       <nav className="settings-nav" aria-label="Settings sections">
@@ -60,7 +60,7 @@ export function SettingsScreen({ snap, tab, setTab, onBack }: { snap: Snapshot; 
           </div>
         ) : null}
         {tab === 'display' ? <DisplayPanel snap={snap} /> : null}
-        {tab === 'session' ? <SessionPanel snap={snap} /> : null}
+        {tab === 'data' ? <DataPanel snap={snap} openReview={openReview} /> : null}
         {tab === 'diagnostics' ? <DiagnosticsPanel snap={snap} /> : null}
       </div>
     </div>

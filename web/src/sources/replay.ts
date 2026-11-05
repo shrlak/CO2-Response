@@ -21,14 +21,15 @@ export class ReplaySource implements Source {
   }
 
   get progress(): number {
-    return this.session.samples.length ? this.i / this.session.samples.length : 1;
+    return this.session.n ? this.i / this.session.n : 1;
   }
 
   get rateHz(): number {
-    const s = this.session.samples;
-    if (s.length < 2) return 100;
-    const span = s[Math.min(s.length - 1, 200)].tMs - s[0].tMs;
-    return span > 0 ? Math.round((Math.min(s.length - 1, 200) * 1000) / span) : 100;
+    const s = this.session;
+    if (s.n < 2) return 100;
+    const k = Math.min(s.n - 1, 200);
+    const span = s.tMs[k] - s.tMs[0];
+    return span > 0 ? Math.round((k * 1000) / span) : 100;
   }
 
   async start(events: SourceEvents): Promise<void> {
@@ -36,21 +37,29 @@ export class ReplaySource implements Source {
     events.onStatus('connected');
     events.onLine(`I,FW,${this.session.meta.firmware || 'replay'},ADC,FILE,CH,3,RATE,${this.rateHz}`);
     this.i = 0;
-    this.t0Device = this.session.samples[0]?.tMs ?? 0;
+    this.t0Device = this.session.n ? this.session.tMs[0] : 0;
     this.t0Wall = performance.now();
     this.timer = setInterval(() => this.pump(), 20);
   }
 
   private pump(): void {
-    const s = this.session.samples;
-    const deviceNow = this.t0Device + (performance.now() - this.t0Wall) * this.speed;
+    const s = this.session;
+    let deviceNow = this.t0Device + (performance.now() - this.t0Wall) * this.speed;
     let n = 0;
-    while (this.i < s.length && s[this.i].tMs <= deviceNow && n < 5000) {
-      const r = s[this.i++];
-      this.events?.onLine(formatDataLine(r.seq, r.tMs, r.volts));
+    while (this.i < s.n && n < 5000) {
+      const i = this.i;
+      // the device clock restarts if the recording spans a reconnect: re-anchor
+      if (i > 0 && s.tMs[i] < s.tMs[i - 1]) {
+        this.t0Device = s.tMs[i];
+        this.t0Wall = performance.now();
+        deviceNow = this.t0Device;
+      }
+      if (s.tMs[i] > deviceNow) break;
+      this.events?.onLine(formatDataLine(s.seq[i], s.tMs[i], [s.v0[i], s.v1[i], s.v2[i]]));
+      this.i++;
       n++;
     }
-    if (this.i >= s.length) {
+    if (this.i >= s.n) {
       if (this.timer) clearInterval(this.timer);
       this.timer = null;
       this.events?.onStatus('disconnected', 'Replay finished');

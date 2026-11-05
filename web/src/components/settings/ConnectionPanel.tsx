@@ -1,15 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { monitor, type Snapshot } from '../../engine/monitor';
 import { SCENARIOS } from '../../sim/physiology';
 import { webSerialSupported } from '../../sources/serial';
-import { parseSessionCsv, type ParsedSession } from '../../storage/csv';
+import type { SessionRecord } from '../../storage/library';
 import { Field, NumberField, NumInput, Seg, SelectField, ToggleField } from '../fields';
 import { showToast } from '../toast';
 
 export function ConnectionPanel({ snap }: { snap: Snapshot }) {
   const s = snap.settings;
   const connected = snap.status === 'connected';
-  const [replay, setReplay] = useState<{ session: ParsedSession; name: string } | null>(null);
+  const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  const [replayId, setReplayId] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    monitor.library
+      .list()
+      .then((l) => setSessions(l.filter((r) => r.status !== 'recording')))
+      .catch(() => setSessions([]));
+  }, [snap.recording.libraryVersion]);
+  const chosen = sessions.find((r) => r.id === replayId) ?? sessions[0];
   const [speed, setSpeed] = useState(1);
   const [useFileCal, setUseFileCal] = useState(true);
   const [rate, setRate] = useState(100);
@@ -97,28 +106,21 @@ export function ConnectionPanel({ snap }: { snap: Snapshot }) {
 
         <section className="card">
           <div className="card-head">
-            <h3>Replay a recorded session</h3>
+            <h3>Replay a saved session</h3>
           </div>
-          <Field label="Session file (.csv)" htmlFor="replay-file">
-            <input
-              id="replay-file"
-              type="file"
-              accept=".csv,text/csv"
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                try {
-                  const session = parseSessionCsv(await f.text());
-                  if (!session.samples.length) throw new Error('it has no samples');
-                  setReplay({ session, name: f.name });
-                  showToast(`${f.name}: ${session.samples.length} samples, ${session.events.length} events.`);
-                } catch (err) {
-                  setReplay(null);
-                  showToast(`Could not read ${f.name}: ${(err as Error).message}`, 6000);
-                }
-              }}
-            />
-          </Field>
+          {sessions.length ? (
+            <Field label="Session" htmlFor="replay-pick">
+              <select id="replay-pick" className="wide" value={chosen?.id ?? ''} onChange={(e) => setReplayId(e.target.value)}>
+                {sessions.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.fileName}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : (
+            <p className="note">No saved sessions yet. Record one, or import a file in Data & recordings.</p>
+          )}
           <Field label="Speed">
             <Seg
               label="Replay speed"
@@ -129,14 +131,25 @@ export function ConnectionPanel({ snap }: { snap: Snapshot }) {
           </Field>
           <ToggleField id="replay-cal" label="Use the calibration saved in the file" checked={useFileCal} onChange={setUseFileCal} hint="On: replays exactly as recorded. Off: re-processes the raw volts with the current calibration." />
           <div className="row-actions">
-            <button className="btn primary" disabled={!replay} onClick={() => replay && void monitor.connect('replay', { session: replay.session, fileName: replay.name, speed, useFileCalibration: useFileCal })}>
-              Start replay
+            <button
+              className="btn primary"
+              disabled={!chosen || busy}
+              onClick={async () => {
+                if (!chosen) return;
+                setBusy(true);
+                try {
+                  const session = await monitor.library.parse(chosen.id);
+                  if (!session.n) throw new Error('it has no samples');
+                  await monitor.connect('replay', { session, fileName: chosen.fileName, speed, useFileCalibration: useFileCal });
+                } catch (e) {
+                  showToast(`Could not replay ${chosen.fileName}: ${(e as Error).message}`, 6000);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? 'Reading…' : 'Start replay'}
             </button>
-            {replay ? (
-              <span className="note">
-                {replay.name} · study {replay.session.meta.study_code ?? '?'} · {Math.round((replay.session.samples.at(-1)!.tMs - replay.session.samples[0].tMs) / 1000)} s
-              </span>
-            ) : null}
           </div>
         </section>
 

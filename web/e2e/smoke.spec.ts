@@ -96,3 +96,68 @@ test('zero & span capture computes a line from live readings', async ({ page }) 
   await card.getByRole('button', { name: 'Compute line' }).click();
   await expect(card).toContainText('Line through 2 points');
 });
+
+test('record → one file saved on stop → import → review → export', async ({ page }) => {
+  await page.goto('/?sim');
+  await expect(page.locator('[data-testid=tile-rr] .val')).toHaveText(/^\d+$/, { timeout: 20_000 });
+  await page.getByRole('button', { name: /Record/ }).click();
+  await expect(page.locator('.header .rec')).toContainText('REC');
+  await page.keyboard.press('m'); // a marker inside the recording
+  await page.getByRole('button', { name: 'Save label' }).click();
+  await page.waitForTimeout(9000);
+
+  const dl = page.waitForEvent('download');
+  await page.getByRole('button', { name: /Stop rec/ }).click();
+  const download = await dl;
+  expect(download.suggestedFilename()).toMatch(/^co2r_STUDY-01_\d{8}-\d{6}\.csv$/);
+  const path = await download.path();
+  const fs = await import('node:fs');
+  const text = fs.readFileSync(path, 'utf8');
+  expect(text.startsWith('# CO2-Response session,v2')).toBe(true);
+  expect(text).toContain('MARK Event 1');
+  expect(text).toContain('RECORDING_STOPPED');
+
+  // the recording is in the library
+  await page.getByRole('button', { name: /Settings/ }).click();
+  await page.getByRole('button', { name: 'Data & recordings' }).click();
+  const table = page.locator('table.sessions');
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await expect(table).toContainText('Recorded');
+
+  // import the downloaded file back
+  await page.locator('input[type=file][accept=".csv,text/csv"]').setInputFiles({ name: 'reimported.csv', mimeType: 'text/csv', buffer: Buffer.from(text) });
+  await expect(table.locator('tbody tr')).toHaveCount(2);
+  await expect(table).toContainText('reimported.csv');
+  await expect(table).toContainText('Imported');
+
+  // review it
+  await table.locator('tr', { hasText: 'reimported.csv' }).getByRole('button', { name: 'Open' }).click();
+  await expect(page.locator('.review')).toContainText('reimported.csv');
+  await expect(page.locator('.review .stats')).toContainText('Breaths');
+  await expect(page.locator('.review .loglist')).toContainText('MARK Event 1');
+  expect(await page.locator('.review-chart canvas').count()).toBeGreaterThanOrEqual(3);
+
+  // export the breath table
+  const dl2 = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Breaths (.csv)', exact: true }).click();
+  const b = await dl2;
+  expect(b.suggestedFilename()).toBe('reimported_breaths.csv');
+  expect(fs.readFileSync(await b.path(), 'utf8')).toMatch(/^breath,time_s,wall_time_iso,etco2_mmHg/);
+
+  // zoom by clicking an event, then export that range
+  await page.locator('.review .loglist .linkish').first().click();
+  await expect(page.getByRole('button', { name: 'Show whole session' })).toBeEnabled();
+  const dl3 = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Zoomed range, all data (.csv)' }).click();
+  expect((await dl3).suggestedFilename()).toMatch(/^reimported_\d+-\d+s\.csv$/);
+  expect((page as unknown as { errors: string[] }).errors).toEqual([]);
+});
+
+test('rejects a file that is not a session', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'More sources…' }).click();
+  await page.getByRole('button', { name: 'Data & recordings' }).click();
+  await page.locator('input[type=file][accept=".csv,text/csv"]').setInputFiles({ name: 'people.csv', mimeType: 'text/csv', buffer: Buffer.from('name,age\nx,1\n') });
+  await expect(page.locator('.toast')).toContainText('Could not import people.csv');
+  await expect(page.locator('table.sessions')).toHaveCount(0);
+});

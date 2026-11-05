@@ -14,6 +14,7 @@ A research capnography and flow monitor. An Arduino with a 16-bit ADC samples th
 | Calibration | [docs/calibration.md](docs/calibration.md) |
 | Safety | [docs/safety.md](docs/safety.md) |
 | UI mockup (Phase 0) | [docs/design/monitor-mockup.html](docs/design/monitor-mockup.html) |
+| Session files, import/export, analysis | [docs/data-format.md](docs/data-format.md) |
 | Sample session | [sample-data/synthetic_session.csv](sample-data/synthetic_session.csv) |
 
 ## Quick start (no hardware)
@@ -64,11 +65,18 @@ python serial_ws_bridge.py --port COM3
 - **Soft keys:** Silence (120 s), Arm audio, Mark event (or press `M`), Record, Freeze, Alarm limits, Settings.
 - **Settings:** Connection, Calibration, Alarms, Display & units (dark/light theme, mmHg/%, sweep speed, scales, barometric pressure, filter), Session & recording, Diagnostics.
 
-## Recording
+## Recording, import and export
 
-**Record** writes one CSV per session with raw volts, processed values, every breath, every alarm event (start, acknowledge, silence, resolve, clear) and every marker. In Chrome and Edge you choose the file first and it is written as it records, so overnight sessions do not fill memory. Files are named `co2r_<study code>_<YYYYMMDD-HHMMSS>.csv`. **Never put patient identifiers in the study code.** The format is described at the top of `web/src/storage/csv.ts`.
+**Record** saves each session as **one CSV file** with every sample (raw volts and calibrated values), every breath (EtCO2, FiCO2, RR, VT, MV, peak flow), every alarm event and every marker, plus the calibration and settings in use. Every row has the same columns, so it opens directly in Excel, pandas (`pd.read_csv(f, comment='#')`), MATLAB or R. While recording it is written to the browser every second, so a crash loses at most a second. Pressing **Stop** saves `co2r_<study code>_<YYYYMMDD-HHMMSS>.csv` to Downloads and keeps a copy in the app. **Never put patient identifiers in the study code.**
 
-Replaying a file with "Use the calibration saved in the file" reproduces the recorded numbers exactly. Turn it off to re-process the raw volts with a new calibration.
+**Settings > Data & recordings** lists saved sessions and lets you:
+
+- **Import** session files from another computer (older v1 files too)
+- **Open** a session to review it: summary statistics, zoomable EtCO2/RR, VT/MV and waveform charts, and the event list
+- **Export** the whole session, the breath table, or the alarms/events table, for the whole session or a zoomed time range
+- **Replay** it through the monitor, or **delete** it
+
+`analysis/load_session.py` loads a session into pandas tables (samples, breaths, events). The format and analysis examples are in [docs/data-format.md](docs/data-format.md).
 
 ## Hosting on GitHub Pages
 
@@ -78,7 +86,7 @@ Replaying a file with "Use the calibration saved in the file" reproduces the rec
 
 ```bash
 cd web
-npm test            # Vitest: protocol, simulator, processing, alarms, recording/replay
+npm test            # Vitest: protocol, simulator, processing, alarms, session files/library
 npm run e2e         # Playwright smoke tests in simulator mode (needs Chromium)
 npm run lint
 npm run typecheck
@@ -102,7 +110,9 @@ web/src/alarms/    alarm state machine and Web Audio tones
 web/src/engine/    data path: source → parser → processing → alarms → recorder
 web/src/render/    sweep waveform renderer
 web/src/components React UI (monitor + settings screens)
-web/src/storage/   settings, session CSV, recorder
+web/src/storage/   settings, session file format, recorder, session library (IndexedDB)
+web/src/components/data/  session review screen
+analysis/          Python loader for session files
 web/public/config/channels.json   sensor scaling defaults (edit without rebuilding)
 bridge/            optional Python serial → WebSocket relay
 docs/              protocol, wiring, calibration, safety, UI mockup

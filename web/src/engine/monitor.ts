@@ -14,6 +14,8 @@ import { SerialSource } from '../sources/serial';
 import { SimulatorSource } from '../sources/simulator';
 import type { Source, SourceKind, SourceStatus } from '../sources/types';
 import type { ParsedSession } from '../storage/csv';
+import { saveBlob, initDownloads, type SaveResult } from '../storage/download';
+import { SessionLibrary, type SessionRecord } from '../storage/library';
 import { SessionRecorder } from '../storage/recorder';
 import {
   clearSavedChannels,
@@ -84,7 +86,7 @@ export interface Snapshot {
   alarms: AlarmRecord[];
   silenceMs: number;
   audioArmed: boolean;
-  recording: { active: boolean; startedAt: number; fileName: string; mode: 'file' | 'memory'; bytes: number };
+  recording: { active: boolean; startedAt: number; fileName: string; bytes: number; stored: boolean; writeError: string | null; libraryVersion: number };
   frozen: boolean;
   trendVersion: number;
   settings: Settings;
@@ -119,7 +121,10 @@ export class MonitorEngine {
   channels: ChannelsConfig;
   readonly alarms: AlarmEngine;
   readonly audio = new AlarmAudio();
-  readonly recorder = new SessionRecorder();
+  readonly library = new SessionLibrary();
+  readonly recorder = new SessionRecorder(this.library);
+  /** bumps whenever the session library changes, so lists can refresh */
+  private libraryVersion = 0;
 
   private fileChannels: ChannelsConfig | null = null;
   private source: Source | null = null;
@@ -244,13 +249,31 @@ export class MonitorEngine {
     this.emit();
   }
 
-  /** Load config/channels.json if nothing was saved in this browser. */
-  async init(): Promise<void> {
+  /**
+   * Load config/channels.json if nothing was saved in this browser, and find
+   * recordings that a closed or crashed tab left unfinished.
+   */
+  async init(): Promise<SessionRecord[]> {
+    initDownloads();
     if (!loadSavedChannels()) {
       this.channels = await loadDefaultChannels();
       this.pipeline.setChannels(this.effectiveChannels);
-      this.emit();
     }
+    let recovered: SessionRecord[] = [];
+    try {
+      recovered = await this.library.recoverInterrupted();
+      if (recovered.length) this.libraryChanged();
+      void this.library.persist();
+    } catch {
+      /* no IndexedDB: recordings still download on stop */
+    }
+    this.emit();
+    return recovered;
+  }
+
+  libraryChanged(): void {
+    this.libraryVersion++;
+    this.emit();
   }
 
   // ---------- connection ----------
@@ -466,7 +489,7 @@ export class MonitorEngine {
     if (pr.breath) this.onBreath(pr.breath, now);
     this.alarms.onLiveCo2(pr.co2MmHg, now);
 
-    this.recorder.sample({ wallMs: now, tMs, seq, volts, co2MmHg: pr.co2MmHg, flowLpm: pr.flowLpm, pneumoLpm: pr.pneumoLpm, pneumoPa: pr.pneumoPa });
+    this.recorder.sample({ wallMs: now, tMs, seq, volts, co2MmHg: pr.co2MmHg, co2Pct: pr.co2Pct, flowLpm: pr.flowLpm, pneumoPa: pr.pneumoPa, pneumoLpm: pr.pneumoLpm });
     for (const l of this.sampleListeners) l(pr);
   }
 
@@ -481,9 +504,9 @@ export class MonitorEngine {
     this.trend.push({ t: now / 1000, etco2: b.etco2, mv, vt: b.vtMl, rr });
     if (this.trend.length > MAX_TREND) this.trend.splice(0, 1000);
     this.trendVersion++;
+    // recorded on the sample that completed the breath (written right after this)
+    this.recorder.breath({ etco2: b.etco2, fico2: b.fico2, rr, vt: b.vtMl, mv, peak: b.peakInspLpm });
     this.alarms.onBreath(b.etco2, now);
-    const f = (v: number, d = 1) => (Number.isFinite(v) ? v.toFixed(d) : 'NA');
-    this.recorder.event(now, `BREATH etco2_mmHg=${f(b.etco2)} rr=${f(rr)} vt_ml=${f(b.vtMl, 0)} mv_lpm=${f(mv, 2)} by=${b.detectedBy}`);
   }
 
   private pushRenderers(id: ChannelId, v: number): void {
@@ -635,27 +658,41 @@ export class MonitorEngine {
   }
 
   async startRecording(): Promise<boolean> {
-    const ok = await this.recorder.start({
+    const rec = await this.recorder.start({
       studyCode: this.settings.studyCode,
-      started: new Date().toISOString(),
+      appVersion: __APP_VERSION__,
       source: this.source?.label ?? 'none',
       firmware: this.info?.FW ?? 'unknown',
       rateHz: Number(this.info?.RATE) || 100,
       channels: this.effectiveChannels,
-      processing: this.settings.processing,
+      processing: this.processingOptions(),
+      alarmSettings: this.settings.alarms,
     });
-    if (ok) {
-      this.addLog(`Recording to ${this.recorder.fileName}`);
-      for (const r of this.alarms.list()) if (r.state === 'active' && r.priority !== 'advisory') this.recorder.event(Date.now(), `ALARM_ACTIVE_AT_START ${r.id} ${r.priority} ${r.message}`);
-    }
-    this.emit();
-    return ok;
+    this.addLog(`Recording ${this.recorder.fileName}${rec ? '' : ' (in memory: browser storage unavailable)'}`);
+    const now = Date.now();
+    this.recorder.event(now, `RECORDING_STARTED source=${this.source?.label ?? 'none'}`);
+    for (const r of this.alarms.list()) if (r.state === 'active' && r.priority !== 'advisory') this.recorder.event(now, `ALARM_ACTIVE_AT_START ${r.id} ${r.priority} ${r.message}`);
+    this.libraryChanged();
+    return true;
   }
 
-  async stopRecording(): Promise<void> {
-    await this.recorder.stop();
+  /** Stop, then save the session as one CSV file. It also stays in the session library. */
+  async stopRecording(): Promise<{ fileName: string; result: SaveResult | 'failed'; rec: SessionRecord | null }> {
+    const fileName = this.recorder.fileName;
+    this.recorder.event(Date.now(), 'RECORDING_STOPPED');
+    const { rec, memoryBlob } = await this.recorder.stop();
     this.addLog('Recording stopped');
-    this.emit();
+    this.libraryChanged();
+    try {
+      const blob = memoryBlob ?? (rec ? await this.library.blob(rec.id) : null);
+      if (!blob) return { fileName, result: 'failed', rec };
+      const result = await saveBlob(blob, fileName);
+      this.addLog(`Session file ${fileName}: ${result}`);
+      return { fileName, result, rec };
+    } catch (e) {
+      this.addLog(`Could not save ${fileName}: ${(e as Error).message}`, 'error');
+      return { fileName, result: 'failed', rec };
+    }
   }
 
   // ---------- calibration helpers ----------
@@ -786,7 +823,7 @@ export class MonitorEngine {
       alarms: this.alarms.list(),
       silenceMs: this.alarms.silenceRemainingMs(now),
       audioArmed: this.audio.armed,
-      recording: { active: rec.active, startedAt: rec.startedAt, fileName: rec.fileName, mode: rec.mode, bytes: rec.bytes },
+      recording: { active: rec.active, startedAt: rec.startedAt, fileName: rec.fileName, bytes: rec.bytes, stored: rec.rec !== null, writeError: rec.writeError, libraryVersion: this.libraryVersion },
       frozen: this.frozen,
       trendVersion: this.trendVersion,
       settings: this.settings,

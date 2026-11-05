@@ -24,6 +24,7 @@ All seven phases are built and pushed. What is verified and what still needs har
 | 5 Alarms | Done, tested (delay, hysteresis, latching, re-arm, CO2 ramp end to end, in the browser too). |
 | 6 Firmware + hardware link | Firmware builds for Uno/Mega/Nano and its line format matches the dashboard byte for byte. **Not yet run on a real Arduino**: the "< 0.1 % drops over 10 min" check needs hardware. |
 | 7 Recording, deploy, docs | Done. Replay reproduces recorded numbers exactly (tested). Pages deploy runs once Pages is enabled and the work is on `main`. |
+| + Data | Each recording is one analysis-ready CSV (format v2), written to browser storage every second (crash-safe) and saved on stop. Data & recordings screen: import, review with charts, export whole/breaths/events/time range, replay, delete. Python loader in `analysis/`. |
 
 **Changes from the plan made during the build**
 

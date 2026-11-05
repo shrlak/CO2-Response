@@ -5,6 +5,7 @@ import { webSerialSupported } from '../sources/serial';
 import { AlarmForm } from './AlarmForm';
 import { fmt, mss } from './format';
 import { NumericTile } from './NumericTile';
+import { toggleRecording } from './recording';
 import { showToast } from './toast';
 import { TrendPanel } from './TrendPanel';
 import { WavePanel } from './WavePanel';
@@ -67,15 +68,6 @@ export function MonitorScreen({ snap, theme, openSettings }: Props) {
   const disconnected = snap.status === 'idle' || snap.status === 'error';
   const tag = snap.frozen ? 'FROZEN' : snap.sourceKind === 'simulator' ? 'SIMULATED' : snap.sourceKind === 'replay' ? 'REPLAY' : null;
 
-  const toggleRecord = async () => {
-    if (snap.recording.active) {
-      await monitor.stopRecording();
-      showToast(snap.recording.mode === 'file' ? `Saved ${snap.recording.fileName}` : `Downloaded ${snap.recording.fileName}`);
-    } else {
-      const ok = await monitor.startRecording();
-      if (ok) showToast(monitor.recorder.mode === 'file' ? `Recording to ${monitor.recorder.fileName}` : 'Recording in memory. The CSV downloads when you stop.');
-    }
-  };
 
   return (
     <div className="monitor-screen">
@@ -200,9 +192,9 @@ export function MonitorScreen({ snap, theme, openSettings }: Props) {
             </form>
           ) : null}
         </div>
-        <button className={`key ${snap.recording.active ? 'rec-on' : ''}`} onClick={() => void toggleRecord()}>
+        <button className={`key ${snap.recording.active ? 'rec-on' : ''}`} onClick={() => void toggleRecording()}>
           {snap.recording.active ? '■ Stop rec' : '● Record'}
-          <span className="sub">{snap.recording.active ? snap.recording.fileName : 'CSV with alarms'}</span>
+          <span className="sub">{snap.recording.active ? 'saves one CSV on stop' : 'one CSV per session'}</span>
         </button>
         <button className={`key ${snap.frozen ? 'active' : ''}`} onClick={() => monitor.setFrozen(!snap.frozen)}>
           {snap.frozen ? 'Unfreeze' : 'Freeze'}
