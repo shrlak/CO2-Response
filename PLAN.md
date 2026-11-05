@@ -4,11 +4,36 @@ CMU BME 26-27 Capstone · Spencer Kim · plan revised Nov 5, 2026
 
 This plan builds on the original "Capnography & Flow Dashboard: Build Plan for Claude Code" (Nov 5, 2026). The engineering scope is the same. Three things change:
 
-1. **The UI follows a bedside patient monitor**, not a generic web dashboard. It is one screen, black background, a fixed color for each parameter, large numbers with their alarm limits beside them, waveforms that sweep, and a row of soft keys along the bottom. The full spec is in [Clinical UI design](#clinical-ui-design).
+1. **The UI follows a bedside patient monitor**, not a generic web dashboard. It is one screen, black background (with a light theme for daytime), a fixed color for each parameter, large numbers with their alarm limits beside them, waveforms that sweep, and a row of soft keys along the bottom. The full spec is in [Clinical UI design](#clinical-ui-design).
 2. **The UI has two modes.** *Monitor* is what a clinician sees: waveforms, numbers, alarms and nothing else. *Setup* is what the engineer uses: calibration, raw volts, channel config, diagnostics. Keeping calibration off the monitor screen is what keeps the monitor screen simple.
 3. **The repo already exists** (`shrlak/co2-response`). Phase 1 scaffolds inside it and skips `gh repo create`.
 
 A clickable mockup of the Monitor screen is in [`docs/design/monitor-mockup.html`](docs/design/monitor-mockup.html). Open it in Chrome and press **Simulate CO2 rise** to see the alarm states. **Phase 0 is signing off on that mockup** before any production code is written.
+
+## Build status (Nov 5, 2026)
+
+All seven phases are built and pushed. What is verified and what still needs hardware:
+
+| Phase | Status |
+| --- | --- |
+| 0 UI sign-off | Mockup done; the real app follows it, with **dark and light themes** and a desktop layout (1280×720 and up). |
+| 1 Scaffold | Done. CI runs web lint/typecheck/tests/build, browser tests, firmware builds and a bridge smoke test. |
+| 2 Protocol + simulator | Done, tested (bad checksums, sequence gaps, wraparound, device reset). |
+| 3 Processing | Done, tested against synthetic data with known answers (RR 15 ± 0.5, EtCO2 40 ± 0.5, VT, MV). |
+| 4 Monitor UI | Done. 10-minute soak at 100 Hz/channel in simulator mode (see PR notes for numbers). |
+| 5 Alarms | Done, tested (delay, hysteresis, latching, re-arm, CO2 ramp end to end, in the browser too). |
+| 6 Firmware + hardware link | Firmware builds for Uno/Mega/Nano and its line format matches the dashboard byte for byte. **Not yet run on a real Arduino**: the "< 0.1 % drops over 10 min" check needs hardware. |
+| 7 Recording, deploy, docs | Done. Replay reproduces recorded numbers exactly (tested). Pages deploy runs once Pages is enabled and the work is on `main`. |
+| + Hardware | Hardware check in Diagnostics (link, ADC, per-sensor rail/noise), one-click and automatic USB reconnect, firmware I2C scan and bus timeout. Step-by-step [SETUP-GUIDE.md](SETUP-GUIDE.md) with a wiring diagram. |
+| + Data | Each recording is one analysis-ready CSV (format v2), written to browser storage every second (crash-safe) and saved on stop. Data & recordings screen: import, review with charts, export whole/breaths/events/time range, replay, delete. Python loader in `analysis/`. |
+
+**Changes from the plan made during the build**
+
+- "Setup mode" is the **Settings** screen. Calibration there supports manual entry (linear, polynomial, lookup table, zero offset, pneumotach k1/k2) as well as zero & span, multi-point fit and 3 L syringe capture, with a live preview before saving.
+- The firmware sketch lives in `firmware/CO2Response/` (not `src/` + `include/`) so the same folder builds in PlatformIO and opens in the Arduino IDE.
+- ADC rail checks are per channel. CO2 checks only the high rail, because a capnograph reads 0 V at 0 % CO2; a pull-up on CH0 makes an unplugged capnograph read high.
+- Added an **apnea** alarm (no breath for 20 s, high priority), since the per-breath EtCO2 alarm cannot fire when there are no breaths.
+- The waveforms use sweep mode only; the optional scroll mode was not built.
 
 ---
 
@@ -286,8 +311,8 @@ CO2-Response/
 │   └── deploy.yml          # build web/ and publish to Pages on main
 ├── firmware/
 │   ├── platformio.ini
-│   ├── include/config.h    # pins, rate, PGA gain, baud
-│   └── src/main.cpp
+│   ├── CO2Response/        # CO2Response.ino, config.h (pins, rate, PGA gain, baud), ADC driver
+│   └── test/               # host-side line-format test
 ├── web/
 │   ├── index.html
 │   ├── package.json

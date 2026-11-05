@@ -26,9 +26,13 @@ export interface ChannelConfig {
   /** Subtracted after calibration (set by "Zero" buttons). */
   zeroOffset: number;
   flowModel?: FlowModel;
+  /** Which ADC rails mean "sensor fault". A capnograph legitimately reads 0 V at 0 % CO2, so CO2 checks only the high rail. */
+  railCheck?: RailCheck;
   calibratedAt: string | null;
   note?: string;
 }
+
+export type RailCheck = 'both' | 'high' | 'low' | 'none';
 
 export interface AdcConfig {
   type: string;
@@ -71,6 +75,7 @@ export function validateChannels(x: unknown): ChannelsConfig {
       throw new Error(`Channel "${id}": unknown calibration type.`);
     }
     if (!Number.isFinite(ch.zeroOffset)) ch.zeroOffset = 0;
+    if (!ch.railCheck) ch.railCheck = id === 'co2' ? 'high' : 'both';
   }
   if (!c.channels.pneumo.flowModel) c.channels.pneumo.flowModel = { k1: 0.2, k2: 0 };
   return c;
