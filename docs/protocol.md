@@ -71,5 +71,7 @@ The dashboard sends `INFO` then `START` after opening the port.
 
 At 100 Hz a data line is about 45 bytes, so 4.5 kB/s against roughly 11.5 kB/s available at
 115200 baud. 200 Hz uses about 80 % of the link; above that, raise the baud rate.
-The ADS1115 tops out at 860 conversions per second shared across channels, which limits three
-channels to about 250 Hz in practice.
+The ADS1115 tops out at 860 conversions per second shared across channels. With three channels
+read in single-shot mode (about 1.5 ms each including I2C), a sample set takes about 4.5 ms, so
+200 Hz is the practical ceiling and 100 Hz leaves comfortable margin. If the firmware falls behind
+it skips slots, advances `seq` and sends `E,OVERRUN` (at most once a second).

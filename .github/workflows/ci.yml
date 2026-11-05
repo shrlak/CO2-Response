@@ -24,3 +24,23 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  firmware:
+    name: Firmware (PlatformIO build + line-format test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('firmware/platformio.ini') }}
+      - run: pip install platformio==6.2.0
+      - name: Native line-format test
+        run: g++ -std=c++11 -Wall -Wextra -Werror -I CO2Response test/test_line_format.cpp -o line_test && ./line_test
+      - run: pio run -e uno -e mega -e nano
