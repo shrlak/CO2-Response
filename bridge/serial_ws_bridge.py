@@ -2,9 +2,9 @@
 """
 Serial -> WebSocket bridge for the CO2-Response monitor.
 
-Relays protocol lines from the Arduino to every connected browser (Safari, Firefox,
-or a second screen) and forwards commands (INFO, START, STOP, RATE n) back to the
-device. The lines are passed through untouched; the browser does all parsing,
+Relays protocol lines from the Arduino to every connected monitor app (for example
+on a second computer) and forwards commands (INFO, START, STOP, RATE n) back to the
+device. The lines are passed through untouched; the monitor app does all parsing,
 checksums and processing. Protocol: docs/protocol.md
 
     pip install -r requirements.txt
@@ -13,7 +13,7 @@ checksums and processing. Protocol: docs/protocol.md
     python serial_ws_bridge.py --port /dev/ttyACM0    # Linux / macOS
     python serial_ws_bridge.py --simulate             # no hardware: synthetic data
 
-Then in the dashboard: Settings > Connection > Python bridge > ws://localhost:8765
+Then in the monitor app: Settings > Connection > Python bridge > ws://<this computer>:8765
 
 By default the bridge listens on localhost only. Use --host 0.0.0.0 to let other
 computers on the lab network watch (anyone who can reach the port can see the data

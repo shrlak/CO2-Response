@@ -1,0 +1,7 @@
+# The monitor app. Install with:  pip install -r requirements.txt
+PySide6-Essentials>=6.6
+pyqtgraph>=0.13.3
+numpy>=1.24
+pyserial>=3.5
+websockets>=11
+sounddevice>=0.4.6

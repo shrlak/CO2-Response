@@ -1,0 +1,1044 @@
+"""The monitor engine: source → parser → processing → alarms → recorder.
+
+It has no user interface. The window calls ``poll()`` about 50 times a second (to read
+the source) and ``tick()`` 4 times a second (alarm checks, audio, saving), and reads a
+``snapshot()`` to draw. The alarm checks run here, on every sample and breath, not in
+the drawing code. Everything can be driven from tests with a fake clock.
+"""
+
+from __future__ import annotations
+
+import collections
+import dataclasses
+import math
+import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Callable
+
+from .. import __version__, keep_awake
+from ..alarms.audio import AlarmAudio
+from ..alarms.engine import AlarmEngine, AlarmLogEntry, AlarmRecord
+from ..channels import (
+    CHANNEL_IDS,
+    DEFAULT_CHANNELS,
+    clone_channels,
+    load_default_channels,
+    validate_channels,
+)
+from ..jsfmt import iso_ms
+from ..paths import default_sessions_dir
+from ..processing.breath import Breath
+from ..processing.calibration import invert_calibration
+from ..processing.metrics import etco2_median, minute_ventilation, respiratory_rate
+from ..processing.pipeline import Pipeline, Processed
+from ..protocol import SeqTracker, parse_line
+from ..settings import (
+    ProcessingOptions,
+    Settings,
+    SettingsStore,
+    sanitize_alarms,
+    to_dict,
+)
+from ..sim.core import Encoders
+from ..sources.base import Source, StatusEvent
+from ..sources.bridge import BridgeSource
+from ..sources.replay import ReplaySource
+from ..sources.serial_source import PortInfo, SerialSource, list_ports
+from ..sources.simulator import SimulatorSource
+from ..storage.library import SessionLibrary, SessionRecord
+from ..storage.recorder import SessionRecorder
+from ..storage.session_file import ParsedSession, SessionMeta, session_file_name
+from .link_test import CheckResult, LinkStats, LinkTestCollector, analyze_link_test
+
+NAN = float("nan")
+MAX_TREND = 20000
+MAX_TRACE = 4 * 3600 * 2  # 4 h at 2 Hz
+MAX_WAVE = 6000
+TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum")
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def simulator_encoders() -> Encoders:
+    """The simulator's "true" sensors: the bundled default calibration, inverted."""
+    c = DEFAULT_CHANNELS["channels"]
+    lo, hi = DEFAULT_CHANNELS["adc"]["railLowV"], DEFAULT_CHANNELS["adc"]["railHighV"]
+    return Encoders(
+        co2=lambda pct: invert_calibration(c["co2"]["calibration"], pct, lo, hi),
+        flow=lambda lpm: invert_calibration(c["flow"]["calibration"], lpm, lo, hi),
+        pneumo=lambda pa: invert_calibration(c["pneumo"]["calibration"], pa, lo, hi),
+    )
+
+
+@dataclass
+class Numbers:
+    co2_live: float = NAN
+    etco2: float = NAN
+    etco2_median: float = NAN
+    rr: float = NAN
+    fico2: float = NAN
+    flow: float = NAN
+    peak_flow: float = NAN
+    pneumo_flow: float = NAN
+    pneumo_pa: float = NAN
+    vt: float = NAN
+    mv: float = NAN
+    volts: list[float] = field(default_factory=list)
+
+
+@dataclass
+class TrendPoint:
+    #: wall clock, s
+    t: float
+    etco2: float
+    mv: float
+    vt: float
+    rr: float
+
+
+@dataclass
+class Marker:
+    id: int
+    #: wall clock, ms
+    t: float
+    label: str
+
+
+@dataclass
+class LogLine:
+    t: float
+    text: str
+    level: str = "info"  # 'info' | 'alarm' | 'error'
+
+
+@dataclass
+class RecordingState:
+    active: bool
+    started_at: float
+    file_name: str
+    bytes: int
+    stored: bool
+    write_error: str | None
+    library_version: int
+    folder: str
+
+
+@dataclass
+class Snapshot:
+    now: float
+    status: str  # 'idle' | 'connecting' | 'connected' | 'error'
+    status_detail: str
+    source_kind: str | None
+    source_label: str
+    info: dict[str, str] | None
+    rate_hz: float
+    measured_rate_hz: float
+    received: int
+    dropped: int
+    drop_rate: float
+    bad_lines: int
+    numbers: Numbers
+    stale: dict[str, bool]
+    breath_stale: bool
+    alarms: list[AlarmRecord]
+    silence_ms: float
+    audio_armed: bool
+    audio_backend: str
+    recording: RecordingState
+    frozen: bool
+    trend_version: int
+    settings: Settings
+    channels: dict
+    using_file_calibration: bool
+    replay_progress: float | None
+    #: a previously used Arduino that is plugged in and can be reopened in one click
+    known_port: str | None
+    awaiting_reconnect: bool
+    i2c_scan: str | None
+
+
+@dataclass
+class StopResult:
+    file_name: str
+    path: Path | None
+    rec: SessionRecord | None
+    error: str | None = None
+
+
+@dataclass
+class CaptureResult:
+    volts: float
+    value: float
+    n: int
+
+
+class HardwareCheckJob:
+    """A running hardware check. The engine finishes it after ``seconds``; ``cancel`` ends it early."""
+
+    def __init__(self, engine: "MonitorEngine", seconds: float) -> None:
+        self.engine = engine
+        self.seconds = seconds
+        self.collector = LinkTestCollector(engine.effective_channels)
+        self._start = (engine._seq.received, engine._seq.dropped, engine._bad_lines, engine._adc_error_count)
+        self._off = engine.on_sample(lambda p: self.collector.sample(p.t_sec, p.volts))
+        self.t0 = engine.clock()
+        self.results: list[CheckResult] | None = None
+
+    @property
+    def done(self) -> bool:
+        return self.results is not None
+
+    @property
+    def progress(self) -> float:
+        if self.done:
+            return 1.0
+        return min(1.0, (self.engine.clock() - self.t0) / (self.seconds * 1000))
+
+    def cancel(self) -> None:
+        self._finish()
+
+    def _update(self) -> None:
+        if not self.done and self.progress >= 1:
+            self._finish()
+
+    def _finish(self) -> None:
+        if self.done:
+            return
+        e = self.engine
+        self._off()
+        received, dropped, bad, adc = self._start
+        stats = LinkStats(
+            seconds=(e.clock() - self.t0) / 1000,
+            span_sec=self.collector.span_sec,
+            received=e._seq.received - received,
+            dropped=e._seq.dropped - dropped,
+            bad_lines=e._bad_lines - bad,
+            info=e._info,
+            adc_errors=e._adc_error_count - adc + (1 if e.alarms.is_active("adcError") else 0),
+            i2c_scan=e._i2c_scan,
+            channels=self.collector.stats(),
+        )
+        self.results = analyze_link_test(stats, e.effective_channels, e.settings.processing.barometric_mm_hg)
+        e._jobs.discard(self)
+        e._add_log(f"Hardware check ({self.seconds:g} s): " + "; ".join(f"{r.label} {r.status}" for r in self.results))
+
+
+class MonitorEngine:
+    def __init__(
+        self,
+        store: SettingsStore | None = None,
+        audio=None,
+        clock: Callable[[], float] = _now_ms,
+        port_lister: Callable[[], list[PortInfo]] = list_ports,
+        sessions_dir: Path | None = None,
+        prevent_sleep: bool = True,
+    ) -> None:
+        self.clock = clock
+        self.store = store or SettingsStore()
+        self.settings = self.store.load_settings()
+        self.channels = self.store.load_saved_channels() or clone_channels(DEFAULT_CHANNELS)
+        self.alarms = AlarmEngine(self.settings.alarms, self._on_alarm_log)
+        self.audio = audio if audio is not None else AlarmAudio()
+        self.audio.volume = self.settings.alarms.volume
+        self._sessions_override = Path(sessions_dir) if sessions_dir else None
+        self.library = SessionLibrary(self.sessions_dir, clock)
+        self.recorder = SessionRecorder(self.library, clock)
+        self.port_lister = port_lister
+        self.prevent_sleep = prevent_sleep
+        #: bumps whenever the session library changes, so lists can refresh
+        self.library_version = 0
+        #: called with the message when a high-priority alarm starts (the window flashes)
+        self.high_alarm_listeners: list[Callable[[str], None]] = []
+
+        self._file_channels: dict | None = None
+        self._known_port: PortInfo | None = None
+        self._awaiting_reconnect = False
+        self._reconnect_at: float | None = None
+        self._last_port_scan = -math.inf
+        self._i2c_scan: str | None = None
+        self._adc_error_count = 0
+        self._source: Source | None = None
+        self._status = "idle"
+        self._status_detail = ""
+        self._info: dict[str, str] | None = None
+        self._seq = SeqTracker()
+        self._bad_lines = 0
+        self._bad_times: collections.deque[float] = collections.deque()
+        self._last_data_wall = 0.0
+        self._last_valid_wall = {cid: 0.0 for cid in CHANNEL_IDS}
+        self._last_breath_wall = 0.0
+        self._last: Processed | None = None
+        self._flow_peak_cur = -math.inf
+        self._flow_peak_last = NAN
+        self._rate_count = 0
+        self._rate_window_start = 0.0
+        self._measured_rate = 0.0
+        self._last_high_tone = 0.0
+        self._last_med_tone = 0.0
+        self._trace_max = -math.inf
+        self._trace_start = 0.0
+        self._connected_at = 0.0
+        self._handshake_retried = False
+
+        #: breaths on the device clock (cleared on every new connection)
+        self.breaths: list[Breath] = []
+        #: per-breath trend on the wall clock (kept across reconnects)
+        self.trend: list[TrendPoint] = []
+        #: continuous CO2 behind the trend: wall s, peak mmHg per 0.5 s
+        self.trace_t: list[float] = []
+        self.trace_v: list[float] = []
+        self.markers: list[Marker] = []
+        #: where alarms started, for the trend chart: (wall ms, priority)
+        self.alarm_starts: list[tuple[float, str]] = []
+        self.log: list[LogLine] = []
+        self.recent_lines: collections.deque[str] = collections.deque(maxlen=40)
+        self.trend_version = 0
+        self.frozen = False
+        self._marker_id = 1
+        #: display values waiting to be drawn, per channel; the window drains them
+        self.waves: dict[str, list[float]] = {cid: [] for cid in CHANNEL_IDS}
+        #: bumps when the waveforms should be cleared (new connection)
+        self.wave_epoch = 0
+        self._sample_listeners: list[Callable[[Processed], None]] = []
+        self._timers: list[tuple[float, Callable[[], None]]] = []
+        self._jobs: set[HardwareCheckJob] = set()
+
+        self.pipeline = Pipeline(self.effective_channels, self._processing_options())
+
+    # ---------- configuration ----------
+
+    @property
+    def sessions_dir(self) -> Path:
+        if self._sessions_override:
+            return self._sessions_override
+        return Path(self.settings.sessions_dir) if self.settings.sessions_dir else default_sessions_dir()
+
+    @property
+    def effective_channels(self) -> dict:
+        """The calibration in use: a replay's own, or the saved one."""
+        return self._file_channels if self._file_channels is not None else self.channels
+
+    @property
+    def source(self) -> Source | None:
+        return self._source
+
+    @property
+    def info(self) -> dict[str, str] | None:
+        return self._info
+
+    def _rate(self) -> float:
+        try:
+            r = float((self._info or {}).get("RATE", ""))
+        except ValueError:
+            r = NAN
+        return r if math.isfinite(r) and r else 100
+
+    def _processing_options(self) -> ProcessingOptions:
+        return dataclasses.replace(self.settings.processing, sample_rate_hz=self._rate())
+
+    def update_settings(self, **changes) -> None:
+        """Change settings (attribute names of ``Settings``); applied and saved at once."""
+        prev = self.settings
+        nxt = dataclasses.replace(prev, **changes)
+        nxt.alarms = sanitize_alarms(nxt.alarms)
+        self.settings = nxt
+        self.store.save_settings(nxt)
+        self.alarms.set_settings(nxt.alarms, self.clock())
+        self.audio.volume = nxt.alarms.volume
+        if nxt.processing != prev.processing:
+            self.pipeline.set_options(self._processing_options())
+        if nxt.sessions_dir != prev.sessions_dir and not self.recorder.active:
+            self.library = SessionLibrary(self.sessions_dir, self.clock)
+            self.recorder.library = self.library
+            self.library_changed()
+
+    def set_sim(self, **patch) -> None:
+        self.update_settings(sim=dataclasses.replace(self.settings.sim, **patch))
+        if isinstance(self._source, SimulatorSource):
+            self._source.core.model.set_params(**patch)
+
+    def set_channels(self, c: dict) -> None:
+        """Save a new calibration (applies immediately)."""
+        self.channels = validate_channels(clone_channels(c))
+        self.store.save_channels(self.channels)
+        if self._file_channels is None:
+            self.pipeline.set_channels(self.channels)
+        self._add_log("Calibration saved")
+        self.recorder.event(self.clock(), "CALIBRATION_CHANGED")
+
+    def reset_channels(self) -> None:
+        """Back to co2response/config/channels.json."""
+        self.store.clear_saved_channels()
+        self.channels = load_default_channels()
+        if self._file_channels is None:
+            self.pipeline.set_channels(self.channels)
+        self._add_log("Calibration reset to defaults")
+
+    def init(self) -> list[SessionRecord]:
+        """Find recordings that a crashed or closed app left unfinished."""
+        self._refresh_known_port(force=True)
+        try:
+            recovered = self.library.recover_interrupted(self.clock())
+        except OSError:
+            recovered = []
+        if recovered:
+            self.library_changed()
+        return recovered
+
+    def library_changed(self) -> None:
+        self.library_version += 1
+
+    # ---------- connection ----------
+
+    def connect(
+        self,
+        kind: str,
+        *,
+        port: str | None = None,
+        session: ParsedSession | None = None,
+        file_name: str | None = None,
+        speed: float = 1,
+        use_file_calibration: bool = True,
+        auto: bool = False,
+    ) -> bool:
+        """Connect a source: 'serial', 'simulator', 'bridge' or 'replay'. Returns True on success."""
+        if kind == "serial":
+            device = port or (self._known_port.device if self._known_port else None)
+            if not device:
+                self._fail("Choose the Arduino's serial port first (Settings > Connection).")
+                return False
+            info = next((p for p in self._ports() if p.device == device), None)
+            src: Source = SerialSource(device, self.settings.baud_rate, info.label if info else None)
+        elif kind == "simulator":
+            sim = self.settings.sim
+            a = DEFAULT_CHANNELS["adc"]
+            src = SimulatorSource(
+                simulator_encoders(),
+                a["railLowV"],
+                a["railHighV"],
+                clock=self._seconds,
+                scenario=sim.scenario,
+                rr=sim.rr,
+                etco2=sim.etco2,
+                vt_ml=sim.vt_ml,
+                seed=int(self.clock()) & 0xFFFF,
+            )
+        elif kind == "bridge":
+            src = BridgeSource(self.settings.bridge_url)
+        elif kind == "replay":
+            if session is None:
+                raise ValueError("No session to replay")
+            src = ReplaySource(session, file_name or "session.csv", speed, clock=self._seconds)
+        else:
+            raise ValueError(f"unknown source {kind!r}")
+        if self._source is not None:
+            self._stop_source("Switched source")
+        return self._start_source(src, session, use_file_calibration, auto)
+
+    def _seconds(self) -> float:
+        return self.clock() / 1000
+
+    def _fail(self, detail: str) -> None:
+        self._status = "error"
+        self._status_detail = detail
+        self._add_log(f"Connection failed: {detail}", "error")
+
+    def _start_source(self, src: Source, session: ParsedSession | None, use_file_calibration: bool, auto: bool) -> bool:
+        kind = src.kind
+        self._file_channels = session.channels if kind == "replay" and use_file_calibration and session is not None and session.channels else None
+        self._info = None
+        self.pipeline = Pipeline(self.effective_channels, self._processing_options())
+        self._seq.reset()
+        self._bad_lines = 0
+        self._bad_times.clear()
+        self.breaths = []
+        self._last = None
+        self._flow_peak_cur = -math.inf
+        self._flow_peak_last = NAN
+        now = self.clock()
+        self._last_data_wall = self._last_breath_wall = now
+        self._last_valid_wall = {cid: 0.0 for cid in CHANNEL_IDS}
+        self._clear_waves()
+        self.alarms.set_condition("deviceLost", False, now, "medium", "")
+        self._awaiting_reconnect = False
+        self._reconnect_at = None
+        self._i2c_scan = None
+        self._adc_error_count = 0
+        self._status = "connecting"
+        self._status_detail = ""
+        try:
+            src.start()
+        except Exception as e:
+            self._file_channels = None
+            self._fail(str(e) or type(e).__name__)
+            if auto:
+                self._awaiting_reconnect = True  # try again when the port settles
+            return False
+        self._source = src
+        self._status = "connected"
+        self._connected_at = now
+        self._handshake_retried = False
+        if kind in ("serial", "bridge"):
+            src.send("INFO")
+            src.send("START")
+        if isinstance(src, SerialSource):
+            info = next((p for p in self._ports() if p.device == src.port), None)
+            self.settings.last_port = src.port
+            self.settings.last_port_usb = info.usb_id if info else ""
+            self.store.save_settings(self.settings)
+            self._known_port = info or PortInfo(src.port)
+        self._add_log(f"Connected: {src.label}")
+        self.recorder.event(now, f"CONNECTED {src.label}")
+        if self.prevent_sleep:
+            keep_awake.acquire()
+        if kind in ("serial", "bridge") and self.settings.auto_record and not self.recorder.active:
+            self.start_recording()
+        return True
+
+    # ---------- serial port memory and auto-reconnect ----------
+
+    def _ports(self) -> list[PortInfo]:
+        try:
+            return self.port_lister()
+        except Exception:
+            return []
+
+    def find_known_port(self, strict: bool = False) -> PortInfo | None:
+        """The Arduino used last time, if it is plugged in. Without ``strict``, the only
+        Arduino-like port when there is exactly one."""
+        ports = self._ports()
+        usb, dev = self.settings.last_port_usb, self.settings.last_port
+        match = next((p for p in ports if usb and p.usb_id == usb), None) or next((p for p in ports if dev and p.device == dev and (not usb or not p.usb_id)), None)
+        if match or strict:
+            return match
+        likely = [p for p in ports if p.likely_arduino]
+        return likely[0] if len(likely) == 1 else None
+
+    def _refresh_known_port(self, force: bool = False) -> None:
+        now = self.clock()
+        if not force and now - self._last_port_scan < 2000:
+            return
+        self._last_port_scan = now
+        self._known_port = self.find_known_port()
+
+    def reconnect_known_port(self) -> bool:
+        """One click: reopen the Arduino used last time. False if it is not plugged in."""
+        p = self.find_known_port()
+        if p is None:
+            self._fail("The Arduino used last time is not plugged in. Choose a port in Settings > Connection.")
+            return False
+        return self.connect("serial", port=p.device)
+
+    def _check_reconnect(self, now: float) -> None:
+        if not self._awaiting_reconnect or self._source is not None or not self.settings.auto_reconnect:
+            self._reconnect_at = None
+            return
+        if self._reconnect_at is None:
+            if now - self._last_port_scan < 1000:
+                return
+            self._last_port_scan = now
+            p = self.find_known_port(strict=True)
+            if p is not None:
+                self._add_log("Arduino plugged back in: reconnecting")
+                self._reconnect_at = now + 1500  # give the board a moment to boot
+        elif now >= self._reconnect_at:
+            self._reconnect_at = None
+            p = self.find_known_port(strict=True)
+            if p is not None:
+                self.connect("serial", port=p.device, auto=True)
+
+    def _on_source_status(self, ev: StatusEvent) -> None:
+        now = self.clock()
+        if ev.status == "error":
+            self._status = "error"
+            self._status_detail = ev.detail or "Connection error"
+            reconnect = self._source is not None and self._source.kind == "serial" and self.settings.auto_reconnect
+            if reconnect:
+                self._status_detail += ". Reconnects by itself when the Arduino is plugged back in."
+            self.alarms.set_condition("deviceLost", True, now, "medium", f"DEVICE DISCONNECTED: {self._status_detail}")
+            self._add_log(self._status_detail, "error")
+            self._stop_source(self._status_detail, keep_error=True)
+            self._awaiting_reconnect = reconnect
+            self._last_port_scan = now  # the port may still be listed for a moment
+        elif ev.status == "disconnected" and ev.detail:
+            self._add_log(ev.detail)
+            self._stop_source(ev.detail)
+
+    def disconnect(self) -> None:
+        """User-initiated disconnect."""
+        self._awaiting_reconnect = False
+        self._stop_source("Disconnected")
+
+    def _stop_source(self, reason: str, keep_error: bool = False) -> None:
+        src = self._source
+        if src is None:
+            return
+        self._source = None
+        try:
+            if src.kind == "serial":
+                src.send("STOP")
+            src.stop()
+        except Exception:
+            pass
+        now = self.clock()
+        # an intentional disconnect is not a technical fault
+        for aid in TECHNICAL:
+            if self.alarms.is_active(aid):
+                self.alarms.remove(aid)
+        if self._file_channels is not None:
+            self._file_channels = None
+            self.pipeline.set_channels(self.channels)
+        if not keep_error:
+            self._status = "idle"
+            self._status_detail = "" if reason == "Disconnected" else reason
+        self.recorder.event(now, f"DISCONNECTED {reason}")
+        for job in list(self._jobs):
+            job.cancel()
+        keep_awake.release()
+
+    def send(self, cmd: str) -> None:
+        if self._source is not None:
+            self._source.send(cmd)
+        self._add_log(f"Sent {cmd}")
+
+    # ---------- data path ----------
+
+    def poll(self) -> None:
+        """Read whatever the source has produced. Call often (e.g. every 20 ms)."""
+        src = self._source
+        if src is not None:
+            for item in src.poll():
+                if self._source is not src:
+                    break
+                if isinstance(item, str):
+                    self._on_line(item)
+                else:
+                    self._on_source_status(item)
+        self._run_timers()
+
+    def _on_line(self, line: str) -> None:
+        self.recent_lines.append(line)
+        p = parse_line(line)
+        now = self.clock()
+        kind = p.kind
+        if kind == "data":
+            self._on_data(p.seq, p.t_ms, p.volts, now)
+        elif kind == "info":
+            if "I2C_SCAN" in p.fields:
+                self._i2c_scan = p.fields["I2C_SCAN"]
+                self._add_log(f"Device I2C scan: {self._i2c_scan}", "error")
+                if self.alarms.is_active("adcError"):
+                    self.alarms.set_condition("adcError", True, now, "medium", f"ADC NOT FOUND: I2C devices answering: {self._i2c_scan}. See Settings > Diagnostics")
+                return
+            prev_rate = self._rate()
+            self._info = {**(self._info or {}), **p.fields}
+            if self._rate() != prev_rate:
+                self.pipeline.set_options(self._processing_options())
+            self._add_log(f"Device: {p.raw}")
+        elif kind == "error":
+            if p.code == "ADC_NOT_FOUND":
+                self._adc_error_count += 1
+                if not self.alarms.is_active("adcError"):
+                    scan = f" (I2C devices answering: {self._i2c_scan})" if self._i2c_scan else ""
+                    self.alarms.set_condition("adcError", True, now, "medium", f"ADC NOT FOUND: check I2C wiring and power{scan}")
+            self._add_log(f"Device error: {p.code}", "error")
+            self.recorder.event(now, f"DEVICE_ERROR {p.code}")
+        elif kind == "ack":
+            self._add_log(f"Device: {p.raw}")
+        elif kind == "bad":
+            self._bad_lines += 1
+            self._bad_times.append(now)
+
+    def _on_data(self, seq: int, t_ms: float, volts: list[float], now: float) -> None:
+        self._last_data_wall = now
+        self._seq.push(seq, t_ms)
+        if self.alarms.is_active("adcError"):
+            self.alarms.set_condition("adcError", False, now, "medium", "")
+        pr = self.pipeline.process(t_ms, volts)
+        self._last = pr
+        for cid in CHANNEL_IDS:
+            if pr.valid[cid]:
+                self._last_valid_wall[cid] = now
+
+        self._rate_count += 1
+        if now - self._rate_window_start >= 2000:
+            self._measured_rate = (self._rate_count * 1000) / (now - self._rate_window_start)
+            self._rate_count = 0
+            self._rate_window_start = now
+
+        if not self.frozen:
+            w = self.waves
+            w["co2"].append(pr.co2_pct if self.settings.co2_unit == "%" else pr.co2_mmhg)
+            w["flow"].append(pr.flow_lpm)
+            w["pneumo"].append(pr.pneumo_lpm)
+            if len(w["co2"]) > MAX_WAVE:
+                for lst in w.values():
+                    del lst[: len(lst) - MAX_WAVE]
+        if math.isfinite(pr.flow_lpm):
+            self._flow_peak_cur = max(self._flow_peak_cur, pr.flow_lpm)
+
+        if math.isfinite(pr.co2_mmhg):
+            self._trace_max = max(self._trace_max, pr.co2_mmhg)
+        if now - self._trace_start >= 500:
+            if math.isfinite(self._trace_max):
+                self.trace_t.append(now / 1000)
+                self.trace_v.append(self._trace_max)
+                if len(self.trace_t) > MAX_TRACE:
+                    del self.trace_t[:1000]
+                    del self.trace_v[:1000]
+            self._trace_max = -math.inf
+            self._trace_start = now
+
+        if pr.breath is not None:
+            self._on_breath(pr.breath, now)
+        self.alarms.on_live_co2(pr.co2_mmhg, now)
+
+        self.recorder.sample(now, t_ms, seq, volts, pr.co2_mmhg, pr.co2_pct, pr.flow_lpm, pr.pneumo_pa, pr.pneumo_lpm)
+        for fn in list(self._sample_listeners):
+            fn(pr)
+
+    def _on_breath(self, b: Breath, now: float) -> None:
+        self.breaths.append(b)
+        if len(self.breaths) > 2000:
+            del self.breaths[:500]
+        self._last_breath_wall = now
+        self._flow_peak_last = self._flow_peak_cur
+        self._flow_peak_cur = -math.inf
+        mv = minute_ventilation(self.breaths, b.t_end)
+        rr = respiratory_rate(self.breaths)
+        self.trend.append(TrendPoint(now / 1000, b.etco2, mv, b.vt_ml, rr))
+        if len(self.trend) > MAX_TREND:
+            del self.trend[:1000]
+        self.trend_version += 1
+        # recorded on the sample that completed the breath (written right after this)
+        self.recorder.breath(b.etco2, b.fico2, rr, b.vt_ml, mv, b.peak_insp_lpm)
+        self.alarms.on_breath(b.etco2, now)
+
+    def take_waves(self) -> dict[str, list[float]]:
+        """Display values since the last call, per channel (for the sweep waveforms)."""
+        out = self.waves
+        self.waves = {cid: [] for cid in CHANNEL_IDS}
+        return out
+
+    def _clear_waves(self) -> None:
+        self.waves = {cid: [] for cid in CHANNEL_IDS}
+        self.wave_epoch += 1
+
+    # ---------- periodic checks (4 Hz) ----------
+
+    def tick(self) -> None:
+        now = self.clock()
+        src = self._source
+        connected = self._status == "connected" and src is not None
+        fresh = now - self._last_data_wall < 3000
+        a = self.alarms
+
+        a.set_condition("noData", connected and not fresh, now, "medium", f"NO DATA FROM DEVICE for {round((now - self._last_data_wall) / 1000)} s")
+        rails = {"co2": ("railCo2", "CO2 SENSOR"), "flow": ("railFlow", "FLOW SENSOR"), "pneumo": ("railPneumo", "PNEUMOTACH")}
+        for cid, (aid, name) in rails.items():
+            stuck = self._last is not None and self._last.stuck[cid]
+            a.set_condition(aid, connected and fresh and stuck, now, "medium", f"{name} SIGNAL AT ADC RAIL: check sensor connection")
+
+        apnea_sec = self.settings.alarms.apnea_sec
+        signal = self._last is not None and (self._last.valid["pneumo"] or self._last.valid["co2"])
+        since_breath = (now - self._last_breath_wall) / 1000
+        a.set_condition("apnea", apnea_sec > 0 and connected and fresh and signal and since_breath > apnea_sec, now, "high", f"APNEA: no breath for {math.floor(since_breath)} s")
+
+        a.set_condition("audioOff", not self.audio.armed, now, "advisory", "Audible alarm NOT armed: no sound output found. Press Arm audio.")
+        dr = self._seq.drop_rate
+        a.set_condition("dropped", connected and self._seq.received > 500 and dr > 0.001, now, "advisory", f"Dropped samples {dr * 100:.2f} % ({self._seq.dropped})")
+        while self._bad_times and self._bad_times[0] < now - 60000:
+            self._bad_times.popleft()
+        nb = len(self._bad_times)
+        a.set_condition("checksum", connected and nb > 0, now, "advisory", f"{nb} corrupt line{'' if nb == 1 else 's'} in the last minute")
+
+        a.tick(now)
+
+        # audio: highest active priority, unless silenced
+        pri = a.active_priority()
+        if pri and not a.is_silenced(now) and self.audio.armed:
+            if pri == "high" and now - self._last_high_tone >= 5000:
+                self.audio.high()
+                self._last_high_tone = now
+            elif pri == "medium" and now - self._last_med_tone >= 15000:
+                self.audio.medium()
+                self._last_med_tone = now
+
+        # serial: if the board reset when the port opened, the first commands were lost
+        if connected and src.kind in ("serial", "bridge") and self._info is None and not self._handshake_retried and now - self._connected_at > 2500:
+            self._handshake_retried = True
+            src.send("INFO")
+            src.send("START")
+
+        if src is None:
+            self._refresh_known_port()
+        self._check_reconnect(now)
+        for job in list(self._jobs):
+            job._update()
+        self._run_timers()
+        self.recorder.poll(now)
+
+    def call_later(self, ms: float, fn: Callable[[], None]) -> None:
+        self._timers.append((self.clock() + ms, fn))
+
+    def _run_timers(self) -> None:
+        if not self._timers:
+            return
+        now = self.clock()
+        due = [t for t in self._timers if t[0] <= now]
+        if due:
+            self._timers = [t for t in self._timers if t[0] > now]
+            for _, fn in due:
+                fn()
+
+    def _on_alarm_log(self, e: AlarmLogEntry) -> None:
+        aid = f" {e.id}" if e.id else ""
+        pri = f" ({e.priority})" if e.priority else ""
+        self._add_log(f"{e.kind.upper()}{aid}{pri}: {e.message}", "alarm")
+        self.recorder.event(e.t, f"ALARM_{e.kind.upper()}{aid}{f' {e.priority}' if e.priority else ''} {e.message}")
+        if e.kind == "start" and e.id != "test" and e.priority in ("high", "medium"):
+            self.alarm_starts.append((e.t, e.priority))
+            if len(self.alarm_starts) > 2000:
+                del self.alarm_starts[:500]
+            self.trend_version += 1
+        if e.kind == "start":
+            # sound the new alarm right away rather than waiting for the repeat interval
+            if e.priority == "high":
+                self._last_high_tone = 0
+                for fn in self.high_alarm_listeners:
+                    fn(e.message)
+            if e.priority == "medium":
+                self._last_med_tone = 0
+
+    # ---------- operator actions ----------
+
+    def arm_audio(self, confirm: bool = True) -> bool:
+        ok = self.audio.arm(confirm)
+        self._add_log(f"Audio armed ({self.audio.backend})" if ok else f"No sound output: {self.audio.error}", "info" if ok else "error")
+        self.tick()
+        return ok
+
+    def acknowledge(self, aid: str | None = None) -> None:
+        self.alarms.acknowledge(self.clock(), aid)
+
+    def toggle_silence(self) -> None:
+        now = self.clock()
+        if self.alarms.is_silenced(now):
+            self.alarms.unsilence(now)
+        else:
+            self.alarms.silence(now)
+
+    def test_alarm(self) -> None:
+        """High alarm with tone now, a medium tone after 4 s, cleared after 8 s."""
+        self.alarms.set_condition("test", True, self.clock(), "high", "TEST ALARM: confirm you can see and hear this")
+        self._last_high_tone = 0
+        self.tick()
+        self.call_later(4000, lambda: self.audio.medium() if self.audio.armed else None)
+        self.call_later(8000, lambda: self.alarms.set_condition("test", False, self.clock(), "high", ""))
+
+    def set_frozen(self, on: bool) -> None:
+        self.frozen = on
+
+    def add_marker(self, label: str | None = None) -> Marker:
+        mid = self._marker_id
+        self._marker_id += 1
+        m = Marker(mid, self.clock(), (label or "").strip() or f"Event {mid}")
+        self.markers.append(m)
+        self.trend_version += 1
+        self.recorder.event(m.t, f"MARK {m.label}")
+        self._add_log(f"Marker: {m.label}")
+        return m
+
+    def rename_marker(self, mid: int, label: str) -> None:
+        m = next((x for x in self.markers if x.id == mid), None)
+        if m is None or label.strip() == m.label:
+            return
+        m.label = label.strip() or m.label
+        self.trend_version += 1
+        self.recorder.event(self.clock(), f"MARK_RENAMED {mid} {m.label}")
+
+    def start_recording(self) -> SessionRecord | None:
+        src = self._source
+        rec = self.recorder.start(
+            SessionMeta(
+                study_code=self.settings.study_code,
+                started_ms=0,
+                app_version=__version__,
+                source=src.label if src else "none",
+                firmware=(self._info or {}).get("FW", "unknown"),
+                rate_hz=self._rate(),
+                channels=self.effective_channels,
+                processing=self._processing_options(),
+                alarm_settings=self.settings.alarms,
+            )
+        )
+        where = "" if rec else f" (in memory: cannot write to {self.library.folder})"
+        self._add_log(f"Recording {self.recorder.file_name}{where}")
+        now = self.clock()
+        self.recorder.event(now, f"RECORDING_STARTED source={src.label if src else 'none'}")
+        for r in self.alarms.list():
+            if r.state == "active" and r.priority != "advisory":
+                self.recorder.event(now, f"ALARM_ACTIVE_AT_START {r.id} {r.priority} {r.message}")
+        self.library_changed()
+        return rec
+
+    def stop_recording(self) -> StopResult:
+        """Stop and finish the session file. It is already on disk in the sessions folder."""
+        file_name = self.recorder.file_name
+        self.recorder.event(self.clock(), "RECORDING_STOPPED")
+        rec, memory_text = self.recorder.stop()
+        self._add_log("Recording stopped")
+        self.library_changed()
+        if memory_text is None:
+            return StopResult(file_name, self.library.path(rec) if rec else None, rec)
+        # the sessions folder failed: save the whole file somewhere else
+        for folder in (Path.home(), Path.cwd()):
+            try:
+                path = folder / file_name
+                path.write_text(memory_text, encoding="utf-8", newline="")
+                self._add_log(f"Session file saved to {path} (sessions folder not writable)", "error")
+                return StopResult(file_name, path, rec, self.recorder.write_error)
+            except OSError:
+                continue
+        self._add_log(f"Could not save {file_name}", "error")
+        return StopResult(file_name, None, rec, self.recorder.write_error or "could not write the file")
+
+    def shutdown(self) -> StopResult | None:
+        """Close cleanly: finish any recording and release the device."""
+        result = self.stop_recording() if self.recorder.active else None
+        self._awaiting_reconnect = False
+        self._stop_source("App closed")
+        return result
+
+    # ---------- hardware check and calibration helpers ----------
+
+    def run_hardware_check(self, seconds: float) -> HardwareCheckJob:
+        if self._status != "connected":
+            raise RuntimeError("Connect the Arduino (or the simulator) first.")
+        job = HardwareCheckJob(self, seconds)
+        self._jobs.add(job)
+        return job
+
+    def on_sample(self, fn: Callable[[Processed], None]) -> Callable[[], None]:
+        """Call ``fn`` with every processed sample. Returns a function that unsubscribes."""
+        self._sample_listeners.append(fn)
+
+        def off() -> None:
+            if fn in self._sample_listeners:
+                self._sample_listeners.remove(fn)
+
+        return off
+
+    def capture_average(self, cid: str, seconds: float, done: Callable[[CaptureResult | None, str | None], None]) -> None:
+        """Average one channel's raw volts and calibrated value over ``seconds``; then
+        ``done(result, None)``, or ``done(None, message)`` if nothing arrived."""
+        index = int(self.effective_channels["channels"][cid]["index"])
+        acc = [0.0, 0, 0.0, 0]
+
+        def on(p: Processed) -> None:
+            v = p.volts[index] if index < len(p.volts) else NAN
+            if math.isfinite(v):
+                acc[0] += v
+                acc[1] += 1
+            y = p.co2_pct if cid == "co2" else p.flow_lpm if cid == "flow" else p.pneumo_pa
+            if math.isfinite(y):
+                acc[2] += y
+                acc[3] += 1
+
+        off = self.on_sample(on)
+
+        def finish() -> None:
+            off()
+            if not acc[1]:
+                done(None, "No data arrived. Connect the device (or the simulator) first.")
+            else:
+                done(CaptureResult(acc[0] / acc[1], acc[2] / acc[3] if acc[3] else NAN, acc[1]), None)
+
+        self.call_later(seconds * 1000, finish)
+
+    # ---------- exports of the live session ----------
+
+    def trend_csv(self) -> str:
+        def f(v: float, d: int) -> str:
+            return f"{v:.{d}f}" if math.isfinite(v) else ""
+
+        rows = ["wall_time_iso,etco2_mmHg,rr_bpm,vt_ml,mv_lpm"]
+        rows += [",".join((iso_ms(p.t * 1000), f(p.etco2, 1), f(p.rr, 1), f(p.vt, 0), f(p.mv, 2))) for p in self.trend]
+        return "\n".join(rows) + "\n"
+
+    def log_text(self) -> str:
+        return "".join(f"{iso_ms(line.t)}\t{line.level}\t{line.text}\n" for line in self.log)
+
+    def next_file_name(self) -> str:
+        return session_file_name(self.settings.study_code, datetime.now())
+
+    # ---------- misc ----------
+
+    def _add_log(self, text: str, level: str = "info") -> None:
+        self.log.append(LogLine(self.clock(), text, level))
+        if len(self.log) > 2000:
+            del self.log[:500]
+
+    def snapshot(self) -> Snapshot:
+        now = self.clock()
+        connected = self._status == "connected"
+        stale = {cid: not connected or now - self._last_valid_wall[cid] > 2000 for cid in CHANNEL_IDS}
+        last_b = self.breaths[-1] if self.breaths else None
+        last_period = last_b.period_sec if last_b else 4
+        breath_stale = last_b is None or now - self._last_breath_wall > max(15000, 3000 * last_period) or not connected
+        L = self._last
+        pct = self.settings.co2_unit == "%"
+        n = Numbers(
+            co2_live=NAN if stale["co2"] or L is None else (L.co2_pct if pct else L.co2_mmhg),
+            etco2=NAN if breath_stale or stale["co2"] else last_b.etco2,
+            etco2_median=NAN if breath_stale or stale["co2"] else etco2_median(self.breaths),
+            rr=NAN if breath_stale else respiratory_rate(self.breaths),
+            fico2=NAN if breath_stale or stale["co2"] else last_b.fico2,
+            flow=NAN if stale["flow"] or L is None else L.flow_lpm,
+            peak_flow=NAN if breath_stale or stale["flow"] else self._flow_peak_last,
+            pneumo_flow=NAN if stale["pneumo"] or L is None else L.pneumo_lpm,
+            pneumo_pa=NAN if stale["pneumo"] or L is None else L.pneumo_pa,
+            vt=NAN if breath_stale or stale["pneumo"] else last_b.vt_ml,
+            mv=NAN if breath_stale or stale["pneumo"] or L is None else minute_ventilation(self.breaths, L.t_sec),
+            volts=list(L.volts) if L else [],
+        )
+        rec = self.recorder
+        src = self._source
+        return Snapshot(
+            now=now,
+            status=self._status,
+            status_detail=self._status_detail,
+            source_kind=src.kind if src else None,
+            source_label=src.label if src else "",
+            info=self._info,
+            rate_hz=self._rate(),
+            measured_rate_hz=self._measured_rate if connected else 0,
+            received=self._seq.received,
+            dropped=self._seq.dropped,
+            drop_rate=self._seq.drop_rate,
+            bad_lines=self._bad_lines,
+            numbers=n,
+            stale=stale,
+            breath_stale=breath_stale,
+            alarms=self.alarms.list(),
+            silence_ms=self.alarms.silence_remaining_ms(now),
+            audio_armed=self.audio.armed,
+            audio_backend=self.audio.backend,
+            recording=RecordingState(rec.active, rec.started_at, rec.file_name, rec.bytes, rec.rec is not None, rec.write_error, self.library_version, str(self.library.folder)),
+            frozen=self.frozen,
+            trend_version=self.trend_version,
+            settings=self.settings,
+            channels=self.channels,
+            using_file_calibration=self._file_channels is not None,
+            replay_progress=src.progress if isinstance(src, ReplaySource) else None,
+            known_port=self._known_port.label if self._known_port and src is None else None,
+            awaiting_reconnect=self._awaiting_reconnect,
+            i2c_scan=self._i2c_scan,
+        )
+
+    def settings_json(self) -> dict:
+        return to_dict(self.settings)

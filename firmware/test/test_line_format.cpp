@@ -1,5 +1,5 @@
-// Host-side check that the firmware's data lines match the dashboard's formatter
-// byte for byte (expected strings come from web/src/protocol/protocol.ts).
+// Host-side check that the firmware's data lines match the monitor app's formatter
+// byte for byte (the same cases are in tests/test_protocol.py for co2response/protocol.py).
 //   g++ -std=c++11 -Wall -Wextra -I CO2Response test/test_line_format.cpp -o /tmp/t && /tmp/t
 #include <stdio.h>
 #include <string.h>

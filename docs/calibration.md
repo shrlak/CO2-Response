@@ -1,12 +1,12 @@
 # Calibration
 
-Every sensor conversion lives in the dashboard, so recalibrating never means reflashing. Open **Settings > Calibration**. Each channel has a card with:
+Every sensor conversion lives in the monitor app, so recalibrating never means reflashing. Open **Settings > Calibration**. Each channel has a card with:
 
 - **Live readout:** raw volts, the calibrated value using the settings you are editing (marked "Preview (unsaved)"), and a third value (CO2 in mmHg, pneumotach flow, or the flow sensor's saved value).
 - **Methods:** Enter values, Zero & span / Two-point, Multi-point fit, and (pneumotach) 3 L syringe.
-- **Save calibration / Discard changes / Load defaults.** Nothing on the monitor changes until you save. Saved calibrations get a timestamp, stay in this browser, and are written into the header of every recording.
+- **Save calibration / Discard changes / Load defaults.** Nothing on the monitor changes until you save. Saved calibrations get a timestamp, stay on this computer, and are written into the header of every recording.
 
-Use **Export calibration (JSON)** to keep a copy with your lab notes, and **Import calibration…** to load it on another computer. **Reset all to defaults** returns to `web/public/config/channels.json`.
+Use **Export calibration (JSON)** to keep a copy with your lab notes, and **Import calibration…** to load it on another computer. **Reset all to defaults** returns to `co2response/config/channels.json`.
 
 ## Calibration models
 
@@ -54,7 +54,7 @@ The monitor shows CO2 in mmHg using P_CO2 = F_CO2/100 × (P_B − P_H2O). Set th
 
 | Place | What |
 | --- | --- |
-| `web/public/config/channels.json` | Defaults for a fresh browser. Edit it (with the sensor's real scaling) and redeploy, no rebuild needed. |
-| Browser storage | The calibration you saved on this computer. |
+| `co2response/config/channels.json` | Defaults for a fresh install. Edit it with the sensors' real scaling; no rebuild needed. |
+| `channels.json` in the app's settings folder | The calibration you saved on this computer (Windows `%APPDATA%\CO2-Response`, macOS `~/Library/Application Support/CO2-Response`, Linux `~/.local/share/co2response`). |
 | Exported JSON | Your backup. |
 | Every session CSV header | The calibration in use when recording started, so replays reproduce the numbers. |

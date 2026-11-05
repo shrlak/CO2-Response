@@ -1,0 +1,5 @@
+# Tests and lint:  pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8
+pytest-qt>=4.4
+ruff>=0.5

@@ -8,24 +8,26 @@ This plan builds on the original "Capnography & Flow Dashboard: Build Plan for C
 2. **The UI has two modes.** *Monitor* is what a clinician sees: waveforms, numbers, alarms and nothing else. *Setup* is what the engineer uses: calibration, raw volts, channel config, diagnostics. Keeping calibration off the monitor screen is what keeps the monitor screen simple.
 3. **The repo already exists** (`shrlak/co2-response`). Phase 1 scaffolds inside it and skips `gh repo create`.
 
-A clickable mockup of the Monitor screen is in [`docs/design/monitor-mockup.html`](docs/design/monitor-mockup.html). Open it in Chrome and press **Simulate CO2 rise** to see the alarm states. **Phase 0 is signing off on that mockup** before any production code is written.
+A clickable mockup of the Monitor screen is in [`docs/design/monitor-mockup.html`](docs/design/monitor-mockup.html). Open it in any web browser and press **Simulate CO2 rise** to see the alarm states. **Phase 0 is signing off on that mockup** before any production code is written.
 
 ## Build status (Nov 5, 2026)
 
 All seven phases are built and pushed. What is verified and what still needs hardware:
 
+> **Update: the app is now Python.** The browser app (TypeScript, React, Vite, Web Serial) was rewritten as a Python desktop app: `co2response/` (PySide6 + pyqtgraph for the window, pyserial for the Arduino, numpy). The protocol, simulator, processing, alarms, recorder and session-file format are line-for-line ports, and the Python version reproduces `sample-data/synthetic_session.csv` byte for byte (a test keeps it that way). What changed for users: install with `pip install -r requirements.txt` and run `python -m co2response`; it works on Windows, macOS and Linux without Chrome/Edge; sessions are written straight to a folder (Documents/CO2-Response/sessions) instead of browser storage; GitHub Pages hosting is gone. The phase notes below describe the original build; the [tech stack](#7-tech-stack-and-repo-layout) is current.
+
 | Phase | Status |
 | --- | --- |
 | 0 UI sign-off | Mockup done; the real app follows it, with **dark and light themes** and a desktop layout (1280×720 and up). |
-| 1 Scaffold | Done. CI runs web lint/typecheck/tests/build, browser tests, firmware builds and a bridge smoke test. |
+| 1 Scaffold | Done. CI runs ruff and pytest (including the headless window) on Linux, Windows and macOS, firmware builds and a bridge smoke test. |
 | 2 Protocol + simulator | Done, tested (bad checksums, sequence gaps, wraparound, device reset). |
 | 3 Processing | Done, tested against synthetic data with known answers (RR 15 ± 0.5, EtCO2 40 ± 0.5, VT, MV). |
 | 4 Monitor UI | Done. 10-minute soak at 100 Hz/channel in simulator mode (see PR notes for numbers). |
-| 5 Alarms | Done, tested (delay, hysteresis, latching, re-arm, CO2 ramp end to end, in the browser too). |
+| 5 Alarms | Done, tested (delay, hysteresis, latching, re-arm, CO2 ramp end to end, in the window too). |
 | 6 Firmware + hardware link | Firmware builds for Uno/Mega/Nano and its line format matches the dashboard byte for byte. **Not yet run on a real Arduino**: the "< 0.1 % drops over 10 min" check needs hardware. |
-| 7 Recording, deploy, docs | Done. Replay reproduces recorded numbers exactly (tested). Pages deploy runs once Pages is enabled and the work is on `main`. |
+| 7 Recording, docs | Done. Replay reproduces recorded numbers exactly (tested). |
 | + Hardware | Hardware check in Diagnostics (link, ADC, per-sensor rail/noise), one-click and automatic USB reconnect, firmware I2C scan and bus timeout. Step-by-step [SETUP-GUIDE.md](SETUP-GUIDE.md) with a wiring diagram. |
-| + Data | Each recording is one analysis-ready CSV (format v2), written to browser storage every second (crash-safe) and saved on stop. Data & recordings screen: import, review with charts, export whole/breaths/events/time range, replay, delete. Python loader in `analysis/`. |
+| + Data | Each recording is one analysis-ready CSV (format v2), written to disk every second (crash-safe). Data & recordings screen: import, review with charts, export whole/breaths/events/time range, replay, delete. Python loader in `analysis/`. |
 
 **Changes from the plan made during the build**
 
@@ -44,7 +46,7 @@ A research monitor that reads three analog sensors (end-tidal CO2, flow rate, pn
 **In scope (v1)**
 
 - Arduino firmware that samples 3 channels from the ADC and streams volts over USB serial
-- A static web app (GitHub Pages, or run locally) that talks to the Arduino directly with Web Serial
+- A desktop app (Python; originally a static web app) that talks to the Arduino directly over USB serial
 - Live waveforms, numerics, derived values (ETCO2, RR, VT, MV)
 - ETCO2 trend, minute-ventilation vs. ETCO2 response plot, configurable alarms, CSV recording and replay
 - Simulator and CSV-replay sources, so the whole UI works with no hardware
@@ -55,7 +57,7 @@ A research monitor that reads three analog sensors (end-tidal CO2, flow rate, pn
 ## 2. System architecture
 
 ```
- Sensors ──analog──► ADS1115 ──I2C──► Arduino ──USB serial──► Browser (Chrome/Edge)
+ Sensors ──analog──► ADS1115 ──I2C──► Arduino ──USB serial──► Monitor app (Python, any OS)
  CH0 CO2                               samples at 100 Hz       │
  CH1 Flow                              sends volts only        ├─ line parser + checksum
  CH2 Pneumotach ΔP                     D,seq,t,v0,v1,v2*CK     ├─ processing (calibrate, filter,
@@ -65,13 +67,13 @@ A research monitor that reads three analog sensors (end-tidal CO2, flow rate, pn
                                                                └─ UI (sweep waveforms, numerics, trends)
 ```
 
-- The Arduino is a dumb, reliable sampler. Every unit conversion, every derived value and every alarm runs in the browser, so recalibrating never means reflashing.
-- The page is loaded once from GitHub Pages (or `localhost`) and then needs no server. Data never leaves the laptop.
-- An optional Python bridge (serial to WebSocket) covers Safari/Firefox and a second viewing screen.
+- The Arduino is a dumb, reliable sampler. Every unit conversion, every derived value and every alarm runs in the app, so recalibrating never means reflashing.
+- The app needs no server. Data never leaves the laptop.
+- An optional Python bridge (serial to WebSocket) lets a second computer watch the same Arduino.
 
 ## 3. Hardware, channels and calibration
 
-Sensor and ADC part numbers are not chosen yet, so every conversion lives in one editable file (`web/public/config/channels.json`). Nothing is hard-coded.
+Sensor and ADC part numbers are not chosen yet, so every conversion lives in one editable file (`co2response/config/channels.json`). Nothing is hard-coded.
 
 | Channel | Sensor | Raw signal (assumed) | Shown as |
 | --- | --- | --- | --- |
@@ -86,7 +88,7 @@ Sensor and ADC part numbers are not chosen yet, so every conversion lives in one
 
 - CO2: zero on room air (≈0.04 %), span on a known gas (e.g. 5 % CO2).
 - Pneumotach: flow = K × ΔP (Fleisch-type) or quadratic fit. K comes from a 3 L syringe: push the volume, integrate, solve K so the integral equals 3.000 L.
-- Calibrations save to the browser and download as JSON.
+- Calibrations save on the computer and export as JSON.
 
 **Wiring notes (README and `docs/wiring.md`):** common ground across sensors, ADC and Arduino; keep every sensor output inside the ADC input range (divider if it exceeds VDD); twisted or shielded leads on the pneumotach transducer.
 
@@ -114,7 +116,7 @@ D,<seq>,<t_ms>,<v0>,<v1>,<v2>*<checksum>
 
 ## 5. Signal processing
 
-Pure TypeScript in `web/src/processing/`, no UI imports, each function unit-tested on synthetic data with a known answer.
+Pure Python in `co2response/processing/` (originally TypeScript), no UI imports, each function unit-tested on synthetic data with a known answer.
 
 1. **Calibrate** volts to units from `channels.json`.
 2. **Filter:** optional 2nd-order low-pass, 10 Hz default, per channel.
@@ -253,7 +255,7 @@ Seven keys, fixed order, always visible. Each shows its state in its own label.
 
 A separate screen, entered from the soft-key bar. Same color system, denser layout, light or dark.
 
-- **Connect:** source picker (Arduino via Web Serial, Simulator, Replay CSV, Bridge), baud rate, `INFO` handshake result.
+- **Connect:** source picker (Arduino over USB serial, Simulator, Replay CSV, Bridge), baud rate, `INFO` handshake result.
 - **Channels:** live raw volts per channel, calibration type, coefficients, stuck-at-rail indicator.
 - **Calibration wizard:** step-by-step CO2 zero/span and the 3 L syringe procedure, with a pass/fail result and a timestamp.
 - **Display:** sweep speed, scales, units (mmHg/%), barometric pressure, filter on/off, theme.
@@ -292,55 +294,39 @@ Every alarm start, acknowledge, silence and clear goes into the session log and 
 | Layer | Choice |
 | --- | --- |
 | Firmware | C++ / PlatformIO, Adafruit ADS1X15 |
-| App | TypeScript, React, Vite (static build) |
-| Live waveforms | Custom Canvas 2D sweep renderer |
-| Trend charts | uPlot |
-| Fonts | Barlow Semi Condensed via `@fontsource` (bundled, offline) |
-| Device link | Web Serial (desktop Chrome/Edge) |
+| App | Python 3.10+, PySide6 (Qt) desktop window |
+| Live waveforms | Custom QPainter sweep widget (paths built with pyqtgraph's `arrayToQPath`) |
+| Trend and review charts | pyqtgraph |
+| Fonts | Barlow Semi Condensed (OFL), bundled in `co2response/fonts/` |
+| Device link | pyserial (Windows, macOS, Linux) |
+| Alarm tones | numpy-synthesized IEC-style pulses through sounddevice (PortAudio); system beep as a fallback |
 | Bridge (optional) | Python, pyserial + websockets |
-| Tests | Vitest (processing, parser, alarms); Playwright smoke and screenshot tests in simulator mode |
-| CI / deploy | GitHub Actions; GitHub Pages |
+| Tests | pytest (protocol, simulator, processing, alarms, session files, engine with a pseudo-terminal "Arduino") and pytest-qt for the window, headless |
+| CI | GitHub Actions on Linux, Windows and macOS |
 
 ```
 CO2-Response/
-├── README.md               # setup, wiring, calibration, usage, safety, assumptions
+├── README.md               # setup, usage, safety, assumptions
 ├── PLAN.md                 # this document
-├── LICENSE
-├── .github/workflows/
-│   ├── ci.yml              # lint + test + build on every PR
-│   └── deploy.yml          # build web/ and publish to Pages on main
-├── firmware/
-│   ├── platformio.ini
-│   ├── CO2Response/        # CO2Response.ino, config.h (pins, rate, PGA gain, baud), ADC driver
-│   └── test/               # host-side line-format test
-├── web/
-│   ├── index.html
-│   ├── package.json
-│   ├── vite.config.ts      # base: '/co2-response/' for Pages
-│   ├── public/config/channels.json
-│   ├── src/
-│   │   ├── theme/          # tokens.css (colors above), fonts, Day/Night themes
-│   │   ├── serial/         # Web Serial connection + line parser
-│   │   ├── sources/        # Arduino, Simulator, CSV replay, WebSocket bridge
-│   │   ├── processing/     # calibration, filters, breaths, ETCO2, RR, VT, MV
-│   │   ├── alarms/         # alarm state machine, priorities, Web Audio tones
-│   │   ├── render/         # sweep renderer, ring buffers
-│   │   ├── charts/         # uPlot trend + response wrappers
-│   │   ├── monitor/        # Monitor mode: Header, AlarmSlot, WavePanel, NumericTile, TrendStrip, SoftKeys
-│   │   ├── setup/          # Setup mode: Connect, Channels, CalibrationWizard, Display, Diagnostics
-│   │   └── storage/        # settings, calibrations, CSV record/export
-│   └── tests/
-├── bridge/
-│   ├── serial_ws_bridge.py
-│   └── requirements.txt
-├── docs/
-│   ├── design/monitor-mockup.html   # Phase 0 mockup
-│   ├── protocol.md
-│   ├── wiring.md
-│   ├── calibration.md
-│   └── safety.md
-└── sample-data/
-    └── synthetic_session.csv
+├── SETUP-GUIDE.md          # wiring to a running session
+├── pyproject.toml, requirements*.txt
+├── co2response/            # the monitor app (python -m co2response)
+│   ├── protocol.py         # line format, checksum, parser, sequence tracking
+│   ├── channels.py, settings.py, config/channels.json
+│   ├── sim/                # simulated physiology and firmware emulation
+│   ├── processing/         # calibration, filter, breaths, EtCO2, RR, VT, MV, rail checks
+│   ├── alarms/             # alarm state machine and tones
+│   ├── sources/            # serial (Arduino), simulator, replay, bridge
+│   ├── storage/            # session file format, session folder, recorder
+│   ├── engine/             # data path (source → processing → alarms → recorder), hardware check
+│   └── ui/                 # PySide6 window: monitor, settings, review
+├── tests/                  # pytest
+├── scripts/make_sample_session.py
+├── firmware/               # PlatformIO project; sketch in CO2Response/, host-side line-format test
+├── bridge/                 # optional serial → WebSocket relay
+├── analysis/               # pandas loader for session files
+├── docs/                   # protocol, wiring, calibration, safety, data format, Phase 0 mockup
+└── sample-data/synthetic_session.csv
 ```
 
 ## 8. Build phases
@@ -363,7 +349,6 @@ Each phase ends with tests run, a commit, a push, and a pause for review. The ap
 - The repo `shrlak/co2-response` already exists, so there is no `gh repo create` step.
 - Work happens on feature branches with a PR per phase into `main`.
 - Things you turn on yourself in GitHub Settings (the build cannot do these from this environment):
-  - **Pages:** Settings → Pages → Source: GitHub Actions. On a private repo this needs GitHub Pro, which is free with GitHub Education. Otherwise make the repo public (check with your PI first), or run it locally with `npm run dev`.
   - **Branch protection:** Settings → Branches → require the CI check to pass before merging into `main`.
 
 ## Safety, limitations and open questions
@@ -371,10 +356,9 @@ Each phase ends with tests run, a commit, a push, and a pause for review. The ap
 This is a research prototype, not a medical device. It must never be the only CO2 monitor on a person or animal, and the README and UI must say so.
 
 - The header shows `RESEARCH USE ONLY` permanently. A per-session banner adds "Not for clinical decision-making. Keep a certified monitor as the primary alarm."
-- The alarm only works while the tab is open, the laptop is awake, and audio is armed. The README says this in its first screen.
+- The alarm only works while the app is running, the laptop is awake, and a sound output is armed. The README says this in its first screen.
 - No patient identifiers. Session files are named by date/time and a free-text study code.
 - Electrical isolation: if anything connects to a person, the Arduino/ADC must be isolated from mains (battery laptop or USB isolator). Go through the lab's safety process before any human or animal use.
-- Web Serial needs desktop Chrome/Edge over HTTPS or localhost. Safari/Firefox need the bridge.
 - The alarm look and tones are styled after IEC 60601-1-8 conventions so they feel familiar. They are not certified to that standard.
 
 **Open questions** (each uses the stated default, with a `TODO` in code and a line under README "Assumptions")

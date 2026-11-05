@@ -5,10 +5,10 @@ Every recording is saved as **one CSV file** that holds everything about the ses
 ## Saving
 
 1. Press **Record** on the monitor (or **Start recording** in **Settings > Data & recordings**).
-2. While it records, the session is written to the browser's storage every second. If the tab crashes or the laptop restarts, at most the last second is lost; the next time the app opens it says it recovered the recording.
-3. Press **Stop rec**. The session is saved as `co2r_<study code>_<YYYYMMDD-HHMMSS>.csv` to your Downloads folder. It is also kept in **Data & recordings**, so you can save it again later.
+2. While it records, the file `co2r_<study code>_<YYYYMMDD-HHMMSS>.csv` is written to the sessions folder every second (**Documents/CO2-Response/sessions** unless you pick another one in **Data & recordings**). If the app crashes or the laptop restarts, at most the last second is lost; the next time the app opens it lists the recording as **Recovered**.
+3. Press **Stop rec**. The file is finished and listed in **Data & recordings**, where you can open, export, replay or delete it.
 
-Sessions kept in the browser are deleted if the browser's site data is cleared. Export anything you need to keep, and press **Keep when disk is low** once so the browser does not evict them on its own.
+The sessions folder holds the CSV files themselves plus a small `index.json` with each session's status and summary. Copy the CSVs to the lab's storage like any other data file.
 
 ## Importing
 

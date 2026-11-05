@@ -19,7 +19,6 @@ of the app can be converted by importing them in the app and exporting again.
 from __future__ import annotations
 
 import argparse
-import io
 import json
 from dataclasses import dataclass, field
 

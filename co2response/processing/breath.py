@@ -1,0 +1,127 @@
+"""Breath detection on pneumotach flow, falling back to the capnogram when there is no flow signal."""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+
+NAN = float("nan")
+
+
+@dataclass
+class BreathOptions:
+    #: flow must pass ± this (L/min) to count as inspiration/expiration; 0.05 L/s = 3 L/min
+    deadband_lpm: float = 3
+    #: breaths shorter than this (s) are treated as noise
+    min_breath_sec: float = 1
+
+
+@dataclass
+class Breath:
+    #: start of this breath's inspiration (device clock, s)
+    t_start: float
+    #: start of the next inspiration, when the breath was finalized (s)
+    t_end: float
+    period_sec: float
+    #: peak CO2 in the expiratory phase, mmHg (NaN if no CO2 signal)
+    etco2: float
+    #: minimum CO2 during inspiration, mmHg
+    fico2: float
+    #: inspired volume, mL (NaN in CO2-only mode)
+    vt_ml: float
+    #: peak inspiratory flow, L/min (NaN in CO2-only mode)
+    peak_insp_lpm: float
+    #: which signal found the breath: 'flow' or 'co2'
+    detected_by: str
+
+
+class BreathDetector:
+    """A breath runs from one inspiration start to the next and is reported when the
+    next inspiration begins."""
+
+    def __init__(self, opts: BreathOptions | None = None) -> None:
+        self.opts = opts or BreathOptions()
+        self._mode: str | None = None
+        self._phase = "unknown"
+        self._start: float | None = None
+        self._last_t: float | None = None
+        self._last_flow = 0.0
+        self._vt_l = 0.0
+        self._peak = 0.0
+        self._fi = NAN
+        self._et = NAN
+        self._last_et = NAN
+
+    def reset(self) -> None:
+        self._mode = None
+        self._phase = "unknown"
+        self._start = None
+        self._last_t = None
+
+    def _begin_breath(self, t: float) -> Breath | None:
+        out = None
+        if self._start is not None and self._mode is not None:
+            flow_mode = self._mode == "flow"
+            out = Breath(
+                t_start=self._start,
+                t_end=t,
+                period_sec=t - self._start,
+                etco2=self._et,
+                fico2=self._fi,
+                vt_ml=self._vt_l * 1000 if flow_mode else NAN,
+                peak_insp_lpm=self._peak if flow_mode else NAN,
+                detected_by=self._mode,
+            )
+            if math.isfinite(self._et):
+                self._last_et = self._et
+        self._start = t
+        self._phase = "insp"
+        self._vt_l = 0.0
+        self._peak = 0.0
+        self._fi = NAN
+        self._et = NAN
+        return out
+
+    def push(self, t: float, flow: float, co2: float) -> Breath | None:
+        """Feed one sample.
+
+        t: device time (s); flow: pneumotach flow (L/min, NaN when invalid);
+        co2: CO2 (mmHg, NaN when invalid). Returns the breath that just finished, if any.
+        """
+        mode = "flow" if math.isfinite(flow) else "co2" if math.isfinite(co2) else None
+        if mode != self._mode:
+            self.reset()
+            self._mode = mode
+        if mode is None:
+            return None
+
+        dt = 0.0 if self._last_t is None else max(0.0, min(0.5, t - self._last_t))
+        self._last_t = t
+        long_enough = self._start is None or t - self._start >= self.opts.min_breath_sec
+        breath = None
+
+        if mode == "flow":
+            db = self.opts.deadband_lpm
+            if flow > db and self._phase != "insp" and long_enough:
+                breath = self._begin_breath(t)
+            elif flow < -db and self._phase == "insp":
+                self._phase = "exp"
+            if self._phase == "insp":
+                self._vt_l += ((max(0.0, flow) + max(0.0, self._last_flow)) / 2 / 60) * dt
+                self._peak = max(self._peak, flow)
+            self._last_flow = flow
+        else:
+            ref = self._last_et if math.isfinite(self._last_et) else 20
+            hi = max(4, 0.5 * ref)
+            lo = max(2, 0.3 * ref)
+            if co2 > hi and self._phase != "exp":
+                self._phase = "exp"
+            elif co2 < lo and self._phase == "exp" and long_enough:
+                breath = self._begin_breath(t)
+
+        if math.isfinite(co2):
+            if self._phase == "exp":
+                self._et = max(self._et, co2) if math.isfinite(self._et) else co2
+            if self._phase == "insp":
+                self._fi = min(self._fi, co2) if math.isfinite(self._fi) else co2
+        return breath

@@ -9,7 +9,7 @@ This guide takes you from a box of parts to a running session: wiring the sensor
 1. [What you need](#1-what-you-need)
 2. [Wire the ADC board and sensors](#2-wire-the-adc-board-and-sensors)
 3. [Load the firmware onto the Arduino](#3-load-the-firmware-onto-the-arduino)
-4. [Open the dashboard](#4-open-the-dashboard)
+4. [Install and open the monitor app](#4-install-and-open-the-monitor-app)
 5. [Connect the Arduino to the computer](#5-connect-the-arduino-to-the-computer)
 6. [Check the setup](#6-check-the-setup)
 7. [Calibrate](#7-calibrate)
@@ -31,7 +31,7 @@ This guide takes you from a box of parts to a running session: wiring the sensor
 | Pneumotachograph and a differential pressure transducer with a 0–5 V output | Example transducer: NXP MPXV7002DP (±2 kPa, 5 V supply, 0.5–4.5 V output). Plus two lengths of tubing to connect it. |
 | 1 MΩ resistor | Pull-up on the CO2 input, so an unplugged capnograph raises an alarm instead of reading 0. |
 | Breadboard or perfboard, jumper wires | Use twisted pair or shielded cable for the pressure transducer's signal. |
-| Computer | Windows, macOS, Linux or ChromeOS, with **Chrome or Edge** (desktop). |
+| Computer | Windows 10/11, macOS or Linux, with **Python 3.10 or newer** (free from [python.org](https://www.python.org/downloads/)). |
 | For calibration | Room air, a certified CO2 calibration gas (for example 5 %), a 3 L calibration syringe. Optional: a reference flowmeter and a manometer. |
 | For any live study | A medical-grade USB isolator, or a laptop running on battery. See [safety](docs/safety.md). |
 
@@ -56,7 +56,7 @@ Do all wiring with the USB cable **unplugged**.
 | ADDR | GND | GND | black |
 | ALRT | leave unconnected | leave unconnected | |
 
-Wiring ADDR to GND gives the board I2C address 0x48, which is what the firmware expects. If ADDR is left floating or wired elsewhere, the board answers at 0x49–0x4B; the dashboard's hardware check will tell you.
+Wiring ADDR to GND gives the board I2C address 0x48, which is what the firmware expects. If ADDR is left floating or wired elsewhere, the board answers at 0x49–0x4B; the app's hardware check will tell you.
 
 ### 2.2 Sensors to ADS1115
 
@@ -90,7 +90,7 @@ With P1 on the circuit side, inspiration (flow toward the patient) gives a posit
 
 | If… | Do this |
 | --- | --- |
-| Your sensors output 0–3.3 V | In `firmware/CO2Response/config.h` set `ADS_GAIN` to `GAIN_ONE` (±4.096 V, finer resolution). In `web/public/config/channels.json` set `railHighV` to `4.096`. |
+| Your sensors output 0–3.3 V | In `firmware/CO2Response/config.h` set `ADS_GAIN` to `GAIN_ONE` (±4.096 V, finer resolution). In `co2response/config/channels.json` set `railHighV` to `4.096`. |
 | Your transducer has two outputs (differential) | Connect them to A2 and A3, and set `PNEUMO_DIFFERENTIAL 1` in `config.h`. |
 | You use an Arduino Mega | SDA is pin 20 and SCL is pin 21. Everything else is the same. |
 
@@ -115,7 +115,7 @@ You only need to do this once per Arduino, and again after changing `config.h`.
 7. Check it: **Tools → Serial Monitor**, set the baud rate to **115200**. You should see:
    - `I,FW,1.0.0,ADC,ADS1115,CH,3,RATE,100,…`, then a stream of `D,…` lines. Good.
    - `E,ADC_NOT_FOUND` and `I,I2C_SCAN,…` instead: the ADS1115 is not answering. See [troubleshooting](#10-troubleshooting).
-8. **Close the Serial Monitor.** Only one program can use the port at a time, and the dashboard needs it.
+8. **Close the Serial Monitor.** Only one program can use the port at a time, and the monitor app needs it.
 
 ### Option B: PlatformIO (command line)
 
@@ -133,49 +133,65 @@ Use `-e mega` or `-e nano` for those boards. `pio device monitor -b 115200` show
 
 | Setting | Default | Change it when |
 | --- | --- | --- |
-| `BAUD_RATE` | 115200 | You raise the sample rate above 150 Hz (also change it in the dashboard). |
-| `DEFAULT_RATE_HZ` | 100 | You need faster sampling (up to 200). The dashboard can also change the rate live. |
+| `BAUD_RATE` | 115200 | You raise the sample rate above 150 Hz (also change it in the app's Settings > Connection). |
+| `DEFAULT_RATE_HZ` | 100 | You need faster sampling (up to 200). The app can also change the rate live. |
 | `ADS_I2C_ADDRESS` | 0x48 | ADDR is not wired to GND. |
 | `ADS_GAIN` | `GAIN_TWOTHIRDS` (±6.144 V) | Your sensors are 0–3.3 V (use `GAIN_ONE`). |
 | `PNEUMO_DIFFERENTIAL` | 0 | Your transducer has two outputs on A2/A3. |
 
 ---
 
-## 4. Open the dashboard
+## 4. Install and open the monitor app
 
-The dashboard runs in **Chrome or Edge on a desktop or laptop**. Safari and Firefox cannot talk to USB devices; for those, use the Python bridge (below).
+The monitor is a Python desktop program. It runs on Windows, macOS and Linux and talks to the Arduino's USB serial port directly.
 
-**Option A, hosted (once GitHub Pages is turned on):** open `https://shrlak.github.io/CO2-Response/`. Loading the page needs internet; once it is open, the data never leaves the computer.
-
-**Option B, on your own computer.** Install [Node.js 22](https://nodejs.org/), then:
+1. Install **Python 3.10 or newer** from [python.org](https://www.python.org/downloads/). On Windows, tick **Add python.exe to PATH** in the installer.
+2. Get the code: on the GitHub repository page, **Code → Download ZIP** and unzip it, or `git clone` it.
+3. Open a terminal (Windows: **PowerShell**; macOS: **Terminal**) in the unzipped folder and install the app's packages. Doing it inside a virtual environment keeps them separate from anything else on the computer:
 
 ```bash
-cd web
+python -m venv .venv
+```
+
+Windows:
+
+```bash
+.venv\Scripts\activate
+```
+
+macOS / Linux:
+
+```bash
+source .venv/bin/activate
 ```
 
 ```bash
-npm install
+pip install -r requirements.txt
 ```
+
+4. Start the monitor:
 
 ```bash
-npm run dev
+python -m co2response
 ```
 
-Open the address it prints, usually `http://localhost:5173`.
+Next time, only the `activate` line and `python -m co2response` are needed.
 
-**Option C, Safari / Firefox / a second screen:** run the bridge on the computer that has the Arduino:
+The first time, a banner explains that this is research software; press **I understand**. To try the monitor without hardware, press **Start simulator** (or start it with `python -m co2response --sim`).
+
+On Linux, alarm sounds need PortAudio (`sudo apt install libportaudio2`); without it the app falls back to the system beep and says so.
+
+**Watching from a second computer.** Run the bridge on the computer that has the Arduino, then on the other computer open the monitor and use **Settings → Connection → Python bridge** with that computer's address (for example `ws://192.168.1.20:8765`):
 
 ```bash
 pip install -r bridge/requirements.txt
 ```
 
 ```bash
-python bridge/serial_ws_bridge.py --port COM3
+python bridge/serial_ws_bridge.py --port COM3 --host 0.0.0.0
 ```
 
-Use `--list` to see port names. Then in the dashboard go to **Settings → Connection → Python bridge** and connect to `ws://localhost:8765`.
-
-The first time, a banner explains that this is research software; press **I understand**. To try the dashboard without hardware, press **Start simulator**.
+Use `--list` to see port names. Only use `--host 0.0.0.0` on a trusted network: anyone who can reach the port can see the data.
 
 ---
 
@@ -183,15 +199,17 @@ The first time, a banner explains that this is research software; press **I unde
 
 1. Plug the Arduino's USB cable **directly into the computer**, not through a hub.
 2. Close the Arduino IDE Serial Monitor, and any other program that might be using the port.
-3. In the dashboard, press **Connect Arduino (USB)**. The browser lists serial ports. Pick the Arduino:
+3. In the monitor, press **Connect Arduino (USB)**. A list of serial ports appears, with likely Arduinos first. Pick the Arduino and press **Connect**:
    - Windows: "Arduino Uno (COM3)" or similar; clones may show "USB-SERIAL CH340 (COM4)"
-   - macOS: "Arduino Uno" or "cu.usbmodem…"; clones may show "cu.wchusbserial…"
-   - Linux: "ttyACM0" or "ttyUSB0"
-4. Within a second the header shows **Arduino (USB 2341:0043) · 100 Hz · 0 dropped**, and the waveforms start sweeping.
+   - macOS: "/dev/cu.usbmodem…"; clones may show "/dev/cu.wchusbserial…"
+   - Linux: "/dev/ttyACM0" or "/dev/ttyUSB0"
+4. Within a couple of seconds the header shows **Arduino Uno (COM3) · 100 Hz · 0 dropped**, and the waveforms start sweeping. (An Uno restarts when its port is opened; the app waits for it and repeats the handshake if needed.)
 
-Next time, the start screen offers **Reconnect Arduino (USB …)**, which reopens it with one click and no port list.
+You can also connect from the command line: `python -m co2response --port COM3`. `python -m co2response --list-ports` lists the ports.
 
-**If the cable comes out during a session**, a medium-priority **DEVICE DISCONNECTED** alarm sounds. Plug the same Arduino back in and the dashboard reconnects on its own, and any recording continues in the same file. You can turn this off in **Settings → Connection**.
+Next time, the start screen offers **Reconnect Arduino Uno (COM3)**, which reopens it with one click.
+
+**If the cable comes out during a session**, a medium-priority **DEVICE DISCONNECTED** alarm sounds. Plug the same Arduino back in and the app reconnects on its own (even if the port name changed), and any recording continues in the same file. You can turn this off in **Settings → Connection**.
 
 **No port appears?** See [troubleshooting](#10-troubleshooting). The usual causes are a charge-only cable, a missing CH340 driver for clone boards (Windows/macOS), or, on Linux, not being in the `dialout` group.
 
@@ -223,7 +241,7 @@ Do this after wiring, after moving the setup, and at the start of each study day
 
 ## 7. Calibrate
 
-The dashboard converts volts to real units using the numbers in **Settings → Calibration**. Until you calibrate, it uses placeholder values that are almost certainly wrong for your sensors. Calibrate in this order (full details in [docs/calibration.md](docs/calibration.md)):
+The app converts volts to real units using the numbers in **Settings → Calibration**. Until you calibrate, it uses placeholder values that are almost certainly wrong for your sensors. Calibrate in this order (full details in [docs/calibration.md](docs/calibration.md)):
 
 1. **Barometric pressure.** In **Settings → Display & units**, set the lab's barometric pressure. Pittsburgh is usually near 735 mmHg, not 760; the difference changes every CO2 reading in mmHg by about 3 %.
 2. **CO2: zero and span.** Calibration card **CO2 → Zero & span**:
@@ -248,16 +266,16 @@ You can type any calibration in by hand (gain/offset, polynomial, or a lookup ta
 
 - [ ] A certified monitor is connected as the primary alarm (for any live study).
 - [ ] The laptop runs on battery, or the Arduino is behind a USB isolator (for any live study).
-- [ ] The computer will not sleep: set its power settings to never sleep while plugged in or on battery, and postpone OS updates. The dashboard asks the screen to stay on while connected, but that does not stop the computer from sleeping.
+- [ ] The computer will not sleep: set its power settings to never sleep while plugged in or on battery, and postpone OS updates. The app asks the computer to stay awake while a device is connected (Windows and macOS), but do not rely on that alone.
 - [ ] The header shows **100 Hz · 0 dropped**, and the hardware check passed.
 - [ ] Each calibration card shows today's date (or a recent one you trust).
 - [ ] The study code is set in **Settings → Data & recordings**. **Never use a name, MRN or date of birth.**
 - [ ] Alarm limits are set: **Alarm limits** soft key (default: EtCO2 high at 50 mmHg, 2-breath delay).
-- [ ] **Arm audio** is pressed, then **Alarm limits → Test alarm**: you see the red banner and hear the high-priority tone, then the medium tone.
+- [ ] The **Audio armed** soft key is green (it arms by itself when the app finds a sound output), then **Alarm limits → Test alarm**: you see the red banner and hear the high-priority tone, then the medium tone.
 
 ### Recording
 
-Press **● Record**. The header shows **● REC** and a timer. The session is saved to the browser every second, so a crash loses at most a second.
+Press **● Record**. The header shows **● REC** and a timer. The session file is written to disk every second (in **Documents/CO2-Response/sessions** unless you choose another folder), so a crash loses at most a second.
 
 To start recording automatically whenever the Arduino connects, turn on **Settings → Data & recordings → Start recording when the Arduino connects**. This suits overnight runs.
 
@@ -291,25 +309,27 @@ A number shows `---` when its sensor has sent no valid data for 2 s.
 | EtCO2 HIGH | high (red) | EtCO2 above the high limit for the trigger delay | Check the subject first, then the primary monitor |
 | APNEA | high | No breath detected for 20 s | Check the subject and the airway connection |
 | EtCO2 LOW (if set) | medium | EtCO2 below the low limit | Check for a leak, a disconnected sample line, or apnea |
-| DEVICE DISCONNECTED | medium (amber) | USB link lost | Reconnect the cable; the dashboard reconnects on its own |
+| DEVICE DISCONNECTED | medium (amber) | USB link lost | Reconnect the cable; the app reconnects on its own |
 | NO DATA FROM DEVICE | medium | Connected, but nothing received for 3 s | Check the Arduino; unplug and replug it |
 | ADC NOT FOUND | medium | The Arduino cannot reach the ADS1115 | Check the ADC wiring (VDD, GND, SDA, SCL, ADDR) |
 | … SIGNAL AT ADC RAIL | medium | A sensor reads 0 V or 5 V for 2 s | Sensor unplugged, unpowered or out of range |
-| Audible alarm NOT armed | info (blue) | The browser has not been allowed to play sound | Press **Arm audio** |
+| Audible alarm NOT armed | info (blue) | No sound output was found | Plug in speakers or headphones, then press **Arm audio** |
 
 Alarms **latch**: after the condition clears, the alarm stays as "resolved" until someone presses **Clear**, so a short event is never missed.
 
-**Keep the tab open and the laptop awake.** The alarms work in a background tab, but not if the tab is closed, the browser crashes, or the computer sleeps.
+**Keep the app open and the laptop awake.** The alarms work while the window is minimised or behind other windows (a high alarm also flashes the taskbar), but not if the app is closed or crashes, or the computer sleeps.
 
 ---
 
 ## 9. After the session
 
-1. Press **■ Stop rec**. The session is saved as **one CSV file**, `co2r_<study code>_<date>-<time>.csv`, in your Downloads folder, and a copy stays in **Settings → Data & recordings**.
-2. Copy the file to the lab's storage. Browser copies are deleted if the browser's site data is cleared.
+1. Press **■ Stop rec**. The session is finished as **one CSV file**, `co2r_<study code>_<date>-<time>.csv`, in the sessions folder (**Documents/CO2-Response/sessions** by default; **Settings → Data & recordings → Open folder** shows it). It is also listed in **Settings → Data & recordings**.
+2. Copy the file to the lab's storage.
 3. To look at it again, go to **Settings → Data & recordings → Open**. You get the summary, zoomable charts and the event list. Export the whole session, the breath table or the events, for everything or a zoomed time range, or **Replay** it on the monitor.
 4. To analyse it, open the file in Excel, MATLAB or R, or use `analysis/load_session.py` with Python. The columns and examples are in [docs/data-format.md](docs/data-format.md).
 5. In **Settings → Connection** press **Disconnect**, then unplug the Arduino.
+
+If the app closes or the computer crashes while recording, the file is kept up to the last second; the next time the app starts it lists it as **Recovered**.
 
 ---
 
@@ -317,9 +337,9 @@ Alarms **latch**: after the condition clears, the alarm stays as "resolved" unti
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| "This browser has no Web Serial" | Not Chrome or Edge on a desktop, or the page is not on `https://` or `localhost` | Use desktop Chrome or Edge on the Pages URL or `localhost`, or use the Python bridge |
-| No port in the browser's list | Charge-only USB cable; clone board without its CH340 driver; on Linux, not in `dialout` | Try a data cable. Install the CH340 driver (Windows/macOS). On Linux run `sudo usermod -a -G dialout $USER` and log out and back in. |
-| "Failed to open serial port" | Another program has the port | Close the Arduino IDE Serial Monitor, other browser tabs using the board, and any other serial program |
+| `python` is not found, or `pip install` fails | Python not installed or not on PATH | Install Python 3.10+ from python.org (tick **Add python.exe to PATH** on Windows), open a new terminal, and try again |
+| No port in the list | Charge-only USB cable; clone board without its CH340 driver; on Linux, not in `dialout` | Try a data cable. Install the CH340 driver (Windows/macOS). On Linux run `sudo usermod -a -G dialout $USER` and log out and back in. |
+| "… is in use or not allowed" | Another program has the port | Close the Arduino IDE Serial Monitor, another copy of this app, and any other serial program |
 | Connected but nothing arrives; NO DATA alarm | Wrong firmware, wrong baud rate, or the firmware is waiting for the ADC | Check **Settings → Diagnostics → Last raw lines**. If it shows `E,ADC_NOT_FOUND`, see the next rows. Otherwise reflash the firmware and match the baud rate. |
 | ADC NOT FOUND, I2C scan "none" | The ADS1115 has no power, or SDA/SCL are not connected | Check VDD to 5V, GND to GND, SDA to A4 and SCL to A5 (20/21 on a Mega) |
 | ADC NOT FOUND, I2C scan "0x49" (or 0x4A, 0x4B) | ADDR is not wired to GND | Wire ADDR to GND, or set `ADS_I2C_ADDRESS` in `config.h` to the scanned address and reflash |
@@ -328,9 +348,9 @@ Alarms **latch**: after the condition clears, the alarm stays as "resolved" unti
 | Flow goes negative when breathing in | Tubing or sensor reversed | Swap P1 and P2, or flip the sign of the gain in **Calibration** |
 | EtCO2 lower than the reference monitor | Barometric pressure left at 760, calibration out of date, or a leak in the sample line | Set the real barometric pressure, redo zero and span, and check the sample line |
 | VT is wrong | Pneumotach not zeroed, or k1 not calibrated | Zero with no flow, then redo the 3 L syringe calibration |
-| Dropped samples above 0.1 % | USB hub, poor cable, overloaded computer, or the tab throttled | Plug in directly, use a short good-quality cable, close heavy programs, keep the tab in front |
-| No alarm sound | Audio not armed, system volume muted, or sound going to another output | Press **Arm audio**, check the computer's volume and output device, then **Test alarm** |
-| The recording file is not in Downloads | The browser asked where to save, or blocked the download | Export it from **Settings → Data & recordings → Export → Whole session** |
+| Dropped samples above 0.1 % | USB hub, poor cable, or an overloaded computer | Plug in directly, use a short good-quality cable, close heavy programs |
+| No alarm sound | No sound output found (on Linux: PortAudio missing), system volume muted, or sound going to another output | Check the computer's volume and output device (on Linux `sudo apt install libportaudio2`), press **Arm audio**, then **Test alarm** |
+| Cannot find the recording file | It is in the sessions folder, not Downloads | **Settings → Data & recordings → Open folder**, or **Export → Whole session** to save a copy anywhere |
 | The computer went to sleep | OS power settings | Set the computer to never sleep, and keep it on mains through an isolator or on battery as your safety plan allows |
 
-Still stuck? **Settings → Diagnostics** shows the last raw lines from the Arduino and the session log. **Download session log** in **Data & recordings** saves it to share.
+Still stuck? **Settings → Diagnostics** shows the last raw lines from the Arduino and the session log. **Save session log** in **Data & recordings** saves it to share.
