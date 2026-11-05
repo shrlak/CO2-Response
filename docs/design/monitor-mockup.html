@@ -1,0 +1,774 @@
+<title>CO2-Response Monitor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: bedside-monitor screen. Header, reserved alarm slot, three wave rows (wave 68% | numerics 32%),
+   full-width EtCO2 trend, soft-key bar. Single dark look on purpose: monitors are black-screened. */
+:root {
+  color-scheme: dark;
+  --bg: #000000;
+  --panel: #0b0f14;
+  --panel-2: #121821;
+  --grid: #1a222c;
+  --text: #e6ebf0;
+  --muted: #7a8694;
+  --co2: #ffd60a;
+  --flow: #38d9f5;
+  --pneumo: #5be37d;
+  --alarm-high: #ff3b30;
+  --alarm-med: #ff9f0a;
+  --advisory: #8ab4f8;
+  --on-alarm: #ffffff;
+  --font: "Barlow Semi Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button { font-family: inherit; }
+button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+.app {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
+  gap: 6px;
+  height: 100%;
+  min-height: 680px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Header */
+header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px;
+  background: var(--panel); border-radius: 4px; padding: 8px 12px; min-height: 44px;
+  font-size: 15px; letter-spacing: 0.02em;
+}
+.ruo { font-weight: 700; font-size: 13px; letter-spacing: 0.1em; color: var(--alarm-med); border: 1px solid var(--alarm-med); padding: 2px 8px; border-radius: 3px; }
+.hdr-group { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.hdr-group b { color: var(--text); font-weight: 600; }
+.hdr-spacer { flex: 1; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--pneumo); display: inline-block; }
+.dot.lost { background: var(--alarm-med); }
+.rec { color: var(--alarm-high); font-weight: 600; }
+.rec.off { color: var(--muted); }
+.pill { font-weight: 700; font-size: 13px; letter-spacing: 0.1em; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--muted); color: var(--text); }
+.pill.alarm { background: var(--alarm-high); border-color: var(--alarm-high); color: var(--on-alarm); }
+.pill.silenced { border-color: var(--alarm-med); color: var(--alarm-med); }
+.pill.audio-off { border-color: var(--advisory); color: var(--advisory); }
+.clock { font-size: 22px; font-weight: 600; color: var(--text); min-width: 5.2em; text-align: right; }
+
+/* Alarm slot: always reserved so nothing moves */
+.alarm-slot {
+  display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 6px 0 14px; overflow: hidden;
+  border-radius: 4px; border: 1px solid var(--grid); font-size: 17px; font-weight: 600; letter-spacing: 0.02em;
+}
+.alarm-slot .msg { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.alarm-slot .pri { font-size: 13px; font-weight: 700; letter-spacing: 0.12em; padding: 2px 8px; border-radius: 3px; }
+.alarm-slot.none { color: var(--muted); font-weight: 500; }
+.alarm-slot.advisory { color: var(--advisory); border-color: var(--advisory); }
+.alarm-slot.high { background: var(--alarm-high); border-color: var(--alarm-high); color: var(--on-alarm); }
+.alarm-slot.high .pri { background: var(--on-alarm); color: var(--alarm-high); }
+.alarm-slot.med { background: var(--alarm-med); border-color: var(--alarm-med); color: #1a1000; }
+.alarm-slot.med .pri { background: #1a1000; color: var(--alarm-med); }
+.alarm-slot.resolved { background: transparent; color: var(--alarm-high); border: 2px solid var(--alarm-high); }
+.alarm-slot.resolved.med-r { color: var(--alarm-med); border-color: var(--alarm-med); }
+.alarm-slot.resolved .pri { border: 1px solid currentColor; }
+.ack {
+  height: 34px; padding: 0 16px; border-radius: 3px; border: 2px solid currentColor; flex: none;
+  background: transparent; color: inherit; font-weight: 700; font-size: 14px; letter-spacing: 0.08em; cursor: pointer;
+}
+.more { font-size: 13px; padding: 2px 8px; border: 1px solid currentColor; border-radius: 3px; }
+
+/* Monitor rows */
+.monitor { display: grid; grid-template-rows: minmax(150px, 1.35fr) minmax(110px, 1fr) minmax(110px, 1fr); gap: 6px; min-height: 0; }
+.row { display: grid; grid-template-columns: minmax(0, 68fr) minmax(0, 32fr); gap: 6px; min-height: 0; }
+.wave { position: relative; border: 1px solid var(--grid); border-radius: 4px; overflow: hidden; min-height: 0; }
+.wave canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.wlabel { position: absolute; top: 5px; left: 10px; z-index: 2; font-weight: 600; font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; }
+.wlabel span { color: var(--muted); font-weight: 500; letter-spacing: 0.04em; text-transform: none; margin-left: 6px; }
+.frozen-tag { position: absolute; top: 5px; right: 44px; z-index: 2; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: var(--text); border: 1px solid var(--text); padding: 1px 6px; border-radius: 3px; }
+.co2 .wlabel, .co2 .tile .lbl b { color: var(--co2); }
+.flow .wlabel, .flow .tile .lbl b { color: var(--flow); }
+.pneumo .wlabel, .pneumo .tile .lbl b { color: var(--pneumo); }
+.co2 .val { color: var(--co2); } .flow .val { color: var(--flow); } .pneumo .val { color: var(--pneumo); }
+.co2.row.alarm-border .wave { border: 2px solid var(--alarm-high); }
+
+.nums { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-height: 0; }
+.co2 .nums { grid-template-columns: 1.35fr 1fr; grid-template-rows: 1fr 1fr; }
+.tile { background: var(--panel); border-radius: 4px; padding: 6px 12px 6px; display: flex; flex-direction: column; min-height: 0; min-width: 0; position: relative; overflow: hidden; }
+.tile.big { grid-row: span 2; }
+.lbl { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; font-size: 14px; }
+.lbl b { font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+.lbl .unit { color: var(--muted); margin-left: 6px; letter-spacing: 0.02em; }
+.limits { display: grid; text-align: right; font-size: 13px; line-height: 1.1; color: var(--muted); }
+.limits .hi { color: var(--text); }
+.val { flex: 1; display: flex; align-items: center; justify-content: flex-end; font-weight: 600; line-height: 0.9; font-size: clamp(34px, 6.2vh, 64px); letter-spacing: -0.01em; }
+.tile.big .val { font-size: clamp(64px, 13vh, 150px); justify-content: center; }
+.qual { font-size: 13px; color: var(--muted); }
+.tile.stale .val { color: var(--muted); }
+.tile.in-alarm { background: var(--alarm-high); }
+.tile.in-alarm .val, .tile.in-alarm .lbl b, .tile.in-alarm .lbl .unit, .tile.in-alarm .limits, .tile.in-alarm .limits .hi, .tile.in-alarm .qual { color: var(--on-alarm); }
+.flash { animation: flash 0.5s steps(1, end) infinite; }
+@keyframes flash { 50% { opacity: 0.25; } }
+
+/* Trend */
+.trend { background: var(--panel); border-radius: 4px; padding: 6px 10px 4px; display: grid; grid-template-rows: auto 1fr; height: clamp(120px, 19vh, 200px); min-height: 0; }
+.trend-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 14px; }
+.tab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; font-size: 14px; padding: 2px 0; cursor: pointer; }
+.tab[aria-selected="true"] { color: var(--co2); border-bottom-color: var(--co2); }
+.trend-meta { color: var(--muted); margin-left: auto; }
+.trend-wrap { position: relative; min-height: 0; }
+.trend-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* Soft keys */
+.softkeys { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.key {
+  min-height: 52px; border-radius: 4px; border: 1px solid var(--grid); background: var(--panel-2); color: var(--text);
+  font-weight: 600; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; padding: 4px 6px; line-height: 1.1;
+}
+.key:hover { border-color: var(--muted); }
+.key .sub { display: block; font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: 0.04em; text-transform: none; margin-top: 2px; }
+.key.armed { border-color: var(--pneumo); color: var(--pneumo); }
+.key.need { border-color: var(--advisory); color: var(--advisory); }
+.key.active { border-color: var(--alarm-med); color: var(--alarm-med); }
+.key.rec-on { border-color: var(--alarm-high); color: var(--alarm-high); }
+
+/* Mockup-only controls */
+.mockbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 10px; border: 1px dashed var(--muted); border-radius: 4px; font-size: 13px; color: var(--muted); }
+.mockbar strong { color: var(--text); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px; }
+.mbtn { background: transparent; color: var(--text); border: 1px solid var(--muted); border-radius: 3px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+.mbtn:hover { border-color: var(--text); }
+
+/* Drawer */
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 100%); background: var(--panel); border-left: 1px solid var(--grid); z-index: 20;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) 20px;
+  display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.drawer h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.setting { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 10px; padding-bottom: 12px; border-bottom: 1px solid var(--grid); }
+.setting .name { font-size: 15px; }
+.setting .hint { grid-column: 1 / -1; font-size: 13px; color: var(--muted); }
+.stepper { display: flex; align-items: center; gap: 6px; }
+.stepper button { width: 44px; height: 44px; border-radius: 4px; border: 1px solid var(--grid); background: var(--panel-2); color: var(--text); font-size: 22px; cursor: pointer; }
+.stepper output { min-width: 3.2em; text-align: center; font-size: 26px; font-weight: 600; color: var(--co2); }
+.fixed { font-size: 18px; font-weight: 600; }
+.drawer-actions { display: flex; gap: 8px; margin-top: auto; }
+.drawer-actions .key { flex: 1; }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(90px + env(safe-area-inset-bottom, 0px)); background: var(--panel-2); border: 1px solid var(--muted); color: var(--text); padding: 10px 16px; border-radius: 4px; z-index: 30; font-size: 15px; max-width: calc(100% - 32px); }
+
+@media (max-width: 900px) {
+  .app { height: auto; min-height: 0; }
+  .monitor { grid-template-rows: none; }
+  .row { grid-template-columns: 1fr; }
+  .wave { height: 130px; }
+  .tile { min-height: 84px; }
+  .tile.big { min-height: 150px; }
+  .softkeys { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .trend { height: 170px; }
+  .hdr-spacer { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flash { animation: none; }
+  .tile.in-alarm { outline: 4px solid var(--on-alarm); outline-offset: -4px; }
+}
+</style>
+
+<div class="app">
+  <header>
+    <span class="ruo">RESEARCH USE ONLY</span>
+    <span class="hdr-group">Study <b>STUDY-01</b></span>
+    <span class="hdr-group"><span class="dot" id="conn-dot"></span><b>Simulator</b> · 100 Hz · <b id="drops">0</b> drops</span>
+    <span class="hdr-spacer"></span>
+    <span class="rec" id="rec">● REC 00:12:31</span>
+    <span class="pill audio-off" id="pill">AUDIO OFF</span>
+    <span class="clock" id="clock">--:--:--</span>
+  </header>
+
+  <div class="alarm-slot advisory" id="alarm-slot" role="status" aria-live="assertive">
+    <span class="msg" id="alarm-msg">Audible alarm NOT armed. Press Arm audio.</span>
+  </div>
+
+  <main class="monitor">
+    <section class="row co2" id="row-co2">
+      <div class="wave">
+        <div class="wlabel">CO2<span>mmHg</span></div>
+        <canvas id="bg-co2"></canvas><canvas id="fg-co2"></canvas>
+      </div>
+      <div class="nums">
+        <div class="tile big" id="t-etco2">
+          <div class="lbl"><span><b>EtCO2</b><span class="unit">mmHg</span></span><span class="limits"><span class="hi" id="lim-hi">50</span><span>--</span></span></div>
+          <div class="val" id="v-etco2">--</div>
+          <div class="qual" id="q-etco2">median 3 br: --</div>
+        </div>
+        <div class="tile" id="t-rr">
+          <div class="lbl"><span><b>RR</b><span class="unit">/min</span></span><span class="limits"><span>--</span><span>--</span></span></div>
+          <div class="val" id="v-rr">--</div>
+        </div>
+        <div class="tile" id="t-fico2">
+          <div class="lbl"><span><b>FiCO2</b><span class="unit">mmHg</span></span></div>
+          <div class="val" id="v-fico2">--</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="row flow">
+      <div class="wave">
+        <div class="wlabel">Flow<span>L/min</span></div>
+        <canvas id="bg-flow"></canvas><canvas id="fg-flow"></canvas>
+      </div>
+      <div class="nums">
+        <div class="tile">
+          <div class="lbl"><span><b>Flow</b><span class="unit">L/min</span></span></div>
+          <div class="val" id="v-flow">--</div>
+        </div>
+        <div class="tile">
+          <div class="lbl"><span><b>Peak insp</b><span class="unit">L/min</span></span></div>
+          <div class="val" id="v-peak">--</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="row pneumo">
+      <div class="wave">
+        <div class="wlabel">Pneumotach<span>L/min</span></div>
+        <canvas id="bg-pneumo"></canvas><canvas id="fg-pneumo"></canvas>
+      </div>
+      <div class="nums">
+        <div class="tile">
+          <div class="lbl"><span><b>VT</b><span class="unit">mL</span></span></div>
+          <div class="val" id="v-vt">--</div>
+        </div>
+        <div class="tile">
+          <div class="lbl"><span><b>MV</b><span class="unit">L/min</span></span></div>
+          <div class="val" id="v-mv">--</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <section class="trend">
+    <div class="trend-head" role="tablist">
+      <button class="tab" role="tab" id="tab-trend" aria-selected="true">EtCO2 trend</button>
+      <button class="tab" role="tab" id="tab-resp" aria-selected="false">Ventilatory response</button>
+      <span class="trend-meta" id="trend-meta">30 min · one point per breath</span>
+    </div>
+    <div class="trend-wrap"><canvas id="trend"></canvas></div>
+  </section>
+
+  <nav class="softkeys" aria-label="Monitor controls">
+    <button class="key" id="k-silence">Silence<span class="sub" id="k-silence-sub">2:00</span></button>
+    <button class="key need" id="k-arm">Arm audio<span class="sub" id="k-arm-sub">not armed</span></button>
+    <button class="key" id="k-mark">Mark event<span class="sub">hotkey M</span></button>
+    <button class="key rec-on" id="k-rec">● Record<span class="sub" id="k-rec-sub">recording</span></button>
+    <button class="key" id="k-freeze">Freeze<span class="sub">waveforms</span></button>
+    <button class="key" id="k-limits">Alarm limits<span class="sub" id="k-limits-sub">EtCO2 &gt; 50</span></button>
+    <button class="key" id="k-setup">Setup<span class="sub">calibrate, connect</span></button>
+  </nav>
+
+  <div class="mockbar">
+    <strong>Mockup controls</strong><span>(not part of the monitor UI)</span>
+    <button class="mbtn" id="m-ramp">Simulate CO2 rise</button>
+    <button class="mbtn" id="m-base">Return to baseline</button>
+    <button class="mbtn" id="m-disc">Disconnect CO2 sensor</button>
+  </div>
+</div>
+
+<aside class="drawer" id="drawer" hidden aria-label="Alarm limits">
+  <h2>Alarm limits</h2>
+  <div class="setting">
+    <span class="name">EtCO2 high limit</span>
+    <div class="stepper"><button id="lim-dn" aria-label="Lower high limit">−</button><output id="lim-out">50</output><button id="lim-up" aria-label="Raise high limit">+</button></div>
+    <span class="hint">mmHg. Drawn as the dashed line on the capnogram and trend.</span>
+  </div>
+  <div class="setting"><span class="name">EtCO2 low limit</span><span class="fixed">Off</span><span class="hint">Optional, for apnea or disconnect.</span></div>
+  <div class="setting"><span class="name">Alarm source</span><span class="fixed">EtCO2 per breath</span></div>
+  <div class="setting"><span class="name">Trigger delay</span><span class="fixed">2 breaths</span></div>
+  <div class="setting"><span class="name">Hysteresis</span><span class="fixed">2 mmHg</span><span class="hint">Clears only below limit − 2.</span></div>
+  <div class="setting"><span class="name">Silence duration</span><span class="fixed">120 s</span></div>
+  <div class="drawer-actions">
+    <button class="key" id="d-test">Test alarm</button>
+    <button class="key" id="d-close">Done</button>
+  </div>
+</aside>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  const RATE = 100;               // samples per second per channel
+  const SWEEP_S = 12;             // seconds per screen
+  const $ = (id) => document.getElementById(id);
+  const css = getComputedStyle(document.documentElement);
+  const C = (n) => css.getPropertyValue(n).trim();
+  const COL = { co2: C('--co2'), flow: C('--flow'), pneumo: C('--pneumo'), grid: C('--grid'), muted: C('--muted'), text: C('--text'), high: C('--alarm-high'), med: C('--alarm-med'), panel: C('--panel') };
+
+  const settings = { hi: 50, hyst: 2, delayBreaths: 2, silenceMs: 120000 };
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const hms = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  const hm = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+
+  /* ---------- Sweep renderer ---------- */
+  class Sweep {
+    constructor(name, opt) {
+      this.fg = $('fg-' + name); this.bg = $('bg-' + name);
+      Object.assign(this, opt);
+      this.pending = []; this.pos = 0; this.last = null; this.frozen = false;
+      new ResizeObserver(() => this.resize()).observe(this.fg);
+    }
+    resize() {
+      const r = this.fg.getBoundingClientRect();
+      this.dpr = window.devicePixelRatio || 1;
+      for (const c of [this.fg, this.bg]) { c.width = Math.max(1, Math.round(r.width * this.dpr)); c.height = Math.max(1, Math.round(r.height * this.dpr)); }
+      this.W = this.fg.width; this.H = this.fg.height; this.last = null;
+      this.drawBg();
+    }
+    y(v) { const top = 26 * this.dpr, bot = 8 * this.dpr; const c = Math.min(this.max, Math.max(this.min, v)); return this.H - bot - (c - this.min) / (this.max - this.min) * (this.H - top - bot); }
+    drawBg() {
+      const g = this.bg.getContext('2d'), d = this.dpr;
+      g.clearRect(0, 0, this.W, this.H);
+      g.font = `${11 * d}px "Barlow Semi Condensed", sans-serif`; g.textAlign = 'right'; g.textBaseline = 'middle';
+      for (const t of this.ticks) {
+        const y = Math.round(this.y(t)) + 0.5;
+        g.strokeStyle = COL.grid; g.lineWidth = d; g.setLineDash([]);
+        g.beginPath(); g.moveTo(0, y); g.lineTo(this.W - 30 * d, y); g.stroke();
+        g.fillStyle = COL.muted; g.fillText(t > 0 && this.signed ? '+' + t : String(t), this.W - 6 * d, y);
+      }
+      if (this.limit) {
+        const y = Math.round(this.y(settings.hi)) + 0.5;
+        g.strokeStyle = COL.high; g.globalAlpha = 0.8; g.lineWidth = 1.5 * d; g.setLineDash([8 * d, 6 * d]);
+        g.beginPath(); g.moveTo(0, y); g.lineTo(this.W - 30 * d, y); g.stroke();
+        g.globalAlpha = 1; g.setLineDash([]);
+        g.fillStyle = COL.high; g.fillText(String(settings.hi), this.W - 6 * d, y);
+      }
+    }
+    push(v) { if (this.frozen) return; this.pending.push(v); if (this.pending.length > 3000) this.pending.splice(0, this.pending.length - 3000); }
+    draw() {
+      if (!this.pending.length || !this.W) return;
+      const ctx = this.fg.getContext('2d'), d = this.dpr, N = SWEEP_S * RATE, gap = 16 * d, lw = 2 * d;
+      ctx.strokeStyle = this.color; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (const v of this.pending) {
+        const i = this.pos % N, x = i / N * this.W;
+        if (i === 0) this.last = null;
+        ctx.clearRect(x + lw, 0, gap, this.H);
+        if (x + lw + gap > this.W) ctx.clearRect(0, 0, x + lw + gap - this.W, this.H);
+        this.pos++;
+        if (Number.isNaN(v)) { this.last = null; continue; }
+        const y = this.y(v);
+        if (this.last) { ctx.moveTo(this.last[0], this.last[1]); ctx.lineTo(x, y); }
+        this.last = [x, y];
+      }
+      ctx.stroke();
+      this.pending.length = 0;
+    }
+  }
+  const sweeps = {
+    co2: new Sweep('co2', { color: COL.co2, min: 0, max: 60, ticks: [0, 20, 40, 60], limit: true }),
+    flow: new Sweep('flow', { color: COL.flow, min: -60, max: 60, ticks: [-60, 0, 60], signed: true }),
+    pneumo: new Sweep('pneumo', { color: COL.pneumo, min: -60, max: 60, ticks: [-60, 0, 60], signed: true }),
+  };
+
+  /* ---------- Simulator (stands in for the Arduino source) ---------- */
+  const sim = { t: 0, breathStart: 0, period: 4, ti: 4 / 3, target: 38, et: 38, prevEnd: 38, qpk: 35, qe: 60, ramp: 0, co2Connected: true };
+  function simSample() {
+    const s = sim; const tb = s.t - s.breathStart;
+    if (tb >= s.period) {
+      s.breathStart = s.t; s.prevEnd = s.et;
+      s.et += (s.target - s.et) * 0.25 + (Math.random() - 0.5) * 0.8; // CO2 drifts toward scenario target
+      const drive = Math.max(0, s.et - 40);
+      s.period = 60 / (15 + drive * 0.25);
+      s.ti = s.period / 3;
+      s.qpk = 35 * (1 + (s.et - 38) * 0.045);
+      s.qe = s.qpk * 1.7;
+    }
+    const x = s.t - s.breathStart;
+    let flow, co2;
+    if (x < s.ti) {
+      flow = s.qpk * Math.sin(Math.PI * x / s.ti);
+      co2 = s.prevEnd * Math.exp(-x / 0.05);
+    } else {
+      const e = x - s.ti, tau = (s.period - s.ti) / 5;
+      flow = -s.qe * Math.exp(-e / tau) * (1 - Math.exp(-e / 0.06));
+      const up = 1 / (1 + Math.exp(-(e - 0.28) / 0.05));
+      const plateau = (s.et - 4) + 4 * (e / (s.period - s.ti));
+      co2 = up * plateau;
+    }
+    const n = () => (Math.random() - 0.5);
+    s.t += 1 / RATE;
+    return {
+      co2: s.co2Connected ? co2 + n() * 0.4 : NaN,
+      flow: flow + n() * 1.2,
+      pneumo: flow * 0.98 + n() * 0.8,
+    };
+  }
+
+  /* ---------- Processing (breaths, EtCO2, RR, VT, MV) ---------- */
+  const proc = { inInsp: false, maxCo2: NaN, minCo2: NaN, vt: 0, peak: 0, lastBreathT: 0, periods: [], lastCo2Ms: Date.now(), live: {} };
+  const breaths = []; // {t, et, vt, mv}
+  const events = [];
+  const alarmMarks = [];
+  const DEAD = 0.05 * 60; // ±0.05 L/s deadband, in L/min
+
+  function processSample(smp, nowMs) {
+    proc.live = smp;
+    if (!Number.isNaN(smp.co2)) {
+      proc.lastCo2Ms = nowMs;
+      proc.maxCo2 = Number.isNaN(proc.maxCo2) ? smp.co2 : Math.max(proc.maxCo2, smp.co2);
+      if (proc.inInsp) proc.minCo2 = Number.isNaN(proc.minCo2) ? smp.co2 : Math.min(proc.minCo2, smp.co2);
+    }
+    const q = smp.pneumo;
+    if (!proc.inInsp && q > DEAD && (sim.t - proc.lastBreathT) > 1.0) {
+      finalizeBreath(nowMs);
+      proc.inInsp = true; proc.lastBreathT = sim.t; proc.vt = 0; proc.peak = 0; proc.minCo2 = NaN;
+    } else if (proc.inInsp && q < -DEAD) {
+      proc.inInsp = false; proc.lastInspPeak = proc.peak; proc.lastVt = proc.vt; proc.lastFi = proc.minCo2; proc.maxCo2 = NaN;
+    }
+    if (proc.inInsp && q > 0) { proc.vt += q / 60 / RATE; proc.peak = Math.max(proc.peak, smp.flow); }
+  }
+  let prevBreathSimT = null;
+  function finalizeBreath(nowMs) {
+    if (prevBreathSimT !== null) { proc.periods.push(sim.t - prevBreathSimT); if (proc.periods.length > 4) proc.periods.shift(); }
+    prevBreathSimT = sim.t;
+    if (proc.lastVt === undefined) return;
+    const et = proc.maxCo2;
+    const vt = proc.lastVt;
+    const recent = breaths.filter(b => b.t > nowMs - 60000);
+    const mv = recent.reduce((a, b) => a + b.vt, 0) + vt;
+    breaths.push({ t: nowMs, et, vt, mv });
+    if (breaths.length > 4000) breaths.shift();
+    evalBreathAlarm(et, nowMs);
+    drawTrend();
+  }
+  const rr = () => proc.periods.length ? 60 / (proc.periods.reduce((a, b) => a + b, 0) / proc.periods.length) : NaN;
+
+  /* ---------- Alarm engine (runs in the data path) ---------- */
+  const alarms = {
+    high: { state: 'off', count: 0, since: 0, value: 0, peak: 0, resolvedAt: 0 },
+    tech: { state: 'off', since: 0, resolvedAt: 0 },
+    audioArmed: false, silencedUntil: 0, lastHighTone: 0, lastMedTone: 0,
+  };
+  function evalBreathAlarm(et, now) {
+    if (Number.isNaN(et)) return;
+    const A = alarms.high;
+    if (et > settings.hi) {
+      A.count++;
+      if (A.count >= settings.delayBreaths && A.state !== 'active') {
+        A.state = 'active'; A.since = now; A.peak = et; alarmMarks.push(now); alarms.lastHighTone = 0;
+      }
+      if (A.state === 'active') { A.value = et; A.peak = Math.max(A.peak, et); }
+    } else {
+      A.count = 0;
+      if (A.state === 'active') {
+        if (et < settings.hi - settings.hyst) { A.state = 'resolved'; A.resolvedAt = now; }
+        else A.value = et;
+      }
+    }
+  }
+  function evalTech(now) {
+    const T = alarms.tech, gapMs = now - proc.lastCo2Ms;
+    if (gapMs > 3000 && T.state !== 'active') { T.state = 'active'; T.since = proc.lastCo2Ms; alarms.lastMedTone = 0; }
+    if (gapMs < 500 && T.state === 'active') { T.state = 'resolved'; T.resolvedAt = now; }
+  }
+
+  /* ---------- Audio (Web Audio, unlocked by Arm audio) ---------- */
+  let ac = null;
+  function pulses(freq, count, groupGap) {
+    if (!ac) return;
+    let t = ac.currentTime + 0.02;
+    for (let i = 0; i < count; i++) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'square'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.08, t + 0.01);
+      g.gain.setValueAtTime(0.08, t + 0.13); g.gain.linearRampToValueAtTime(0, t + 0.15);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.16);
+      t += 0.24 + (groupGap && i === 4 ? 0.35 : 0);
+    }
+  }
+  const toneHigh = () => pulses(960, 10, true);
+  const toneMed = () => pulses(660, 3, false);
+  function audioTick(now) {
+    if (!alarms.audioArmed || now < alarms.silencedUntil) return;
+    if (alarms.high.state === 'active' && now - alarms.lastHighTone > 5000) { toneHigh(); alarms.lastHighTone = now; }
+    else if (alarms.high.state !== 'active' && alarms.tech.state === 'active' && now - alarms.lastMedTone > 15000) { toneMed(); alarms.lastMedTone = now; }
+  }
+
+  /* ---------- Data-path tick (independent of drawing) ---------- */
+  let lastTick = performance.now(), recStart = Date.now() - (12 * 60 + 31) * 1000, recording = true;
+  function tick() {
+    const nowP = performance.now();
+    let n = Math.min(RATE, Math.round((nowP - lastTick) / 1000 * RATE));
+    if (n <= 0) return;
+    lastTick += n * 1000 / RATE;
+    const now = Date.now();
+    for (let i = 0; i < n; i++) {
+      const s = simSample();
+      const sampleMs = now - (n - 1 - i) * 10;
+      processSample(s, sampleMs);
+      sweeps.co2.push(s.co2); sweeps.flow.push(s.flow); sweeps.pneumo.push(s.pneumo);
+    }
+    if (sim.ramp) sim.target = Math.min(58, sim.target + sim.ramp * n / RATE);
+    evalTech(now);
+    audioTick(now);
+  }
+  setInterval(tick, 40);
+
+  /* ---------- Render loop (≤ 30 fps) ---------- */
+  let lastFrame = 0;
+  function frame(ts) {
+    if (ts - lastFrame >= 33) { lastFrame = ts; for (const k in sweeps) sweeps[k].draw(); }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* ---------- Numerics + status at 4 Hz ---------- */
+  const fmt = (v, d = 0) => Number.isFinite(v) ? v.toFixed(d) : '--';
+  function median3() { const e = breaths.slice(-3).map(b => b.et).filter(Number.isFinite).sort((a, b) => a - b); return e.length ? e[Math.floor(e.length / 2)] : NaN; }
+  function updateNumbers() {
+    const now = Date.now();
+    const stale = now - proc.lastCo2Ms > 2000;
+    const last = breaths[breaths.length - 1];
+    const tE = $('t-etco2');
+    tE.classList.toggle('stale', stale);
+    $('t-rr').classList.toggle('stale', false);
+    $('t-fico2').classList.toggle('stale', stale);
+    $('v-etco2').textContent = stale ? '---' : fmt(last && last.et);
+    $('q-etco2').textContent = stale ? 'no CO2 signal' : `median 3 br: ${fmt(median3())}`;
+    $('v-fico2').textContent = stale ? '---' : fmt(Math.max(0, proc.lastFi ?? NaN));
+    $('v-rr').textContent = fmt(rr());
+    $('v-flow').textContent = fmt(proc.live.flow);
+    $('v-peak').textContent = fmt(proc.lastInspPeak);
+    $('v-vt').textContent = fmt(proc.lastVt * 1000);
+    const recent = breaths.filter(b => b.t > now - 60000);
+    $('v-mv').textContent = fmt(recent.reduce((a, b) => a + b.vt, 0), 1);
+    $('drops').textContent = '0';
+    $('conn-dot').classList.toggle('lost', stale);
+
+    const highActive = alarms.high.state === 'active';
+    tE.classList.toggle('in-alarm', highActive);
+    $('v-etco2').classList.toggle('flash', highActive);
+    $('row-co2').classList.toggle('alarm-border', highActive);
+
+    $('clock').textContent = hms(new Date());
+    const rs = Math.floor((now - recStart) / 1000);
+    $('rec').textContent = recording ? `● REC ${pad2(Math.floor(rs / 3600))}:${pad2(Math.floor(rs / 60) % 60)}:${pad2(rs % 60)}` : 'REC off';
+    $('rec').classList.toggle('off', !recording);
+
+    updateAlarmSlot(now);
+  }
+  setInterval(updateNumbers, 250);
+
+  function silenceLeft(now) { return Math.max(0, alarms.silencedUntil - now); }
+  const mss = (ms) => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${pad2(s % 60)}`; };
+  let titleFlip = false;
+  function updateAlarmSlot(now) {
+    const slot = $('alarm-slot'), H = alarms.high, T = alarms.tech;
+    const list = [];
+    if (H.state === 'active') list.push({ cls: 'high', pri: 'HIGH', msg: `EtCO2 HIGH  ${H.value.toFixed(0)} mmHg  >  ${settings.hi}  since ${hms(new Date(H.since))}`, key: 'high' });
+    if (T.state === 'active') list.push({ cls: 'med', pri: 'MED', msg: `CO2 SENSOR: NO DATA  since ${hms(new Date(T.since))}`, key: 'tech' });
+    if (H.state === 'resolved') list.push({ cls: 'resolved', pri: 'HIGH', msg: `EtCO2 HIGH resolved at ${hms(new Date(H.resolvedAt))}  (peak ${H.peak.toFixed(0)} mmHg)`, key: 'high' });
+    if (T.state === 'resolved') list.push({ cls: 'resolved med-r', pri: 'MED', msg: `CO2 sensor signal restored at ${hms(new Date(T.resolvedAt))}`, key: 'tech' });
+
+    slot.className = 'alarm-slot';
+    slot.replaceChildren();
+    const sl = silenceLeft(now);
+    if (list.length) {
+      const top = list[0];
+      slot.classList.add(...top.cls.split(' '));
+      if (top.cls === 'high') slot.classList.add('flash');
+      const pri = document.createElement('span'); pri.className = 'pri'; pri.textContent = top.pri;
+      const msg = document.createElement('span'); msg.className = 'msg'; msg.textContent = top.msg + (sl && !top.cls.startsWith('resolved') ? `   · audio silenced ${mss(sl)}` : '');
+      slot.append(pri, msg);
+      if (list.length > 1) { const m = document.createElement('span'); m.className = 'more'; m.textContent = `+${list.length - 1}`; slot.append(m); }
+      const b = document.createElement('button'); b.className = 'ack'; b.textContent = 'ACKNOWLEDGE';
+      b.onclick = () => acknowledge(top.key);
+      slot.append(b);
+    } else if (!alarms.audioArmed) {
+      slot.classList.add('advisory');
+      const msg = document.createElement('span'); msg.className = 'msg'; msg.textContent = 'Audible alarm NOT armed. Press Arm audio.';
+      slot.append(msg);
+    } else {
+      slot.classList.add('none');
+      const msg = document.createElement('span'); msg.className = 'msg'; msg.textContent = 'No active alarms';
+      slot.append(msg);
+    }
+
+    const pill = $('pill'); const anyActive = H.state === 'active' || T.state === 'active';
+    pill.className = 'pill';
+    if (anyActive && !sl) { pill.classList.add('alarm'); pill.textContent = 'ALARM'; }
+    else if (sl) { pill.classList.add('silenced'); pill.textContent = `SILENCED ${mss(sl)}`; }
+    else if (!alarms.audioArmed) { pill.classList.add('audio-off'); pill.textContent = 'AUDIO OFF'; }
+    else pill.textContent = 'ARMED';
+
+    $('k-silence-sub').textContent = sl ? mss(sl) + ' left' : '2:00';
+    $('k-silence').classList.toggle('active', !!sl);
+
+    if (H.state === 'active') { titleFlip = !titleFlip; document.title = titleFlip ? '▲ EtCO2 HIGH' : 'CO2-Response Monitor'; }
+    else document.title = 'CO2-Response Monitor';
+  }
+  function acknowledge(key) {
+    const A = alarms[key];
+    if (A.state === 'resolved') A.state = 'off';
+    else if (A.state === 'active') alarms.silencedUntil = Date.now() + settings.silenceMs;
+    updateAlarmSlot(Date.now());
+  }
+
+  /* ---------- Trend / response chart ---------- */
+  let trendTab = 'trend';
+  const tc = $('trend');
+  new ResizeObserver(() => drawTrend()).observe(tc);
+  function drawTrend() {
+    const r = tc.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+    tc.width = Math.max(1, Math.round(r.width * d)); tc.height = Math.max(1, Math.round(r.height * d));
+    const g = tc.getContext('2d'), W = tc.width, H = tc.height;
+    g.clearRect(0, 0, W, H);
+    g.font = `${11 * d}px "Barlow Semi Condensed", sans-serif`;
+    const L = 34 * d, R = 10 * d, T = 16 * d, B = 18 * d;
+    if (trendTab === 'trend') drawEtTrend(g, W, H, L, R, T, B, d); else drawResponse(g, W, H, L, R, T, B, d);
+  }
+  function drawEtTrend(g, W, H, L, R, T, B, d) {
+    const now = Date.now(), span = 30 * 60000, t0 = now - span;
+    const ymin = 20, ymax = 60;
+    const X = (t) => L + (t - t0) / span * (W - L - R);
+    const Y = (v) => H - B - (Math.min(ymax, Math.max(ymin, v)) - ymin) / (ymax - ymin) * (H - T - B);
+    g.fillStyle = COL.high; g.globalAlpha = 0.12; g.fillRect(L, T, W - L - R, Y(settings.hi) - T); g.globalAlpha = 1;
+    g.textAlign = 'right'; g.textBaseline = 'middle';
+    for (const v of [20, 30, 40, 50, 60]) {
+      g.strokeStyle = COL.grid; g.lineWidth = d; g.setLineDash([]);
+      g.beginPath(); g.moveTo(L, Math.round(Y(v)) + 0.5); g.lineTo(W - R, Math.round(Y(v)) + 0.5); g.stroke();
+      g.fillStyle = COL.muted; g.fillText(String(v), L - 6 * d, Y(v));
+    }
+    g.strokeStyle = COL.high; g.lineWidth = 1.5 * d; g.setLineDash([8 * d, 6 * d]);
+    g.beginPath(); g.moveTo(L, Y(settings.hi)); g.lineTo(W - R, Y(settings.hi)); g.stroke(); g.setLineDash([]);
+    g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.fillStyle = COL.muted;
+    const step = 5 * 60000;
+    for (let t = Math.ceil(t0 / step) * step; t <= now; t += step) g.fillText(hm(new Date(t)), X(t), H - 4 * d);
+    for (const e of events) {
+      if (e.t < t0) continue;
+      g.strokeStyle = COL.text; g.globalAlpha = 0.5; g.lineWidth = d; g.setLineDash([3 * d, 3 * d]);
+      g.beginPath(); g.moveTo(X(e.t), T); g.lineTo(X(e.t), H - B); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+      g.fillStyle = COL.text; g.textAlign = 'left'; g.fillText('▼ ' + e.label, X(e.t) + 3 * d, T - 4 * d);
+    }
+    g.fillStyle = COL.co2;
+    for (const b of breaths) { if (b.t < t0 || !Number.isFinite(b.et)) continue; g.fillRect(X(b.t) - d, Y(b.et) - d, 2.4 * d, 2.4 * d); }
+    g.fillStyle = COL.high;
+    for (const t of alarmMarks) { if (t < t0) continue; const x = X(t); g.beginPath(); g.moveTo(x, T + 1 * d); g.lineTo(x - 5 * d, T + 10 * d); g.lineTo(x + 5 * d, T + 10 * d); g.closePath(); g.fill(); }
+  }
+  function drawResponse(g, W, H, L, R, T, B, d) {
+    const xmin = 30, xmax = 60, ymin = 0, ymax = 20;
+    const X = (v) => L + (v - xmin) / (xmax - xmin) * (W - L - R);
+    const Y = (v) => H - B - (v - ymin) / (ymax - ymin) * (H - T - B);
+    g.textAlign = 'right'; g.textBaseline = 'middle';
+    for (const v of [0, 5, 10, 15, 20]) {
+      g.strokeStyle = COL.grid; g.lineWidth = d; g.beginPath(); g.moveTo(L, Math.round(Y(v)) + 0.5); g.lineTo(W - R, Math.round(Y(v)) + 0.5); g.stroke();
+      g.fillStyle = COL.muted; g.fillText(String(v), L - 6 * d, Y(v));
+    }
+    g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+    for (const v of [30, 35, 40, 45, 50, 55, 60]) g.fillText(String(v), X(v), H - 4 * d);
+    const pts = breaths.filter(b => Number.isFinite(b.et) && b.t > Date.now() - 30 * 60000);
+    g.fillStyle = COL.pneumo;
+    for (const b of pts) g.fillRect(X(b.et) - d, Y(b.mv) - d, 2.4 * d, 2.4 * d);
+    let fit = null;
+    if (pts.length > 10) {
+      const n = pts.length, sx = pts.reduce((a, b) => a + b.et, 0), sy = pts.reduce((a, b) => a + b.mv, 0);
+      const sxx = pts.reduce((a, b) => a + b.et * b.et, 0), sxy = pts.reduce((a, b) => a + b.et * b.mv, 0);
+      const den = n * sxx - sx * sx;
+      if (Math.abs(den) > 1e-6) {
+        const m = (n * sxy - sx * sy) / den, c = (sy - m * sx) / n; fit = m;
+        const xs = pts.map(p => p.et), x1 = Math.min(...xs), x2 = Math.max(...xs);
+        g.strokeStyle = COL.text; g.lineWidth = 1.5 * d; g.beginPath(); g.moveTo(X(x1), Y(m * x1 + c)); g.lineTo(X(x2), Y(m * x2 + c)); g.stroke();
+      }
+    }
+    $('trend-meta').textContent = `MV (L/min) vs EtCO2 (mmHg) · slope ${fit === null ? '--' : fit.toFixed(2)} L/min/mmHg`;
+  }
+  function setTab(t) {
+    trendTab = t;
+    $('tab-trend').setAttribute('aria-selected', String(t === 'trend'));
+    $('tab-resp').setAttribute('aria-selected', String(t === 'resp'));
+    if (t === 'trend') $('trend-meta').textContent = '30 min · one point per breath';
+    drawTrend();
+  }
+  $('tab-trend').onclick = () => setTab('trend');
+  $('tab-resp').onclick = () => setTab('resp');
+
+  /* ---------- Example history so the trend opens populated ---------- */
+  (function seed() {
+    const now = Date.now(); let et = 37.5;
+    for (let t = now - 26 * 60000; t < now - 4000; t += 4000) {
+      et += (38 - et) * 0.05 + (Math.random() - 0.5) * 0.6;
+      const vt = 0.49 + (Math.random() - 0.5) * 0.04;
+      breaths.push({ t, et, vt, mv: vt * 15 });
+    }
+    events.push({ t: now - 21 * 60000, label: 'Baseline' });
+  })();
+
+  /* ---------- Controls ---------- */
+  let toastTimer = null;
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 2600); }
+
+  $('k-silence').onclick = () => {
+    const now = Date.now();
+    alarms.silencedUntil = silenceLeft(now) ? 0 : now + settings.silenceMs;
+    updateAlarmSlot(now);
+  };
+  $('k-arm').onclick = async () => {
+    try {
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      await ac.resume();
+      alarms.audioArmed = true;
+      $('k-arm').className = 'key armed'; $('k-arm-sub').textContent = 'armed';
+      pulses(880, 1, false);
+      toast('Audio armed. Alarm tones will sound.');
+    } catch (e) { toast('This browser blocked audio. Alarms stay visual only.'); }
+    updateAlarmSlot(Date.now());
+  };
+  let evN = 1;
+  function markEvent() { events.push({ t: Date.now(), label: `Event ${evN++}` }); drawTrend(); toast('Event marked on the trend.'); }
+  $('k-mark').onclick = markEvent;
+  document.addEventListener('keydown', (e) => { if ((e.key === 'm' || e.key === 'M') && !e.metaKey && !e.ctrlKey && !e.altKey) markEvent(); });
+  $('k-rec').onclick = () => {
+    recording = !recording; if (recording) recStart = Date.now();
+    $('k-rec').classList.toggle('rec-on', recording);
+    $('k-rec-sub').textContent = recording ? 'recording' : 'stopped';
+  };
+  $('k-freeze').onclick = () => {
+    const on = !sweeps.co2.frozen;
+    for (const k in sweeps) { sweeps[k].frozen = on; sweeps[k].pending.length = 0; }
+    $('k-freeze').firstChild.textContent = on ? 'Unfreeze' : 'Freeze';
+    $('k-freeze').classList.toggle('active', on);
+    document.querySelectorAll('.wave').forEach(w => {
+      let tag = w.querySelector('.frozen-tag');
+      if (on && !tag) { tag = document.createElement('span'); tag.className = 'frozen-tag'; tag.textContent = 'FROZEN'; w.append(tag); }
+      if (!on && tag) tag.remove();
+    });
+  };
+  $('k-limits').onclick = () => { $('drawer').hidden = false; $('d-close').focus(); };
+  $('d-close').onclick = () => { $('drawer').hidden = true; $('k-limits').focus(); };
+  function setLimit(v) {
+    settings.hi = Math.max(30, Math.min(70, v));
+    $('lim-out').textContent = settings.hi; $('lim-hi').textContent = settings.hi;
+    $('k-limits-sub').textContent = `EtCO2 > ${settings.hi}`;
+    sweeps.co2.drawBg(); drawTrend();
+  }
+  $('lim-up').onclick = () => setLimit(settings.hi + 1);
+  $('lim-dn').onclick = () => setLimit(settings.hi - 1);
+  $('d-test').onclick = () => {
+    if (alarms.audioArmed) { toneHigh(); setTimeout(toneMed, 3200); toast('Playing high tone, then medium tone.'); }
+    else toast('Press Arm audio first, then test.');
+  };
+  $('k-setup').onclick = () => toast('Setup mode (connect, channels, calibration) is built in Phase 6.');
+
+  $('m-ramp').onclick = () => { sim.ramp = 0.5; toast('CO2 rising about 0.5 mmHg per second.'); };
+  $('m-base').onclick = () => { sim.ramp = 0; sim.target = 38; toast('CO2 returning to 38 mmHg.'); };
+  $('m-disc').onclick = () => {
+    sim.co2Connected = !sim.co2Connected;
+    $('m-disc').textContent = sim.co2Connected ? 'Disconnect CO2 sensor' : 'Reconnect CO2 sensor';
+  };
+
+  updateNumbers();
+})();
+</script>
