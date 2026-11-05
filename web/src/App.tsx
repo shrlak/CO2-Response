@@ -65,7 +65,7 @@ export function App() {
   useEffect(() => {
     void monitor.init().then(() => {
       const q = new URLSearchParams(location.search);
-      if (q.has('sim')) void monitor.connect('simulator');
+      if (q.has('sim') || location.hash === '#sim') void monitor.connect('simulator');
     });
   }, []);
 
