@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { cloneChannels, DEFAULT_CHANNELS, validateChannels, type Calibration, type ChannelConfig, type ChannelId } from '../../config/channels';
 import { monitor, type Snapshot } from '../../engine/monitor';
 import { applyCalibration, fitPolynomial, pneumoFlow, syringeK1, twoPointLinear } from '../../processing/calibration';
@@ -17,6 +17,7 @@ const SPAN_DEFAULT: Record<ChannelId, [string, number, string, number]> = {
 };
 
 type Method = 'manual' | 'zerospan' | 'fit' | 'syringe';
+type SetDraft = Dispatch<SetStateAction<ChannelConfig>>;
 
 function digitsFor(unit: string) {
   return unit === '%' ? 3 : unit === 'Pa' ? 1 : 2;
@@ -55,7 +56,7 @@ function CaptureButton({ id, onVolts, label = 'Capture' }: { id: ChannelId; onVo
 
 // ---------------------------------------------------------------- manual entry
 
-function ManualEditor({ id, draft, setDraft }: { id: ChannelId; draft: ChannelConfig; setDraft: (c: ChannelConfig) => void }) {
+function ManualEditor({ id, draft, setDraft }: { id: ChannelId; draft: ChannelConfig; setDraft: SetDraft }) {
   const cal = draft.calibration;
   const u = draft.unit;
   const setCal = (c: Calibration) => setDraft({ ...draft, calibration: c });
@@ -135,7 +136,15 @@ function ManualEditor({ id, draft, setDraft }: { id: ChannelId; draft: ChannelCo
                     <NumInput ariaLabel={`Point ${i + 1} value`} step={0.001} value={p[1]} onChange={(v) => setCal({ type: 'table', points: cal.points.map((q, j) => (j === i ? [q[0], v] : q)) })} />
                   </td>
                   <td className="row-actions">
-                    <CaptureButton id={id} label="Capture V" onVolts={(v) => setCal({ type: 'table', points: cal.points.map((q, j) => (j === i ? [+v.toFixed(4), q[1]] : q)) })} />
+                    <CaptureButton
+                      id={id}
+                      label="Capture V"
+                      onVolts={(v) =>
+                        setDraft((d) =>
+                          d.calibration.type === 'table' ? { ...d, calibration: { type: 'table', points: d.calibration.points.map((q, j) => (j === i ? [+v.toFixed(4), q[1]] : q)) } } : d,
+                        )
+                      }
+                    />
                     <button className="btn small" type="button" disabled={cal.points.length <= 2} onClick={() => setCal({ type: 'table', points: cal.points.filter((_, j) => j !== i) })}>
                       Remove
                     </button>
@@ -167,9 +176,11 @@ function ManualEditor({ id, draft, setDraft }: { id: ChannelId; draft: ChannelCo
           id={id}
           label={id === 'co2' ? 'Zero now on room air (0.04 %)' : 'Zero now (no flow)'}
           onVolts={(v) => {
-            const z = applyCalibration(draft.calibration, v) - ZERO_REF[id];
-            setDraft({ ...draft, zeroOffset: +z.toPrecision(6) });
-            showToast(`Zero offset set to ${z.toFixed(digitsFor(u))} ${u}. Save to apply.`);
+            setDraft((d) => {
+              const z = applyCalibration(d.calibration, v) - ZERO_REF[id];
+              showToast(`Zero offset set to ${z.toFixed(digitsFor(u))} ${u}. Save to apply.`);
+              return { ...d, zeroOffset: +z.toPrecision(6) };
+            });
           }}
         />
       </div>
@@ -200,7 +211,7 @@ interface Pt {
   volts: number;
 }
 
-function PointsCalibrator({ id, draft, setDraft, mode }: { id: ChannelId; draft: ChannelConfig; setDraft: (c: ChannelConfig) => void; mode: 'zerospan' | 'fit' }) {
+function PointsCalibrator({ id, draft, setDraft, mode }: { id: ChannelId; draft: ChannelConfig; setDraft: SetDraft; mode: 'zerospan' | 'fit' }) {
   const [a, ra, b, rb] = SPAN_DEFAULT[id];
   const [pts, setPts] = useState<Pt[]>(() =>
     mode === 'zerospan'
@@ -217,10 +228,11 @@ function PointsCalibrator({ id, draft, setDraft, mode }: { id: ChannelId; draft:
   const [result, setResult] = useState('');
   const u = draft.unit;
   const ready = pts.filter((p) => Number.isFinite(p.volts) && Number.isFinite(p.ref));
-  const setPt = (i: number, p: Partial<Pt>) => setPts(pts.map((q, j) => (j === i ? { ...q, ...p } : q)));
+  // functional update: a capture finishes 2 s later and must not undo edits made meanwhile
+  const setPt = (i: number, p: Partial<Pt>) => setPts((prev) => prev.map((q, j) => (j === i ? { ...q, ...p } : q)));
 
   const apply = (cal: Calibration, how: string) => {
-    setDraft({ ...draft, calibration: cal, zeroOffset: 0 });
+    setDraft((d) => ({ ...d, calibration: cal, zeroOffset: 0 }));
     const err = Math.max(...ready.map((p) => Math.abs(applyCalibration(cal, p.volts) - p.ref)));
     setResult(`${how}. Largest error at the reference points: ${err.toFixed(digitsFor(u))} ${u}. Review below, then Save.`);
   };
@@ -325,7 +337,7 @@ function PointsCalibrator({ id, draft, setDraft, mode }: { id: ChannelId; draft:
 
 // ---------------------------------------------------------------- 3 L syringe
 
-function SyringeCalibrator({ draft, setDraft }: { draft: ChannelConfig; setDraft: (c: ChannelConfig) => void }) {
+function SyringeCalibrator({ draft, setDraft }: { draft: ChannelConfig; setDraft: SetDraft }) {
   const [volume, setVolume] = useState(3);
   const [running, setRunning] = useState(false);
   const [res, setRes] = useState<{ a1: number; a2: number; seconds: number } | null>(null);
@@ -432,7 +444,7 @@ function SyringeCalibrator({ draft, setDraft }: { draft: ChannelConfig; setDraft
       {err ? <p className="err">{err}</p> : null}
       {res && Number.isFinite(newK1) && newK1 > 0 ? (
         <div className="row-actions">
-          <button className="btn primary" type="button" onClick={() => setDraft({ ...draft, flowModel: { ...fm, k1: +newK1.toPrecision(6) } })}>
+          <button className="btn primary" type="button" onClick={() => setDraft((d) => ({ ...d, flowModel: { ...(d.flowModel ?? fm), k1: +newK1.toPrecision(6) } }))}>
             Apply k1 = {newK1.toPrecision(5)}
           </button>
           <span className="note">Then Save calibration.</span>
