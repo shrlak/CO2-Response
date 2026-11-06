@@ -18,7 +18,10 @@ from co2response.processing.calibration import (
 from co2response.processing.co2 import mmhg_to_pct, pct_to_mmhg
 from co2response.processing.filter import LowPass
 from co2response.processing.metrics import (
+    co2_response,
+    co2_response_summary,
     etco2_median,
+    is_rebreathing_marker,
     linear_fit,
     median,
     minute_ventilation,
@@ -177,6 +180,46 @@ def test_median_and_linear_fit():
     fit = linear_fit([40, 45, 50], [8, 13, 18])
     assert fit.slope == approx(1)
     assert fit.r2 == approx(1)
+
+
+# ------------------------------------------------------------------ CO2 response (Read's method)
+
+
+def test_co2_response_fits_rebreathing_breaths_only_and_averages_the_baseline():
+    # baseline near 44 mmHg / 6.6 L/min (as in the CHOP example), then rebreathing on
+    # MV = 1.25 · (EtCO2 − 36) with alternating ±1 L/min scatter
+    base = [(t, 43 + (t % 3), 6 + (t % 2) * 1.2) for t in range(10)]
+    reb = [(100 + i, 47 + i, 1.25 * (47 + i - 36) + (1 if i % 2 else -1)) for i in range(18)]
+    res = co2_response(base + reb, rebreathing_start=100)
+    assert res.split and len(res.baseline) == 10 and len(res.rebreathing) == 18
+    assert res.baseline_etco2 == approx(sum(p[1] for p in base) / 10)
+    assert res.baseline_mv == approx(sum(p[2] for p in base) / 10)
+    assert res.slope == approx(1.25, abs=0.05)
+    assert 0.95 < res.r < 1
+    assert res.x_intercept == approx(36, abs=1)
+    # fitting the baseline too would bend the line away from the rebreathing slope
+    assert abs(co2_response(base + reb, None).slope - res.slope) > 0.1
+    line = co2_response_summary(res, lambda v, d: f"{v:.{d}f}")
+    assert line.startswith("slope 1.2") and "x-int 3" in line and "baseline 43.9 mmHg, 6.6 L/min (n 10)" in line
+
+
+def test_co2_response_without_a_marker_fits_everything_and_skips_missing_values():
+    pts = [(i, 40 + i, 5 + 2 * i) for i in range(5)] + [(9, math.nan, 10), (10, 50, math.nan)]
+    res = co2_response(pts, None)
+    assert not res.split and res.baseline == [] and len(res.rebreathing) == 5
+    assert res.slope == approx(2) and res.r == approx(1) and res.x_intercept == approx(37.5)
+    assert math.isnan(res.baseline_etco2)
+    assert "mark “Rebreathing”" in co2_response_summary(res, lambda v, d: f"{v:.{d}f}")
+    few = co2_response(pts[:4], 2)
+    assert few.fit is None and math.isnan(few.slope)
+    assert co2_response_summary(few, lambda v, d: f"{v:.{d}f}") == "MV vs EtCO2 · needs at least 3 rebreathing breaths"
+
+
+def test_recognises_rebreathing_markers():
+    assert is_rebreathing_marker("Rebreathing")
+    assert is_rebreathing_marker("CO2 rebreathing started")
+    assert is_rebreathing_marker("REBREATH on")
+    assert not is_rebreathing_marker("Event 3")
 
 
 # ------------------------------------------------------------------ rails

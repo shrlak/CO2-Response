@@ -32,7 +32,7 @@ from ..jsfmt import iso_ms
 from ..paths import default_sessions_dir
 from ..processing.breath import Breath
 from ..processing.calibration import invert_calibration
-from ..processing.metrics import etco2_median, minute_ventilation, respiratory_rate
+from ..processing.metrics import CO2Response, co2_response, etco2_median, is_rebreathing_marker, minute_ventilation, respiratory_rate
 from ..processing.pipeline import Pipeline, Processed
 from ..protocol import SeqTracker, parse_line
 from ..settings import (
@@ -962,6 +962,18 @@ class MonitorEngine:
         self.recorder.event(m.t, f"MARK {m.label}")
         self._add_log(f"Marker: {m.label}")
         return m
+
+    def rebreathing_start(self) -> float | None:
+        """Wall-clock seconds of the first marker labelled as the start of rebreathing
+        (e.g. "Rebreathing", "CO2 rebreathing started"), or None if there is none."""
+        ts = [m.t for m in self.markers if is_rebreathing_marker(m.label)]
+        return min(ts) / 1000 if ts else None
+
+    def co2_response(self, t0: float = float("-inf")) -> CO2Response:
+        """MV vs EtCO2 over accepted breaths from wall second ``t0``: baseline breaths
+        before the rebreathing marker, the line fitted to the rebreathing breaths."""
+        pts = ((q.t, q.etco2, q.mv) for q in self.trend if q.t >= t0 and q.quality == "ok")
+        return co2_response(pts, self.rebreathing_start())
 
     def rename_marker(self, mid: int, label: str) -> None:
         m = next((x for x in self.markers if x.id == mid), None)

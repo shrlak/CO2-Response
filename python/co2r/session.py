@@ -10,6 +10,10 @@ Load a CO2-Response session file (one .csv per recording) for analysis.
     s.meta         # study code, start time, firmware, sample rate, ...
     s.channels     # the calibration that was in use (dict)
 
+    co2_response(s)  # MV vs EtCO2 as Read's rebreathing method reports it (dict):
+                     # baseline averages before the "Rebreathing" marker, slope, r and
+                     # x-intercept of the line fitted to the rebreathing breaths only
+
 Noise is removed before anything is analysed, the same way the monitor does it:
 
 - the calibrated sample columns (co2_mmHg, flow_lpm, pneumo_lpm, ...) were recorded
@@ -142,6 +146,69 @@ def load_session(path: str, clean: bool = True) -> Session:
     return Session(meta=meta, channels=channels, samples=samples, breaths=good if clean else breaths, events=ev, breaths_all=breaths, raw=raw)
 
 
+REBREATHING_WORD = "rebreath"
+
+
+def rebreathing_start(events: pd.DataFrame) -> float | None:
+    """time_s of the first marker labelled as the start of rebreathing (any label
+    containing "rebreath", e.g. "Rebreathing" or "CO2 rebreathing started"), or None.
+
+    A marker placed with the M key is written as ``MARK Event <n>`` and, once labelled,
+    ``MARK_RENAMED <n> <label>``; a renamed marker counts from when it was placed."""
+    marks = events[events["type"].isin(["MARK", "MARK_RENAMED"])]
+    placed: dict = {}  # default label "Event <n>" -> time_s it was placed
+    found = []
+    for t, text in zip(marks["time_s"], marks["event"].astype(str)):
+        kind, _, rest = text.partition(" ")
+        if kind == "MARK":
+            if rest.startswith("Event ") and rest[6:].isdigit():
+                placed[rest[6:]] = t
+            if REBREATHING_WORD in rest.lower():
+                found.append(t)
+        else:
+            mid, _, label = rest.partition(" ")
+            if REBREATHING_WORD in label.lower():
+                found.append(placed.get(mid, t))
+    return float(min(found)) if found else None
+
+
+def co2_response(s: Session, start: float | None = None) -> dict:
+    """Ventilatory response to CO2 from the session's (clean) breaths.
+
+    Breaths before ``start`` (default: the rebreathing marker) are the baseline and are
+    averaged; the MV-vs-EtCO2 line is fitted to the breaths from ``start`` on. With no
+    marker every breath is fitted. Returns slope (L/min/mmHg), intercept, r,
+    x_intercept (mmHg, where the line reaches MV = 0), n, and baseline_n,
+    baseline_etco2_mmHg, baseline_mv_lpm, rebreathing_start_s."""
+    if start is None:
+        start = rebreathing_start(s.events)
+    b = s.breaths.dropna(subset=["etco2_mmHg", "mv_lpm"])
+    base = b[b["time_s"] < start] if start is not None else b.iloc[0:0]
+    reb = b[b["time_s"] >= start] if start is not None else b
+    nan = float("nan")
+    out = {
+        "rebreathing_start_s": start,
+        "n": len(reb),
+        "slope": nan,
+        "intercept": nan,
+        "r": nan,
+        "x_intercept": nan,
+        "baseline_n": len(base),
+        "baseline_etco2_mmHg": float(base["etco2_mmHg"].mean()) if len(base) else nan,
+        "baseline_mv_lpm": float(base["mv_lpm"].mean()) if len(base) else nan,
+    }
+    x = reb["etco2_mmHg"].to_numpy(float)
+    y = reb["mv_lpm"].to_numpy(float)
+    if len(reb) >= 3 and np.ptp(x) > 0:
+        slope, intercept = np.polyfit(x, y, 1)
+        out.update(slope=float(slope), intercept=float(intercept))
+        if np.ptp(y) > 0:
+            out["r"] = float(np.corrcoef(x, y)[0, 1])
+        if slope != 0:
+            out["x_intercept"] = float(-intercept / slope)
+    return out
+
+
 def main(argv: list | None = None) -> None:
     ap = argparse.ArgumentParser(description="Summarize a CO2-Response session file.")
     ap.add_argument("path")
@@ -162,6 +229,14 @@ def main(argv: list | None = None) -> None:
         print(f"EtCO2 {b.etco2_mmHg.mean():.1f} mmHg (min {b.etco2_mmHg.min():.1f}, max {b.etco2_mmHg.max():.1f}); "
               f"RR {b.rr_bpm.mean():.1f}/min; VT {b.vt_ml.mean():.0f} mL; MV {b.mv_lpm.mean():.2f} L/min"
               f"{'' if args.all_breaths else ' (clean breaths only)'}")
+    r = co2_response(s)
+    if r["n"] >= 3:
+        if r["rebreathing_start_s"] is not None:
+            print(f"baseline (before rebreathing at {r['rebreathing_start_s']:.1f} s): EtCO2 {r['baseline_etco2_mmHg']:.1f} mmHg, "
+                  f"MV {r['baseline_mv_lpm']:.2f} L/min, n {r['baseline_n']}")
+        else:
+            print("no \"Rebreathing\" marker: the response is fitted to every breath")
+        print(f"CO2 response: slope {r['slope']:.3f} L/min/mmHg, r {r['r']:.3f}, x-intercept {r['x_intercept']:.1f} mmHg, n {r['n']}")
     if args.breaths:
         b.to_csv(args.breaths, index=False)
         print(f"wrote {args.breaths}")

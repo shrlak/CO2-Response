@@ -141,7 +141,17 @@ Open the file directly. The `#` lines appear as text rows at the top. Filter the
 
 ### Ventilatory response
 
-The slope of MV against EtCO2 (L/min per mmHg) for a rebreathing step:
+`co2_response(s)` reports a rebreathing test the way CHOP does (Read's method): clean breaths before the first marker whose label contains "rebreath" (for example `MARK Rebreathing`, or `MARK Event 2` then `MARK_RENAMED 2 Rebreathing`) are the baseline and are averaged; the MV-against-EtCO2 line is fitted to the breaths from the marker on.
+
+```python
+from co2r.session import co2_response
+r = co2_response(s)
+r["baseline_etco2_mmHg"], r["baseline_mv_lpm"], r["baseline_n"]
+r["slope"], r["r"], r["x_intercept"], r["n"]   # L/min per mmHg; x-intercept in mmHg (MV = 0)
+co2_response(s, start=t)                        # choose the start of rebreathing yourself
+```
+
+Or for any stretch of breaths:
 
 ```python
 import numpy as np

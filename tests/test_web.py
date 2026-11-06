@@ -167,6 +167,19 @@ def test_simulator_alarms_and_themes(page, site_url):
     assert page.errors == []
 
 
+def test_rebreathing_marker_splits_the_response_plot(page, site_url):
+    boot(page, site_url + "?sim")
+    numbers_ok(page)
+    page.locator("#tab-response").click()
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text("mark “Rebreathing”", timeout=20_000)
+    page.keyboard.press("m")
+    page.fill("#mark-label", "Rebreathing")
+    page.locator('[data-act="mark-save-btn"]').click()
+    # breaths after the marker are fitted; those before it are the baseline
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text(re.compile(r"slope .* · baseline 3[6-9]\.\d mmHg"), timeout=40_000)
+    assert page.errors == []
+
+
 def test_record_import_review_and_persistence(page, site_url, tmp_path):
     boot(page, site_url + "?sim")
     numbers_ok(page)
