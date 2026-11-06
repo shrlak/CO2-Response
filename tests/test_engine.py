@@ -240,13 +240,30 @@ class FakeArduino(threading.Thread):
         self.speed = speed
         self.commands: list[str] = []
         self.alive = True
+        self._out = b""
         self.start()
 
+    #: unsent output kept while nobody reads; beyond this, whole lines are dropped
+    MAX_PENDING = 1 << 18
+
     def _write(self, b: bytes) -> None:
+        """Queue bytes and send what the pseudo-terminal takes now.
+
+        A non-blocking write may accept only part of the bytes (macOS's small pty
+        buffer does this often); the rest waits for the next call instead of being
+        lost mid-line, as the firmware's blocking Serial.write would. Only if nobody
+        reads for a long time are whole lines dropped, like a closed port."""
+        self._out += b
+        if len(self._out) > self.MAX_PENDING:
+            cut = self._out.find(b"\n", len(self._out) - self.MAX_PENDING)
+            self._out = self._out[cut + 1 :] if cut >= 0 else b""
+        if not self._out:
+            return
         try:
-            os.write(self.master, b)
+            n = os.write(self.master, self._out)
+            self._out = self._out[n:]
         except (BlockingIOError, OSError):
-            pass  # nobody reading: the bytes are lost, like a real UART
+            pass
 
     def run(self) -> None:
         self._write(INFO)
@@ -270,6 +287,7 @@ class FakeArduino(threading.Thread):
             while sent < due:
                 sent += 1
                 self._write("".join(x + "\n" for x in self.core.next_sample()).encode())
+            self._write(b"")  # send anything a full buffer held back
 
     def unplug(self) -> None:
         self.alive = False
