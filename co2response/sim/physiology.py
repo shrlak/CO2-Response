@@ -4,6 +4,7 @@ exactly the breath's end-tidal CO2."""
 
 from __future__ import annotations
 
+import collections
 import dataclasses
 import math
 from dataclasses import dataclass
@@ -55,6 +56,8 @@ class SimParams:
     barometric_mm_hg: float = 760
     scenario: str = "normal"
     seed: int = 1
+    #: sample-line delay: the CO2 sensor sees the gas this many seconds late (sidestream)
+    co2_delay_sec: float = 0
 
 
 @dataclass
@@ -83,6 +86,7 @@ class PhysioModel:
         self._tau = 0.5
         self._apnea_co2 = 0.0
         self._shallow = False
+        self._co2_line: collections.deque[tuple[float, float]] = collections.deque()
         self._reset_breathing()
 
     def set_params(self, **patch) -> None:
@@ -159,5 +163,13 @@ class PhysioModel:
         flow_lpm = flow + self._noise(0.6 * noisy)
         pneumo_pa = (flow + self._noise(0.4 * noisy)) / p.k_pneumo
         co2_mm = max(0, co2 + self._noise(0.25 * noisy))
+        if p.co2_delay_sec > 0:
+            # the gas at the mouth now reaches the sensor co2_delay_sec later; until the
+            # line has filled, the sensor still reads room air
+            line = self._co2_line
+            line.append((self._t, co2_mm))
+            while len(line) > 1 and line[1][0] <= self._t - p.co2_delay_sec:
+                line.popleft()
+            co2_mm = line[0][1] if line[0][0] <= self._t - p.co2_delay_sec else 0.0
         co2_pct = None if p.scenario == "co2Disconnect" else (co2_mm / p.barometric_mm_hg) * 100
         return PhysSample(co2_pct, flow_lpm, pneumo_pa)

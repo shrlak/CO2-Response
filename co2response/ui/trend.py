@@ -22,10 +22,10 @@ from PySide6.QtWidgets import (
 
 from ..engine.monitor import MonitorEngine, Snapshot
 from ..processing.co2 import mmhg_to_pct
-from ..processing.metrics import linear_fit
+from ..processing.response import describe
 from . import theme
 from .theme import ui_font
-from .widgets import fmt, set_combo
+from .widgets import set_combo
 
 
 def style_plot(pw: pg.PlotWidget) -> None:
@@ -145,7 +145,8 @@ class TrendPanel(QFrame):
     def refresh(self, s: Snapshot) -> None:
         st = s.settings
         set_combo(self.window, st.trend_minutes)
-        key = (int(s.now // 1000), s.trend_version, self.stack.currentIndex(), st.trend_minutes, st.co2_unit, st.alarms.high_mm_hg, st.alarms.low_mm_hg, st.co2_scale_max_mm_hg, theme.current.name)
+        tst = s.test
+        key = (int(s.now // 1000), s.trend_version, self.stack.currentIndex(), st.trend_minutes, st.co2_unit, s.co2_high_limit, st.alarms.low_mm_hg, st.co2_scale_max_mm_hg, theme.current.name, tst.phase if tst else None, tst.number if tst else 0)
         if key == self._key:
             return
         self._key = key
@@ -171,7 +172,7 @@ class TrendPanel(QFrame):
             pi = self.trend.getPlotItem()
             pi.setXRange(t0, now_s, padding=0)
             pi.setYRange(0, ymax, padding=0)
-            hi = disp(st.alarms.high_mm_hg)
+            hi = disp(s.co2_high_limit)
             self.high_band.setRegion((hi, max(hi, ymax * 2)))
             self.high_line.setValue(hi)
             low = st.alarms.low_mm_hg
@@ -213,18 +214,16 @@ class TrendPanel(QFrame):
             span = f"{minutes:g} min" if minutes > 0 else "whole session"
             self.meta.setText(f"{span} · one point per breath · {len(pts)} breaths{removed}")
         else:
-            xy = sorted(((q.etco2, q.mv) for q in pts if math.isfinite(q.etco2) and math.isfinite(q.mv)), key=lambda a: a[0])
-            xs = [a[0] for a in xy]
-            ys = [a[1] for a in xy]
-            fit = linear_fit(xs, ys)
+            # breath by breath; with a rebreathing period marked, that period only
+            res = e.response(t0)
+            xs, ys, fit = res.xs, res.ys, res.fit
             self.resp_points.setData(xs, ys)
             pi = self.resp.getPlotItem()
             if fit:
                 self.resp_fit.setData(xs, [fit.slope * x + fit.intercept for x in xs])
-                self.meta.setText(f"MV (L/min) vs EtCO2 (mmHg) · slope {fmt(fit.slope, 2)} L/min/mmHg · r² {fmt(fit.r2, 2)} · n {len(xs)}{removed}")
             else:
                 self.resp_fit.setData([], [])
-                self.meta.setText("MV vs EtCO2 · needs at least 3 breaths")
+            self.meta.setText(describe(res, tst.number if tst else 0))
             lo = math.floor((min(xs) if xs else 30) - 2)
             hi = math.ceil((max(xs) if xs else 50) + 2)
             pi.setXRange(lo, hi, padding=0)

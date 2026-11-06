@@ -150,7 +150,8 @@ Wiring, firmware upload and first checks are covered in detail, with a wiring di
    - press **Test alarm** to confirm you can see and hear both tones
 9. **Enter a study code** (never a name or other identifier) and press **Record**. The file is saved every second while recording.
 10. **During the session:**
-    - press **Mark event** (or the `M` key) to timestamp events such as "rebreathing started"; markers appear on the trend and in the file
+    - press **Mark event** (or the `M` key) to timestamp events; markers appear on the trend and in the file
+    - for a Read rebreathing test, wait until the **Start rebreathing** key reads *baseline stable: ready*, turn the valve to the bag, and press **Start rebreathing** at the same moment. Press **End rebreathing** when you turn the valve back to room air. See [§5.13](#513-the-rebreathing-test)
     - watch the **Ventilatory response** tab for the MV-against-EtCO2 slope
     - if an alarm sounds, **Silence** mutes it for 120 s; **Acknowledge** clears a resolved alarm
 11. **Stop rec.** The session is listed in **Settings > Data & recordings**.
@@ -187,8 +188,8 @@ If the USB cable comes out, the device-disconnected alarm sounds. Plugging the s
   - one EtCO2 point per clean breath over 15 min, 30 min, 2 h or the whole session
   - the continuous CO2 trace behind the points, the alarm-limit bands, alarm marks and your event markers
   - the caption counts breaths left out as noisy
-- **Ventilatory response tab:** MV against EtCO2 for clean breaths, with a least-squares line. It shows the slope (L/min per mmHg), r² and n: the CO2 response.
-- **Soft keys:** Silence (120 s), Arm audio, Mark event (`M`), Record, Freeze, Alarm limits, Settings.
+- **Ventilatory response tab:** MV against EtCO2, one point per clean breath, with a least-squares line. It shows the slope (L/min per mmHg) with its 95 % confidence interval, r, the x-intercept and n: the CO2 response. During and after a rebreathing test it uses that rebreathing period only ([§5.13](#513-the-rebreathing-test)).
+- **Soft keys:** Silence (120 s), Arm audio, Mark event (`M`), Start/End rebreathing, Record, Freeze, Alarm limits, Settings.
 - **Settings** has these tabs: Connection, Calibration, Alarms, Display & units, Data & recordings, Diagnostics. Alarms keep running while you are in Settings.
 
 ---
@@ -345,6 +346,10 @@ Both layers can be switched off in **Settings > Display & units** (**Remove spik
 
 If there is no valid flow signal, detection falls back to the capnogram: a breath ends when CO2 drops from above half the last EtCO2 to below 30 % of it.
 
+**CO2 delay.** A sidestream capnograph sees the gas one to several seconds after it passes the pneumotach. Breaths are cut on the flow, so the flow is held back by **CO2 delay behind flow** (Settings > Display & units, default 0 ms) before breaths are found; otherwise each expiration's CO2 peak lands in the next breath's inspiration, EtCO2 comes from the wrong breath and FiCO2 reads the previous plateau. **Measure from 20 s of breathing** sets it: the median time from the start of expiration to the CO2 rising halfway to its plateau. That includes the dead-space washout, so it slightly over-corrects, which is the harmless direction. It works while the delay is shorter than one breath.
+
+**Flow past the transducer's range.** When the pneumotach channel touches an ADC rail for a few samples at peak flow (the end of a rebreathing test, when ventilation has tripled), that is clipping, not an unplugged transducer: breaths are still found on the clipped value and keep their EtCO2, but a breath whose inspiration clipped has an unknown VT (and MV), and a **PNEUMOTACH OUT OF RANGE** alarm says so. Before this, clipping looked like a lost signal and raised a false apnea alarm while hiding EtCO2 from the CO2 alarms.
+
 **Per-breath values:**
 
 | Value | How it is computed |
@@ -362,7 +367,7 @@ If there is no valid flow signal, detection falls back to the capnogram: a breat
 | EtCO2 | Median of the last 3 breaths |
 | RR | 60 / mean breath period of the last 4 breaths |
 | MV | ΣVT / Σbreath period over the last 60 s, in L/min. This is correct from the first minute, rather than under-reading until 60 s have passed. |
-| Ventilatory response | Ordinary least-squares fit of MV against EtCO2 over the trend window; slope in L/min per mmHg, with r² and n |
+| Ventilatory response | Ordinary least-squares fit of each clean breath's own MV (VT × 60 / breath period) against its EtCO2: over the rebreathing period, minus the coached breaths, when a test is running or done ([§5.13](#513-the-rebreathing-test)); otherwise over the trend window. Slope in L/min per mmHg with its 95 % confidence interval, r, x-intercept and n |
 
 ### 5.9 Alarms (`co2response/alarms/`)
 
@@ -382,6 +387,7 @@ If there is no valid flow signal, detection falls back to the capnogram: a breat
 | ADC not found | medium |
 | CO2/flow/pneumotach signal at ADC rail | medium |
 | Signal too noisy | medium |
+| Pneumotach out of range (flow clipped at the ADC limit in 2 of the last 5 breaths) | medium |
 | Dropped samples above 0.1 % | advisory |
 | Corrupt lines in the last minute | advisory |
 | Audible alarm not armed | advisory |
@@ -460,6 +466,22 @@ The starting values come from `co2response/config/channels.json`, which can be e
 A physiological model generates CO2 and flow waveforms with adjustable RR, EtCO2 and VT, plus the scenarios listed in [§1](#simulator-scenarios). An emulated firmware turns them into real protocol lines with real checksums and sequence numbers.
 
 It is seeded, so the tests and the sample session are reproducible. `sample-data/synthetic_session.csv` is made by `scripts/make_sample_session.py`, which drives the real engine on a fake clock: 60 s of spikes and partial breaths, then a 12 mmHg/min CO2 ramp with a "CO2 rebreathing started" marker. A test checks the script still reproduces the file byte for byte.
+
+
+### 5.13 The rebreathing test
+
+The monitor follows the Read rebreathing method our mentors' CHOP colleagues use: the subject breathes room air through the mouthpiece, pneumotach and CO2 sampling point; once breathing is steady, the operator turns a two-way valve so the subject rebreathes from a bag; the test ends when EtCO2 reaches the end-test limit (CHOP stops at 60–65 mmHg) or time runs out, and the valve goes back to room air. **The valve is turned by hand: the software cannot stop the CO2.** It does the rest:
+
+| What | How |
+| --- | --- |
+| Baseline cue | Before a test (and in recovery) the key reads *baseline stable: ready* once the last 6 clean breaths in the last minute have EtCO2 within 3 mmHg of each other (DTM 6.2) |
+| Start / End | **Start rebreathing** / **End rebreathing** (soft key). Each writes `TEST_REBREATHING_START` / `TEST_REBREATHING_END` to the recording with the baseline EtCO2 and MV, the duration and the result (DTM 7.9), and places markers on the trend |
+| End-test limit | While rebreathing, the high EtCO2 limit becomes the **end-test limit** (Settings > Alarms, default 65 mmHg) and its alarm reads "END TEST … Turn the valve to room air". The normal high limit (50 mmHg) would otherwise sound in every test. The end-test limit stays on in recovery until EtCO2 is back under the normal limit (or 5 min) |
+| Warning | A medium alarm at **Warn while rebreathing at** (default 60 mmHg) |
+| Time limit | A medium alarm when a rebreathing period reaches **Rebreathing time limit** (default 6:00, DTM 8.1); the key shows the elapsed time |
+| Response | Each clean breath's own MV (VT × 60 / period) against its EtCO2, over the rebreathing period only, leaving out the first 3 clean breaths (the coached deep breaths; **Breaths left out at the start** in Display & units). Reported with the slope's 95 % CI, r (DTM 9.5) and the x-intercept |
+
+Defaults are placeholders until the mentors confirm them (docs/open-questions.md). The requirements review behind this is [docs/requirements-review.md](docs/requirements-review.md).
 
 ---
 
@@ -679,6 +701,7 @@ These are placeholders until the [open questions](docs/open-questions.md) are an
 - **ADC:** ADS1115 at I2C address 0x48, PGA ±6.144 V, 5 V supply (rails at 0 and 5 V).
 - **Arduino:** Uno by default (Mega and Nano also build). **Sample rate:** 100 Hz per channel.
 - **Alarm defaults:** high EtCO2 50 mmHg, low off, 2-breath delay, 2 mmHg hysteresis, 120 s silence, apnea after 20 s, keyed on EtCO2 per breath.
+- **Rebreathing test defaults:** end-test limit 65 mmHg and a warning at 60 mmHg (from the CHOP description: stop at 60–65 mmHg), 6-minute time limit (DTM 8.1), first 3 clean breaths left out of the fit (the coached breaths), baseline "stable" when the last 6 clean breaths are within 3 mmHg. **CO2 delay behind flow:** 0 ms until measured.
 - **Noise screen:** signal-to-noise ratio of 8, a plateau over 10 % of expiration, and outliers over 5 mmHg. These were tuned on simulated data. Check them against real recordings with `--all-breaths` and adjust them in `co2response/processing/denoise.py` if real breaths are being left out.
 - **Barometric pressure:** 760 mmHg default; Pittsburgh is usually near 735 mmHg. Set the lab's value in Display & units.
 - **Hardware:** the firmware and the hardware check have not yet been run on a real Arduino with the lab's sensors. The NI and LabJack drivers have been tested against stand-ins for their vendor libraries, not on real devices.
@@ -695,6 +718,7 @@ These are placeholders until the [open questions](docs/open-questions.md) are an
 | [docs/data-format.md](docs/data-format.md) | Session file format (v3), noise-removal details, import/export, analysis in Python/MATLAB/Excel |
 | [docs/safety.md](docs/safety.md) | Safety and limitations |
 | [docs/open-questions.md](docs/open-questions.md) | Open questions for the lab ([issue #4](https://github.com/shrlak/CO2-Response/issues/4)) |
+| **[docs/requirements-review.md](docs/requirements-review.md)** | Requirements review against the design file (DTM rev02, feedback, mentor notes): missed requirements, proposed DTM rev03 inputs, verification plan and schedule to Dec 11 |
 | [PLAN.md](PLAN.md) | Build plan and requirements |
 | [docs/design/monitor-mockup.html](docs/design/monitor-mockup.html) | Phase 0 UI mockup |
 | [sample-data/synthetic_session.csv](sample-data/synthetic_session.csv) | A sample recorded session |

@@ -46,6 +46,8 @@ class Breath:
     reason: str = ""
     #: the breath's number in the recording, if one was running
     rec_n: int | None = None
+    #: flow went past the pneumotach channel's range: "", "insp", "exp" or "insp+exp"
+    clipped: str = ""
 
 
 class BreathDetector:
@@ -65,6 +67,8 @@ class BreathDetector:
         self._et = NAN
         self._last_et = NAN
         self._exp_co2: list[float] = []
+        self._clip_insp = False
+        self._clip_exp = False
 
     def reset(self) -> None:
         self._mode = None
@@ -88,11 +92,14 @@ class BreathDetector:
                 period_sec=t - self._start,
                 etco2=self._et,
                 fico2=self._fi,
-                vt_ml=self._vt_l * 1000 if flow_mode else NAN,
+                # a clipped inspiration under-reads its volume: the breath still has a
+                # good EtCO2 and period, but its VT (and so its MV) is unknown
+                vt_ml=self._vt_l * 1000 if flow_mode and not self._clip_insp else NAN,
                 peak_insp_lpm=self._peak if flow_mode else NAN,
                 detected_by=self._mode,
                 plateau=plateau,
                 level=level,
+                clipped="+".join(x for x, on in (("insp", self._clip_insp), ("exp", self._clip_exp)) if on),
             )
             if math.isfinite(self._et):
                 self._last_et = self._et
@@ -103,13 +110,17 @@ class BreathDetector:
         self._fi = NAN
         self._et = NAN
         self._exp_co2 = []
+        self._clip_insp = False
+        self._clip_exp = False
         return out
 
-    def push(self, t: float, flow: float, co2: float) -> Breath | None:
+    def push(self, t: float, flow: float, co2: float, clipped: bool = False) -> Breath | None:
         """Feed one sample.
 
         t: device time (s); flow: pneumotach flow (L/min, NaN when invalid);
-        co2: CO2 (mmHg, NaN when invalid). Returns the breath that just finished, if any.
+        co2: CO2 (mmHg, NaN when invalid); clipped: the flow sample sat at the ADC limit
+        (the value is the limit, not the true flow). Returns the breath that just
+        finished, if any.
         """
         mode = "flow" if math.isfinite(flow) else "co2" if math.isfinite(co2) else None
         if mode != self._mode:
@@ -132,6 +143,11 @@ class BreathDetector:
             if self._phase == "insp":
                 self._vt_l += ((max(0.0, flow) + max(0.0, self._last_flow)) / 2 / 60) * dt
                 self._peak = max(self._peak, flow)
+            if clipped:
+                if self._phase == "insp":
+                    self._clip_insp = True
+                elif self._phase == "exp":
+                    self._clip_exp = True
             self._last_flow = flow
         else:
             ref = self._last_et if math.isfinite(self._last_et) else 20

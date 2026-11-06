@@ -39,6 +39,10 @@ class AlarmForm(Form):
         self.hyst = self._num("hyst", "Hysteresis", a.hysteresis_mm_hg, "mmHg", 0, 10, "A high alarm clears only below limit − hysteresis.", "hysteresis_mm_hg")
         self.apnea = self._num("apnea", "Apnea alarm after", a.apnea_sec, "s", 0, 120, "High-priority alarm when no breath is detected for this long. 0 turns it off.", "apnea_sec")
         self.silence = self._num("silence", "Silence duration", a.silence_sec, "s", 10, 120, "Audio comes back on by itself after this. Maximum 120 s.", "silence_sec")
+        self.t_end = self._num("tend", "End-test CO2 limit", a.test_end_mm_hg, "mmHg", 30, 120,
+                               "Replaces the high limit while rebreathing (Start rebreathing on the monitor) and until EtCO2 is back under the high limit. CHOP ends the test at 60–65 mmHg: confirm with the clinicians.", "test_end_mm_hg")
+        self.t_warn = self._num("twarn", "Warn while rebreathing at", a.test_warn_mm_hg, "mmHg", 0, 120, "Medium alarm as EtCO2 approaches the end-test limit. 0 turns it off.", "test_warn_mm_hg")
+        self.t_max = self._num("tmax", "Rebreathing time limit", a.test_max_sec, "s", 60, 1200, "Medium alarm when a rebreathing period runs this long (DTM 8.1: 6 minutes).", "test_max_sec")
 
         vol = QWidget()
         h = QHBoxLayout(vol)
@@ -89,6 +93,9 @@ class AlarmForm(Form):
         self.hyst.set(a.hysteresis_mm_hg)
         self.apnea.set(a.apnea_sec)
         self.silence.set(a.silence_sec)
+        self.t_end.set(a.test_end_mm_hg)
+        self.t_warn.set(a.test_warn_mm_hg)
+        self.t_max.set(a.test_max_sec)
         if not self.volume.isSliderDown():
             self.volume.blockSignals(True)
             self.volume.setValue(round(a.volume * 100))

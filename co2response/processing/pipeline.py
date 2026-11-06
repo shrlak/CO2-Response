@@ -2,6 +2,8 @@
 
     raw volts ─► despike (Hampel) ─► calibrate ─► low-pass ─► CO2 units / pneumotach flow
                                          │                          │
+                                         │              flow delayed by the CO2 lag (co2_delay_ms)
+                                         │                          │
                                          └─► noise meters           └─► breath detection ─► breath screen
 
 Everything that is interpreted (breaths, EtCO2, RR, VT, MV, alarms, trend) comes after
@@ -11,6 +13,7 @@ can be re-analysed.
 
 from __future__ import annotations
 
+import collections
 import math
 from dataclasses import dataclass, field
 
@@ -85,6 +88,12 @@ class Pipeline:
         if (self.despiker.h if self.despiker else 0) != want:
             self.despiker = Despiker(want) if want else None
         self.noise = {"co2": NoiseMeter(), "flow": NoiseMeter()}
+        # CO2 arrives co2_delay_ms after the flow that carried it: hold the flow back by
+        # that many samples so the detector sees each breath's flow with its own CO2
+        lag = getattr(o, "co2_delay_ms", 0) or 0
+        n = int(round(lag / 1000 * o.sample_rate_hz)) if math.isfinite(lag) and lag > 0 else 0
+        self.co2_lag_samples = min(n, int(10 * o.sample_rate_hz))
+        self._flow_hist: collections.deque[tuple[float, float, bool]] = collections.deque()
 
     def set_channels(self, c: dict) -> None:
         self.channels = c
@@ -124,6 +133,7 @@ class Pipeline:
         stuck: dict[str, bool] = {}
         val: dict[str, float] = {}
         unfiltered: dict[str, float] = {}
+        clip_pa: float | None = None
 
         for cid in CHANNEL_IDS:
             ch = chans[cid]
@@ -134,6 +144,10 @@ class Pipeline:
             # A sample at the rail is not trusted even before the 2 s hold elapses.
             rail = ok and at_rail(v, a["railLowV"], a["railHighV"], a["railToleranceV"], ch.get("railCheck", "both"))
             valid[cid] = ok and not rail
+            if cid == "pneumo" and rail and not stuck[cid]:
+                # touching a rail briefly at peak flow is clipping, not an unplugged
+                # transducer: breaths are still found on the clipped value
+                clip_pa = apply_calibration(ch["calibration"], v) - ch["zeroOffset"]
             y = apply_calibration(ch["calibration"], v) - ch["zeroOffset"] if valid[cid] else NAN
             unfiltered[cid] = y
             if self.opts.filter_on:
@@ -153,7 +167,16 @@ class Pipeline:
         co2_pct = val["co2"]
         co2_mmhg = pct_to_mmhg(co2_pct, p.barometric_mm_hg, p.water_vapor)
         pneumo_lpm = pneumo_flow(model, val["pneumo"])
-        breath = self.detector.push(t_sec, pneumo_lpm, co2_mmhg)
+        clipped = clip_pa is not None
+        flow_det = pneumo_flow(model, clip_pa) if clipped else pneumo_lpm
+        breath = None
+        if self.co2_lag_samples:
+            self._flow_hist.append((t_sec, flow_det, clipped))
+            if len(self._flow_hist) > self.co2_lag_samples:
+                t_flow, flow_then, clip_then = self._flow_hist.popleft()
+                breath = self.detector.push(t_flow, flow_then, co2_mmhg, clip_then)
+        else:
+            breath = self.detector.push(t_sec, flow_det, co2_mmhg, clipped)
         outlier = None
         if breath is not None:
             breath.noise_co2 = self.noise["co2"].take()

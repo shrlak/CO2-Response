@@ -11,6 +11,13 @@ CO2-Response is a **research prototype, not a medical device**. It is not certif
 - **Technical alarms** fire for: no data for 3 s, device disconnected, ADC not found, a channel stuck at an ADC rail, and apnea (no breath for 20 s by default).
 - **Software can crash, and computers update and sleep.** Alarm checks run in the data path rather than the drawing code, so they continue while the window is minimised or covered (a high alarm also flashes the taskbar entry), but a closed or crashed app stops everything.
 
+## The rebreathing test
+
+- **The software cannot stop the CO2.** The two-way valve is turned by hand. The end-test, warning and time-limit alarms tell the operator to turn it back to room air; someone must be at the valve for the whole rebreathing period.
+- While rebreathing, the high EtCO2 limit is replaced by the end-test limit (default 65 mmHg, to be confirmed by the clinicians), because the normal limit would sound in every test. It stays in force in recovery until EtCO2 is back under the normal limit, or for 5 minutes.
+- A certified pulse oximeter (with its own low-SpO2 alarm) must be on the subject: this system does not measure oxygen.
+- Press **End rebreathing** when the valve goes back to room air. Until then the app keeps the end-test limit and the timer running.
+
 ## Electrical safety
 
 If anything connects to a person or animal, the Arduino and ADC must be isolated from mains-powered equipment: run the laptop on battery or use a medical-grade USB isolator. Go through the Cook Lab and CMU safety process before any human or animal use.

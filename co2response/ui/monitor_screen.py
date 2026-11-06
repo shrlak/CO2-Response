@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..engine.monitor import MonitorEngine, Snapshot
+from ..engine.monitor import MonitorEngine, Snapshot, test_key_text
 from ..processing.co2 import mmhg_to_pct
 from .alarm_form import AlarmForm
 from .monitor_widgets import NumericTile, SweepWidget
@@ -248,11 +248,12 @@ class MonitorScreen(QWidget):
         self.k_silence = SoftKey(engine.toggle_silence)
         self.k_audio = SoftKey(lambda: engine.arm_audio())
         self.k_mark = SoftKey(self.mark)
+        self.k_test = SoftKey(engine.toggle_rebreathing)
         self.k_rec = SoftKey(self.toggle_recording.emit)
         self.k_freeze = SoftKey(lambda: engine.set_frozen(not engine.frozen))
         self.k_limits = SoftKey(self.show_drawer)
         self.k_settings = SoftKey(lambda: self.open_settings.emit(""))
-        for k in (self.k_silence, self.k_audio, self.k_mark, self.k_rec, self.k_freeze, self.k_limits, self.k_settings):
+        for k in (self.k_silence, self.k_audio, self.k_mark, self.k_test, self.k_rec, self.k_freeze, self.k_limits, self.k_settings):
             keys.addWidget(k, 1)
         outer.addLayout(keys)
 
@@ -323,11 +324,11 @@ class MonitorScreen(QWidget):
         rate = s.rate_hz
         sw = self.sweeps
         sw["co2"].unit = unit
-        sw["co2"].set_options(0, co2_max, ticks, False, disp(st.alarms.high_mm_hg), st.sweep_sec, rate)
+        sw["co2"].set_options(0, co2_max, ticks, False, disp(s.co2_high_limit), st.sweep_sec, rate)
         for cid in ("flow", "pneumo"):
             sw[cid].set_options(-fs, fs, [-fs, 0, fs], True, None, st.sweep_sec, rate)
 
-        co2_alarm = next((a for a in s.alarms if a.id in ("co2High", "co2Low") and a.state == "active"), None)
+        co2_alarm = next((a for a in s.alarms if a.id in ("co2High", "co2Low", "co2Warn") and a.state == "active"), None)
         apnea = next((a for a in s.alarms if a.id == "apnea" and a.state == "active"), None)
         tag = "FROZEN" if s.frozen else "SIMULATED" if s.source_kind == "simulator" else "REPLAY" if s.source_kind == "replay" else None
         sw["co2"].set_tag(tag, bool((co2_alarm and co2_alarm.priority == "high") or apnea))
@@ -352,7 +353,7 @@ class MonitorScreen(QWidget):
             stale=s.stale["co2"],
             alarm=("high" if co2_alarm.priority == "high" else "medium") if co2_alarm else None,
             flash=bool(co2_alarm and not co2_alarm.acknowledged and blink_fast),
-            limits=(lim(st.alarms.high_mm_hg), lim(st.alarms.low_mm_hg)),
+            limits=(lim(s.co2_high_limit), lim(st.alarms.low_mm_hg)),
             qualifier="no CO2 signal" if s.stale["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br: {fmt(disp(n.etco2_median), digits)}",
             raw=raw("co2"),
         )
@@ -376,10 +377,13 @@ class MonitorScreen(QWidget):
         self.k_silence.set("Cancel silence" if silenced else "Silence", f"{mss(s.silence_ms)} left" if silenced else f"{a.silence_sec:g} s", "active" if silenced else None, p)
         self.k_audio.set("Audio armed" if s.audio_armed else "Arm audio", f"tones via {s.audio_backend}" if s.audio_armed else "no sound output yet", "armed" if s.audio_armed else "need", p)
         self.k_mark.set("Mark event", "hotkey M", None, p)
+        if s.test is not None:
+            self.k_test.set(*test_key_text(s.test), p)
         self.k_rec.set("■ Stop rec" if s.recording.active else "● Record", "finishes the CSV file" if s.recording.active else "one CSV per session", "rec" if s.recording.active else None, p)
         self.k_freeze.set("Unfreeze" if s.frozen else "Freeze", "waveforms only", "active" if s.frozen else None, p)
         low = f" · low {fmt(disp(a.low_mm_hg), digits)}" if a.low_mm_hg is not None else ""
-        self.k_limits.set("Alarm limits", f"high {fmt(disp(a.high_mm_hg), digits)}{low}", None, p)
+        hi_word = "end test" if s.test is not None and s.test.end_limit is not None else "high"
+        self.k_limits.set("Alarm limits", f"{hi_word} {fmt(disp(s.co2_high_limit), digits)}{low}", None, p)
         self.k_settings.set("Settings", "calibration, connection", None, p)
         if self.drawer.isVisible():
             self.drawer.form.refresh(a)

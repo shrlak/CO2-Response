@@ -28,12 +28,14 @@ from ..channels import (
     load_default_channels,
     validate_channels,
 )
-from ..jsfmt import iso_ms
+from ..jsfmt import iso_ms, js_num, to_fixed
 from ..paths import default_sessions_dir
 from ..processing.breath import Breath
 from ..processing.calibration import invert_calibration
+from ..processing.co2delay import estimate_co2_delay
 from ..processing.metrics import etco2_median, minute_ventilation, respiratory_rate
 from ..processing.pipeline import Pipeline, Processed
+from ..processing.response import Baseline, ResponsePoint, ResponseResult, baseline, breath_mv, response_fit
 from ..protocol import SeqTracker, parse_line
 from ..settings import (
     ProcessingOptions,
@@ -57,7 +59,7 @@ NAN = float("nan")
 MAX_TREND = 20000
 MAX_TRACE = 4 * 3600 * 2  # 4 h at 2 Hz
 MAX_WAVE = 6000
-TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum", "noisyBreaths")
+TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum", "noisyBreaths", "pneumoClip")
 
 
 def _now_ms() -> int:
@@ -103,6 +105,70 @@ class TrendPoint:
     rr: float
     #: the breath's quality; only "ok" points are drawn (see processing/denoise.py)
     quality: str = "ok"
+    #: this breath's own minute ventilation (VT × 60 / period), L/min: the
+    #: breath-by-breath value the CO2-response fit uses (``mv`` is the 60 s average)
+    mv_breath: float = NAN
+
+
+#: how long the end-test limit stays in force after rebreathing ends, if EtCO2 has
+#: not already come back under the normal high limit, ms
+RECOVERY_LIMIT_MS = 300_000
+
+
+@dataclass
+class TestState:
+    """A Read rebreathing test, driven by the operator's Start / End rebreathing key.
+
+    The valve is turned by hand; the software cannot move it. It records when each
+    period starts and ends, swaps the high EtCO2 limit for the end-test limit while the
+    subject rebreathes, times the period, and fits the CO2 response to that period only.
+    """
+
+    #: 'baseline' (room air, no test yet), 'rebreathing' (valve on the bag) or 'recovery'
+    phase: str = "baseline"
+    #: rebreathing periods started since the app opened
+    number: int = 0
+    #: wall ms
+    started: float | None = None
+    ended: float | None = None
+    #: room-air breathing over the minute before the switch
+    baseline: Baseline = field(default_factory=Baseline)
+    #: the fit when the period ended
+    result: ResponseResult | None = None
+
+
+@dataclass
+class TestStatus:
+    phase: str
+    number: int
+    #: rebreathing time so far, or the length of the last period, ms
+    elapsed_ms: float
+    max_ms: float
+    #: live baseline (before a test or in recovery), or the one captured at the start
+    baseline: Baseline
+    #: the end-test limit in force, if any, mmHg
+    end_limit: float | None
+
+
+def test_key_text(t: TestStatus) -> tuple[str, str, str | None]:
+    """(label, second line, state) for the Start / End rebreathing soft key."""
+
+    def mss(sec: float) -> str:
+        sec = max(0, int(sec))
+        return f"{sec // 60}:{sec % 60:02d}"
+
+    if t.phase == "rebreathing":
+        stop = f" · stop at {js_num(t.end_limit)}" if t.end_limit is not None else ""
+        return "End rebreathing", f"{mss(t.elapsed_ms / 1000)} of {mss(t.max_ms / 1000)}{stop}", "active"
+    b = t.baseline
+    if b.stable:
+        cue = "baseline stable: ready"
+    elif math.isfinite(b.etco2_range):
+        cue = f"baseline settling ({b.etco2_range:.0f} mmHg range)"
+    else:
+        cue = "baseline: no clean breaths yet"
+    done = f"test {t.number} done · " if t.phase == "recovery" else ""
+    return "Start rebreathing", done + cue, "armed" if b.stable else None
 
 
 @dataclass
@@ -164,6 +230,9 @@ class Snapshot:
     known_port: str | None
     awaiting_reconnect: bool
     i2c_scan: str | None
+    #: the high CO2 limit in force (the end-test limit while rebreathing), mmHg
+    co2_high_limit: float = NAN
+    test: TestStatus | None = None
 
 
 @dataclass
@@ -285,6 +354,8 @@ class MonitorEngine:
         self._last_breath_wall = 0.0
         self._last_good_wall = 0.0
         self._recent_quality: collections.deque[str] = collections.deque(maxlen=5)
+        #: whether each of the last 5 breaths had flow past the pneumotach range
+        self._recent_clip: collections.deque[bool] = collections.deque(maxlen=5)
         self._trend_of: dict[int, TrendPoint] = {}
         self._last: Processed | None = None
         self._flow_peak_cur = -math.inf
@@ -325,6 +396,8 @@ class MonitorEngine:
         self._sample_listeners: list[Callable[[Processed], None]] = []
         self._timers: list[tuple[float, Callable[[], None]]] = []
         self._jobs: set[HardwareCheckJob] = set()
+        self.test = TestState()
+        self._response_cache: tuple[tuple, ResponseResult] | None = None
 
         self.pipeline = Pipeline(self.effective_channels, self._processing_options())
 
@@ -444,6 +517,7 @@ class MonitorEngine:
                 rr=sim.rr,
                 etco2=sim.etco2,
                 vt_ml=sim.vt_ml,
+                co2_delay_sec=sim.co2_delay_sec,
                 seed=int(self.clock()) & 0xFFFF,
             )
         elif kind == "bridge":
@@ -488,6 +562,7 @@ class MonitorEngine:
         self.breaths = []
         self.good = []
         self._recent_quality.clear()
+        self._recent_clip.clear()
         self._trend_of = {}
         self._last = None
         self._flow_peak_cur = -math.inf
@@ -760,6 +835,7 @@ class MonitorEngine:
             del self.breaths[:500]
         self._last_breath_wall = now  # any breath, even a noisy one, means the subject breathed
         self._recent_quality.append(b.quality)
+        self._recent_clip.append(bool(b.clipped))
         peak = self._flow_peak_cur
         self._flow_peak_cur = -math.inf
         if b.quality == "ok":
@@ -775,7 +851,7 @@ class MonitorEngine:
             self._trace_max = -math.inf
         mv = minute_ventilation(self.good, b.t_end)
         rr = respiratory_rate(self.good)
-        tp = TrendPoint(now / 1000, b.etco2, mv, b.vt_ml, rr, b.quality)
+        tp = TrendPoint(now / 1000, b.etco2, mv, b.vt_ml, rr, b.quality, breath_mv(b.vt_ml, b.period_sec))
         self.trend.append(tp)
         if len(self.trend) > MAX_TREND:
             del self.trend[:1000]
@@ -788,6 +864,7 @@ class MonitorEngine:
         # a noisy or artifact breath would give false EtCO2 alarms; a run of them raises
         # the technical alarm in tick() instead, so the alarm system is never silently blind
         if b.quality == "ok":
+            self._test_on_breath(b, now)
             self.alarms.on_breath(b.etco2, now)
 
     def _on_outlier(self, b: Breath, now: float) -> None:
@@ -865,6 +942,10 @@ class MonitorEngine:
         bad = sum(1 for q in self._recent_quality if q in ("noisy", "artifact"))
         noisy = connected and (bad >= 3 or (a.is_active("noisyBreaths") and bad > 1))
         a.set_condition("noisyBreaths", noisy, now, "medium", f"SIGNAL TOO NOISY: {bad} of the last {len(self._recent_quality)} breaths left out of EtCO2 and its alarms")
+        nclip = sum(self._recent_clip)
+        clip = connected and (nclip >= 2 or (a.is_active("pneumoClip") and nclip > 0))
+        a.set_condition("pneumoClip", clip, now, "medium", f"PNEUMOTACH OUT OF RANGE: flow clipped in {nclip} of the last {len(self._recent_clip)} breaths, VT unknown")
+        self._test_tick(now)
 
         a.tick(now)
 
@@ -954,14 +1035,177 @@ class MonitorEngine:
         self.frozen = on
 
     def add_marker(self, label: str | None = None) -> Marker:
-        mid = self._marker_id
-        self._marker_id += 1
-        m = Marker(mid, self.clock(), (label or "").strip() or f"Event {mid}")
-        self.markers.append(m)
-        self.trend_version += 1
+        m = self._marker((label or "").strip() or f"Event {self._marker_id}")
         self.recorder.event(m.t, f"MARK {m.label}")
         self._add_log(f"Marker: {m.label}")
         return m
+
+    def _marker(self, label: str) -> Marker:
+        m = Marker(self._marker_id, self.clock(), label)
+        self._marker_id += 1
+        self.markers.append(m)
+        self.trend_version += 1
+        return m
+
+    # ---------- the rebreathing test ----------
+
+    def _response_points(self, pts: list[TrendPoint]) -> list[ResponsePoint]:
+        return [ResponsePoint(p.t, p.etco2, p.mv_breath, p.quality) for p in pts]
+
+    def live_baseline(self) -> Baseline:
+        """Room-air breathing over the last minute (for the "baseline stable" cue)."""
+        return baseline(self._response_points(self.trend[-200:]), self.clock() / 1000)
+
+    def start_rebreathing(self) -> None:
+        """The operator has turned the valve to the bag (DTM 6.2, 7.9)."""
+        ts = self.test
+        if ts.phase == "rebreathing":
+            return
+        now = self.clock()
+        base = self.live_baseline()
+        ts.phase = "rebreathing"
+        ts.number += 1
+        ts.started = now
+        ts.ended = None
+        ts.baseline = base
+        ts.result = None
+        a = self.settings.alarms
+        self.alarms.high_override = a.test_end_mm_hg
+        self._marker(f"Rebreathing {ts.number} start")
+        self.recorder.event(
+            now,
+            f"TEST_REBREATHING_START test={ts.number} baseline_etco2={to_fixed(base.etco2, 1)} baseline_mv={to_fixed(base.mv, 2)} "
+            f"baseline_breaths={base.n} baseline_stable={'yes' if base.stable else 'no'} end_limit={js_num(a.test_end_mm_hg)} max_s={js_num(a.test_max_sec)}",
+        )
+        self._add_log(f"Rebreathing {ts.number} started (baseline EtCO2 {to_fixed(base.etco2, 1)} mmHg, {'stable' if base.stable else 'NOT stable'})")
+
+    def end_rebreathing(self, reason: str = "operator") -> ResponseResult | None:
+        """The operator has turned the valve back to room air."""
+        ts = self.test
+        if ts.phase != "rebreathing" or ts.started is None:
+            return None
+        now = self.clock()
+        ts.ended = now
+        ts.phase = "recovery"
+        res = self.response()
+        ts.result = res
+        self.alarms.set_condition("testTime", False, now, "medium", "")
+        self._marker(f"Rebreathing {ts.number} end")
+        f = res.fit
+        stats = (
+            f"slope={to_fixed(f.slope, 3)} ci95={to_fixed(f.slope_ci95, 3)} r={to_fixed(f.r, 3)} x_intercept={to_fixed(f.x_intercept, 1)} n={f.n}"
+            if f
+            else f"slope= n={len(res.xs)}"
+        )
+        self.recorder.event(now, f"TEST_REBREATHING_END test={ts.number} duration_s={to_fixed((now - ts.started) / 1000, 1)} reason={reason} {stats} skipped={res.skipped} rejected={res.rejected}")
+        self._add_log(f"Rebreathing {ts.number} ended ({reason}): " + (f"slope {to_fixed(f.slope, 2)} L/min/mmHg, r {to_fixed(f.r, 2)}, n {f.n}" if f else "too few breaths to fit"))
+        return res
+
+    def toggle_rebreathing(self) -> None:
+        if self.test.phase == "rebreathing":
+            self.end_rebreathing()
+        else:
+            self.start_rebreathing()
+
+    def _lift_end_limit(self, now: float, why: str) -> None:
+        if self.alarms.high_override is None:
+            return
+        self.alarms.high_override = None
+        self._add_log(f"End-test CO2 limit lifted ({why}); high limit back to {js_num(self.settings.alarms.high_mm_hg)} mmHg")
+
+    def _test_on_breath(self, b: Breath, now: float) -> None:
+        """Before the EtCO2 alarms see a clean breath."""
+        ts = self.test
+        a = self.settings.alarms
+        if ts.phase == "recovery" and math.isfinite(b.etco2) and b.etco2 < a.high_mm_hg - a.hysteresis_mm_hg:
+            self._lift_end_limit(now, "EtCO2 back under the normal limit")
+        w = a.test_warn_mm_hg
+        if ts.phase == "rebreathing" and w > 0 and math.isfinite(b.etco2):
+            active = self.alarms.is_active("co2Warn")
+            if b.etco2 >= w or (active and b.etco2 > w - a.hysteresis_mm_hg):
+                msg = f"EtCO2 {to_fixed(b.etco2, 0)} mmHg: approaching the end-test limit ({js_num(a.test_end_mm_hg)} mmHg)"
+                self.alarms.set_condition("co2Warn", True, now, "medium", msg, b.etco2)
+            elif active:
+                self.alarms.set_condition("co2Warn", False, now, "medium", "")
+
+    def _test_tick(self, now: float) -> None:
+        ts = self.test
+        a = self.alarms
+        if ts.phase == "rebreathing" and ts.started is not None:
+            lim = self.settings.alarms.test_max_sec
+            el = (now - ts.started) / 1000
+            over = el >= lim
+            msg = f"REBREATHING TIME LIMIT {int(lim // 60)}:{int(lim % 60):02d}: turn the valve to room air, then press End rebreathing"
+            a.set_condition("testTime", over, now, "medium", msg)
+            return
+        if a.is_active("testTime"):
+            a.set_condition("testTime", False, now, "medium", "")
+        if a.is_active("co2Warn"):
+            a.set_condition("co2Warn", False, now, "medium", "")
+        if ts.phase == "recovery" and ts.ended is not None and now - ts.ended >= RECOVERY_LIMIT_MS:
+            self._lift_end_limit(now, f"{RECOVERY_LIMIT_MS // 60000} min after the test")
+
+    def response(self, window_t0: float | None = None) -> ResponseResult:
+        """The MV-against-EtCO2 fit shown on the Ventilatory response tab.
+
+        With a rebreathing period marked: the clean breaths of the current (or last)
+        period, breath by breath, minus the first ``response_skip_breaths``. Without
+        one: every clean breath since ``window_t0`` (wall s), breath by breath.
+        """
+        ts = self.test
+        skip = int(self.settings.processing.response_skip_breaths)
+        if ts.number and ts.started is not None:
+            key: tuple = ("test", self.trend_version, ts.number, ts.ended, skip)
+        else:
+            key = ("window", self.trend_version, round(window_t0 or 0, 0))
+        if self._response_cache and self._response_cache[0] == key:
+            return self._response_cache[1]
+        pts = self._response_points(self.trend)
+        if key[0] == "test":
+            t1 = ts.ended / 1000 if ts.ended is not None else math.inf
+            res = response_fit(pts, ts.started / 1000, t1, skip)
+        else:
+            res = response_fit(pts, window_t0 if window_t0 is not None else -math.inf, math.inf, 0, "window")
+        self._response_cache = (key, res)
+        return res
+
+    def test_status(self) -> TestStatus:
+        ts = self.test
+        now = self.clock()
+        a = self.settings.alarms
+        if ts.started is None:
+            el = 0.0
+        else:
+            el = (ts.ended if ts.ended is not None else now) - ts.started
+        base = ts.baseline if ts.phase == "rebreathing" else self.live_baseline()
+        return TestStatus(ts.phase, ts.number, el, a.test_max_sec * 1000, base, self.alarms.high_override)
+
+    def measure_co2_delay(self, seconds: float, done: Callable[[tuple[float, int] | None, str | None], None]) -> None:
+        """Time the CO2 against the flow over ``seconds`` of breathing; then
+        ``done((lag_s, breaths), None)`` or ``done(None, message)``."""
+        t: list[float] = []
+        fl: list[float] = []
+        c: list[float] = []
+
+        def on(p: Processed) -> None:
+            t.append(p.t_sec)
+            fl.append(p.pneumo_lpm)
+            c.append(p.co2_mmhg)
+
+        off = self.on_sample(on)
+
+        def finish() -> None:
+            off()
+            if not t:
+                done(None, "No data arrived. Connect the device (or the simulator) first.")
+                return
+            est = estimate_co2_delay(t, fl, c, self.settings.processing.deadband_lpm)
+            if est is None:
+                done(None, "Could not time the CO2 against the flow: it needs at least 3 clear breaths with both a capnogram and pneumotach flow.")
+            else:
+                done(est, None)
+
+        self.call_later(seconds * 1000, finish)
 
     def rename_marker(self, mid: int, label: str) -> None:
         m = next((x for x in self.markers if x.id == mid), None)
@@ -1162,6 +1406,8 @@ class MonitorEngine:
             known_port=self._known_port.label if self._known_port and src is None else None,
             awaiting_reconnect=self._awaiting_reconnect,
             i2c_scan=self._i2c_scan,
+            co2_high_limit=self.alarms.high_limit,
+            test=self.test_status(),
         )
 
     def settings_json(self) -> dict:

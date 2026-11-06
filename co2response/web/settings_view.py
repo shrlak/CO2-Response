@@ -88,6 +88,7 @@ class SettingsView:
         self.rate = 100
         self.check = {"seconds": 10, "job": None, "results": None, "ran": 0}
         self.confirm_del: str | None = None
+        self.measuring_lag = False
         self.usage: tuple[float, float] | None = None
         self.persisted = False
 
@@ -396,7 +397,7 @@ class SettingsView:
         st = s.settings
         p = st.processing
         if key_only:
-            return json.dumps(dataclasses.asdict(st))
+            return (json.dumps(dataclasses.asdict(st)), self.measuring_lag)
         return (
             '<div style="max-width:760px"><h2>Display & units</h2><p class="lead">How the monitor looks and how raw signals are turned into numbers.</p><h3 style="margin-top:10px">Screen</h3>'
             + field("Theme", seg("set-theme", st.theme, [("dark", "Dark"), ("light", "Light"), ("system", "Match system")]), "Dark is easier on the eyes in a dim room or overnight. Light suits a bright bench.")
@@ -412,8 +413,18 @@ class SettingsView:
             + (number_field("Filter cutoff", "proc", p.filter_hz, "Hz", None, "filthz", 1, 40, 0.5, "filter_hz") if p.filter_on else "")
             + number_field("Breath detection deadband", "proc-db", round(p.deadband_lpm / 60, 3), "L/s", "Flow must pass ± this to count as a new inspiration. Raise it if noise is counted as breaths.", "deadband", 0.005, 0.5, 0.005)
             + number_field("Minimum breath length", "proc", p.min_breath_sec, "s", None, "minbreath", 0.3, 5, 0.1, "min_breath_sec")
+            + number_field(
+                "CO2 delay behind flow", "proc", p.co2_delay_ms, "ms",
+                "How long the capnograph's CO2 lags the pneumotach flow (sample-line transport plus sensor response). CO2 is shifted back by this before breaths are cut, so each breath gets its own EtCO2 and FiCO2. "
+                "A sidestream capnograph usually needs 1000–3000 ms; a mainstream sensor much less. Measure it with normal breathing.",
+                "co2lag", 0, 6000, 50, "co2_delay_ms",
+            )
+            + f'<div class="row-actions" style="margin:4px 0 10px">{btn("Measuring… keep breathing normally" if self.measuring_lag else "Measure from 20 s of breathing", "measure-lag", "btn small")}</div>'
             + field("Remove spikes (Hampel filter)", toggle("proc-bool", p.despike, "despike", "despike"), 'Replaces single glitchy samples with the median of their neighbours before anything is calculated. Keeps real fast changes such as the capnogram upstroke. Adds 30 ms of delay.', "despike")
             + field("Leave noisy breaths out", toggle("proc-bool", p.reject_bad_breaths, "reject", "reject_bad_breaths"), 'Each breath is checked before it is used: too noisy (signal-to-noise below 8), a partial breath with no alveolar plateau, an impossible value, or an isolated EtCO2 jump. Those breaths are left out of the numbers, the EtCO2 trend, the response plot and the EtCO2 alarms, but stay in the recording, marked. A run of them raises a technical alarm.', "reject")
+            + '<h3 style="margin-top:18px">Rebreathing test</h3>'
+            + number_field("Breaths left out at the start", "proc", p.response_skip_breaths, "breaths", "The deep breaths the subject is coached to take when the valve turns to the bag. They are left out of the MV-against-EtCO2 slope.", "skipb", 0, 20, 1, "response_skip_breaths")
+            + '<p class="note">The end-test CO2 limit, the warning before it and the time limit are under Alarms.</p>'
             + "</div>"
         )
 
@@ -893,7 +904,29 @@ def install_settings_actions(app: "WebApp") -> None:
         v = as_float(el)
         if v is not None:
             v = min(float(el.max), max(float(el.min), v))
-            e.update_settings(processing=dataclasses.replace(e.settings.processing, **{data(el, "arg"): v}))
+            name = data(el, "arg")
+            if name == "response_skip_breaths":
+                v = int(round(v))
+            e.update_settings(processing=dataclasses.replace(e.settings.processing, **{name: v}))
+        sv.bump()
+
+    def measure_lag(_el):
+        if sv.measuring_lag:
+            return
+        sv.measuring_lag = True
+
+        def done(res, err):
+            sv.measuring_lag = False
+            if err:
+                toast(err, 6000)
+            else:
+                lag, n = res
+                ms = int(round(lag * 1000 / 10) * 10)
+                e.update_settings(processing=dataclasses.replace(e.settings.processing, co2_delay_ms=ms))
+                toast(f"CO2 lags flow by {ms} ms (median of {n} breaths). Saved.", 6000)
+            sv.bump()
+
+        e.measure_co2_delay(20, done)
         sv.bump()
 
     def proc_db(el):
@@ -965,6 +998,7 @@ def install_settings_actions(app: "WebApp") -> None:
         proc=proc,
         **{
             "settings-tab": lambda el: (setattr(sv, "tab", data(el, "arg")), sv.bump()),
+            "measure-lag": measure_lag,
             "rate-send": lambda el: (e.send(f"RATE {sv.rate}"), e.send("INFO")),
             "ask-info": lambda el: e.send("INFO"),
             "disconnect": lambda el: (e.disconnect(), sv.bump()),

@@ -57,6 +57,13 @@ class AlarmEngine:
         self._high_since: float | None = None
         self._low_since: float | None = None
         self._silenced_until = 0.0
+        #: the end-test limit that replaces ``high_mm_hg`` during a rebreathing test
+        self.high_override: float | None = None
+
+    @property
+    def high_limit(self) -> float:
+        """The high CO2 limit in force: the end-test limit while rebreathing, else ``high_mm_hg``."""
+        return self.high_override if self.high_override is not None else self.settings.high_mm_hg
 
     def set_settings(self, s: AlarmSettings, now: float) -> None:
         self.settings = s
@@ -101,8 +108,10 @@ class AlarmEngine:
 
     # ---------- CO2 limits ----------
 
-    def _high_msg(self, v: float) -> str:
-        return f"EtCO2 HIGH {to_fixed(v, 0)} mmHg > {js_num(self.settings.high_mm_hg)}"
+    def _high_msg(self, v: float, what: str = "EtCO2") -> str:
+        if self.high_override is not None:
+            return f"END TEST: {what} {to_fixed(v, 0)} mmHg > {js_num(self.high_limit)}. Turn the valve to room air"
+        return f"{what} HIGH {to_fixed(v, 0)} mmHg > {js_num(self.high_limit)}"
 
     def _low_msg(self, v: float) -> str:
         return f"EtCO2 LOW {to_fixed(v, 0)} mmHg < {js_num(self.settings.low_mm_hg)}"
@@ -114,14 +123,15 @@ class AlarmEngine:
             return
         high = self._records.get("co2High")
         high_active = high is not None and high.state == "active"
-        if etco2 > s.high_mm_hg:
+        hi = self.high_limit
+        if etco2 > hi:
             self._high_count += 1
             if self._high_count >= s.delay_breaths or high_active:
                 self.set_condition("co2High", True, t, "high", self._high_msg(etco2), etco2)
         else:
             self._high_count = 0
             if high_active:
-                if etco2 < s.high_mm_hg - s.hysteresis_mm_hg:
+                if etco2 < hi - s.hysteresis_mm_hg:
                     self._resolve("co2High", t)
                 else:
                     self.set_condition("co2High", True, t, "high", self._high_msg(etco2), etco2)
@@ -149,19 +159,21 @@ class AlarmEngine:
         ms = s.delay_sec * 1000
 
         def live(v: float, hi: bool) -> str:
-            lim = s.high_mm_hg if hi else s.low_mm_hg
-            return f"CO2 {'HIGH' if hi else 'LOW'} {to_fixed(v, 0)} mmHg {'>' if hi else '<'} {js_num(lim)}"
+            if hi:
+                return self._high_msg(v, "CO2")
+            return f"CO2 LOW {to_fixed(v, 0)} mmHg < {js_num(s.low_mm_hg)}"
 
         high = self._records.get("co2High")
         high_active = high is not None and high.state == "active"
-        if co2 > s.high_mm_hg:
+        hi_lim = self.high_limit
+        if co2 > hi_lim:
             if self._high_since is None:
                 self._high_since = t
             if t - self._high_since >= ms or high_active:
                 self.set_condition("co2High", True, t, "high", live(co2, True), co2)
         else:
             self._high_since = None
-            if high_active and co2 < s.high_mm_hg - s.hysteresis_mm_hg:
+            if high_active and co2 < hi_lim - s.hysteresis_mm_hg:
                 self._resolve("co2High", t)
 
         if s.low_mm_hg is not None:

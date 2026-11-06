@@ -18,6 +18,9 @@ All seven phases are built and pushed. What is verified and what still needs har
 >
 > **Update: noise removal.** Samples pass a Hampel spike filter before calibration and the low-pass filter, and every breath is screened (`ok`, `noisy`, `artifact`, `outlier`) before it reaches the numbers, the trend, the response plot, the alarms, review or analysis. Rejected breaths stay in the file, marked (`breath_quality`, session format v3). Details: README §5.7 and [docs/data-format.md](docs/data-format.md#noise-removal). The phase notes below describe the original build; the [tech stack](#7-tech-stack-and-repo-layout) is current.
 
+>
+> **Update (Nov 6): requirements review.** The design file (DTM rev02, mid-semester feedback, mentor and TA notes) was checked against the build: [docs/requirements-review.md](docs/requirements-review.md). Software changes from it: a **rebreathing test** mode (Start/End rebreathing soft key, so the soft-key bar now has eight keys; end-test CO2 limit and warning, 6-minute limit, baseline-stable cue, start/end events in the file), a breath-by-breath CO2-response fit over the rebreathing period only with r, x-intercept and the slope's 95 % CI, **CO2 delay** alignment for a sidestream capnograph (with a measure button), and pneumotach **clipping** handling (no more false apnea at peak flow). The rest of that document is the plan for the hardware, the DTM and testing.
+
 | Phase | Status |
 | --- | --- |
 | 0 UI sign-off | Mockup done; the real app follows it, with **dark and light themes** and a desktop layout (1280×720 and up). |
@@ -239,7 +242,7 @@ Yellow for CO2 is the most common capnography convention on bedside monitors. Al
 
 ### Soft-key bar
 
-Seven keys, fixed order, always visible. Each shows its state in its own label.
+Seven keys, fixed order, always visible. Each shows its state in its own label. (Built: an eighth key, **Start/End rebreathing**, sits after Mark event; see README §5.13.)
 
 | Key | Behavior |
 | --- | --- |

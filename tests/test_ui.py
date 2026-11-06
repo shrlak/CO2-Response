@@ -227,3 +227,38 @@ def test_sample_session_replays_through_the_window(win):
     advance(win, 16)
     assert win.engine.snapshot().status_detail == "Replay finished"
     assert len(win.engine.breaths) >= 30
+
+
+def test_rebreathing_key_runs_a_test_and_the_response_tab_reports_it(win):
+    e = win.engine
+    e.connect("simulator")
+    advance(win, 65)
+    m = win.monitor
+    win._tick()
+    assert m.k_test.main.text() == "START REBREATHING" and "baseline stable" in m.k_test.sub.text()
+    e._source.core.model.set_params(scenario="co2Ramp")
+    m.k_test.click()
+    advance(win, 60)
+    win._tick()
+    assert m.k_test.main.text() == "END REBREATHING" and "of 6:00" in m.k_test.sub.text() and "stop at 65" in m.k_test.sub.text()
+    assert "end test 65" in m.k_limits.sub.text()
+    m.k_test.click()
+    win.monitor.trend.stack.setCurrentIndex(1)
+    win._tick()
+    meta = win.monitor.trend.meta.text()
+    assert meta.startswith("Rebreathing 1 · slope 0.") and "95 % CI ±" in meta and " · r " in meta and "x-int " in meta and "3 coached breaths left out" in meta
+    assert m.k_test.main.text() == "START REBREATHING" and "test 1 done" in m.k_test.sub.text()
+
+
+def test_co2_delay_and_test_limits_are_in_settings(win):
+    from co2response.ui.settings.display import DisplayPage
+
+    page = DisplayPage(win.engine)
+    page.lag.setText("1500")
+    page.lag.editingFinished.emit()
+    assert win.engine.settings.processing.co2_delay_ms == 1500
+    assert win.engine.pipeline.co2_lag_samples == 150
+    form = win.monitor.drawer.form
+    form.t_end.setText("62")
+    form.t_end.editingFinished.emit()
+    assert win.engine.settings.alarms.test_end_mm_hg == 62

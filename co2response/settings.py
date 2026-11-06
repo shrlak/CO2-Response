@@ -74,6 +74,13 @@ class ProcessingOptions:
     despike: bool = True
     #: leave noisy, artifact and outlier breaths out of the numbers, graphs and EtCO2 alarms
     reject_bad_breaths: bool = True
+    #: how far CO2 lags flow (sample-line transport + sensor response), ms. CO2 is shifted
+    #: back by this before breaths are cut, so each breath gets its own EtCO2. A sidestream
+    #: capnograph typically needs 1000–3000 ms; measure it in Settings > Display & units.
+    co2_delay_ms: float = 0
+    #: clean breaths at the start of rebreathing left out of the CO2-response fit: the
+    #: deep breaths the subject is coached to take when the valve turns to the bag
+    response_skip_breaths: int = 3
 
 
 @dataclass
@@ -94,6 +101,14 @@ class AlarmSettings:
     volume: float = 0.8
     #: no breath for this long raises a high-priority alarm; 0 = off
     apnea_sec: float = 20
+    #: during a rebreathing test the high EtCO2 limit becomes this end-test limit, mmHg.
+    #: TODO: confirm with Dr. Weiner. CHOP stops the test at 60–65 mmHg; DTM rev02 input
+    #: 3.1 (inspired CO2 > 7 % for 10 s) would stop every Read test, so it needs revising.
+    test_end_mm_hg: float = 65
+    #: medium "approaching the end-test limit" alarm while rebreathing, mmHg; 0 = off
+    test_warn_mm_hg: float = 60
+    #: longest a rebreathing period may run before a medium alarm, s (DTM 8.1: ≤ 6 min)
+    test_max_sec: float = 360
 
 
 @dataclass
@@ -102,6 +117,8 @@ class SimSettings:
     rr: float = 15
     etco2: float = 38
     vt_ml: float = 500
+    #: simulated sample-line delay of the CO2 signal, s
+    co2_delay_sec: float = 0
 
 
 @dataclass
@@ -154,6 +171,9 @@ def sanitize_alarms(a: AlarmSettings) -> AlarmSettings:
         silence_sec=clamp(a.silence_sec, 10, 120, 120),
         volume=clamp(a.volume, 0.1, 1, 0.8),
         apnea_sec=clamp(a.apnea_sec, 0, 120, 20),
+        test_end_mm_hg=clamp(a.test_end_mm_hg, 30, 120, DEFAULT_ALARMS.test_end_mm_hg),
+        test_warn_mm_hg=clamp(a.test_warn_mm_hg, 0, 120, DEFAULT_ALARMS.test_warn_mm_hg),
+        test_max_sec=clamp(a.test_max_sec, 60, 1200, DEFAULT_ALARMS.test_max_sec),
     )
 
 

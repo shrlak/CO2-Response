@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING
 
 import js
 
-from ..engine.monitor import Snapshot
+from ..engine.monitor import Snapshot, test_key_text
 from ..processing.co2 import mmhg_to_pct
-from ..processing.metrics import linear_fit
+from ..processing.response import describe as describe_response
 from ..settings import AlarmSettings
 from .charts import ResponseChart, Sweep, TrendChart
 from .dom import as_float, btn, byid, data, esc, field, number_field, seg, set_html, toast, toggle
@@ -157,6 +157,13 @@ def alarm_form_html(a: AlarmSettings, p: str) -> str:
     out += number_field("Hysteresis", "alarm", a.hysteresis_mm_hg, "mmHg", "A high alarm clears only below limit − hysteresis.", f"{p}-hyst", 0, 10, 0.5, "hysteresis_mm_hg")
     out += number_field("Apnea alarm after", "alarm", a.apnea_sec, "s", "High-priority alarm when no breath is detected for this long. 0 turns it off.", f"{p}-apnea", 0, 120, 1, "apnea_sec")
     out += number_field("Silence duration", "alarm", a.silence_sec, "s", "Audio comes back on by itself after this. Maximum 120 s.", f"{p}-silence", 10, 120, 1, "silence_sec")
+    out += number_field(
+        "End-test CO2 limit", "alarm", a.test_end_mm_hg, "mmHg",
+        "Replaces the high limit while rebreathing (Start rebreathing on the monitor) and until EtCO2 is back under the high limit. CHOP ends the test at 60–65 mmHg: confirm with the clinicians.",
+        f"{p}-tend", 30, 120, 1, "test_end_mm_hg",
+    )
+    out += number_field("Warn while rebreathing at", "alarm", a.test_warn_mm_hg, "mmHg", "Medium alarm as EtCO2 approaches the end-test limit. 0 turns it off.", f"{p}-twarn", 0, 120, 1, "test_warn_mm_hg")
+    out += number_field("Rebreathing time limit", "alarm", a.test_max_sec, "s", "Medium alarm when a rebreathing period runs this long (DTM 8.1: 6 minutes).", f"{p}-tmax", 60, 1200, 10, "test_max_sec")
     vol = round(a.volume * 100)
     out += field(
         "Alarm volume", f'<input type="range" id="{p}-vol" min="10" max="100" step="5" value="{vol}" data-change="alarm-vol"><span class="u">{vol} %</span>', "Cannot be set to zero.", f"{p}-vol"
@@ -280,12 +287,12 @@ class MonitorView:
         ticks = [t for t in (0, 2, 4, 6, 8, 10, 12) if t <= co2_max + 0.01] if pct else [t for t in (0, 20, 40, 60, 80, 100) if t <= co2_max]
         fs = st.flow_scale_lpm
         theme = self.app.theme
-        self.sweeps["co2"].set_options(0, co2_max, ticks, False, disp(st.alarms.high_mm_hg), st.sweep_sec, s.rate_hz, theme)
+        self.sweeps["co2"].set_options(0, co2_max, ticks, False, disp(s.co2_high_limit), st.sweep_sec, s.rate_hz, theme)
         for cid in ("flow", "pneumo"):
             self.sweeps[cid].set_options(-fs, fs, [-fs, 0, fs], True, None, st.sweep_sec, s.rate_hz, theme)
         byid("unit-co2").textContent = unit
 
-        co2_alarm = next((a for a in s.alarms if a.id in ("co2High", "co2Low") and a.state == "active"), None)
+        co2_alarm = next((a for a in s.alarms if a.id in ("co2High", "co2Low", "co2Warn") and a.state == "active"), None)
         apnea = next((a for a in s.alarms if a.id == "apnea" and a.state == "active"), None)
         byid("row-co2").className = "row co2" + (" in-alarm" if (co2_alarm and co2_alarm.priority == "high") or apnea else "")
         tag = "FROZEN" if s.frozen else "SIMULATED" if s.source_kind == "simulator" else "REPLAY" if s.source_kind == "replay" else None
@@ -317,7 +324,7 @@ class MonitorView:
                 stale=sc["co2"],
                 alarm=("high" if co2_alarm.priority == "high" else "medium") if co2_alarm else None,
                 flash=bool(co2_alarm and not co2_alarm.acknowledged),
-                limits=(lim(st.alarms.high_mm_hg), lim(st.alarms.low_mm_hg)),
+                limits=(lim(s.co2_high_limit), lim(st.alarms.low_mm_hg)),
                 qualifier="no CO2 signal" if sc["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br: {fmt(disp(n.etco2_median), digits)}",
                 raw=raw("co2"),
             ),
@@ -370,6 +377,11 @@ class MonitorView:
             return f'<button class="key {cls}" data-act="{act}"{f" data-arg={arg}" if arg else ""}>{main}<span class="sub">{sub}</span></button>'
 
         low = f" · low {fmt(disp(a.low_mm_hg), digits)}" if a.low_mm_hg is not None else ""
+        hi_word = "end test" if s.test is not None and s.test.end_limit is not None else "high"
+        test_key = ""
+        if s.test is not None:
+            t_main, t_sub, t_state = test_key_text(s.test)
+            test_key = key(t_main, t_sub, "rebreathe", t_state or "")
         mark = ""
         if self.mark:
             mid, label = self.mark
@@ -382,9 +394,10 @@ class MonitorView:
             key("Cancel silence" if silenced else "Silence", f"{mss(s.silence_ms)} left" if silenced else f"{a.silence_sec:g} s", "silence", "active" if silenced else "")
             + key("Audio armed" if s.audio_armed else "Arm audio", "tones will sound" if s.audio_armed else "click once per session", "arm-audio", "armed" if s.audio_armed else "need")
             + f'<div style="position:relative;display:grid">{key("Mark event", "hotkey M", "mark")}{mark}</div>'
+            + test_key
             + key("■ Stop rec" if s.recording.active else "● Record", "saves one CSV on stop" if s.recording.active else "one CSV per session", "record", "rec-on" if s.recording.active else "")
             + key("Unfreeze" if s.frozen else "Freeze", "waveforms only", "freeze", "active" if s.frozen else "")
-            + key("Alarm limits", f"high {fmt(disp(a.high_mm_hg), digits)}{low}", "drawer-open")
+            + key("Alarm limits", f"{hi_word} {fmt(disp(s.co2_high_limit), digits)}{low}", "drawer-open")
             + key("Settings", "calibration, connection", "open-settings")
         )
         if set_html("softkeys", html) and self.mark:
@@ -408,7 +421,8 @@ class MonitorView:
             sel.value = f"{st.trend_minutes:g}"
         byid("tab-trend").setAttribute("aria-selected", "true" if self.tab == "trend" else "false")
         byid("tab-response").setAttribute("aria-selected", "true" if self.tab == "response" else "false")
-        key = (int(s.now // 1000), s.trend_version, self.tab, st.trend_minutes, st.co2_unit, st.alarms.high_mm_hg, st.alarms.low_mm_hg, st.co2_scale_max_mm_hg, self.app.theme)
+        tst = s.test
+        key = (int(s.now // 1000), s.trend_version, self.tab, st.trend_minutes, st.co2_unit, s.co2_high_limit, st.alarms.low_mm_hg, st.co2_scale_max_mm_hg, self.app.theme, tst.phase if tst else None, tst.number if tst else 0)
         if key == self._trend_key:
             return
         self._trend_key = key
@@ -428,7 +442,7 @@ class MonitorView:
                 t0,
                 now_s,
                 disp(st.co2_scale_max_mm_hg),
-                disp(st.alarms.high_mm_hg),
+                disp(s.co2_high_limit),
                 None if st.alarms.low_mm_hg is None else disp(st.alarms.low_mm_hg),
                 [a for a, _ in fin],
                 [b for _, b in fin],
@@ -442,11 +456,10 @@ class MonitorView:
             span = f"{minutes:g} min" if minutes > 0 else "whole session"
             byid("trend-meta").textContent = f"{span} · one point per breath · {len(pts)} breaths{removed}"
         else:
-            xy = sorted(((q.etco2, q.mv) for q in pts if math.isfinite(q.etco2) and math.isfinite(q.mv)), key=lambda a: a[0])
-            xs, ys = [a for a, _ in xy], [b for _, b in xy]
-            fit = linear_fit(xs, ys)
-            self.resp.draw(xs, ys, fit)
-            byid("trend-meta").textContent = f"MV (L/min) vs EtCO2 (mmHg) · slope {fmt(fit.slope, 2)} L/min/mmHg · r² {fmt(fit.r2, 2)} · n {len(xs)}{removed}" if fit else "MV vs EtCO2 · needs at least 3 breaths"
+            # breath by breath; with a rebreathing period marked, that period only
+            res = e.response(t0)
+            self.resp.draw(res.xs, res.ys, res.fit)
+            byid("trend-meta").textContent = describe_response(res, tst.number if tst else 0)
 
 
 def install_monitor_actions(app: "WebApp") -> None:
@@ -484,6 +497,7 @@ def install_monitor_actions(app: "WebApp") -> None:
 
     actions(
         silence=lambda el: (e.toggle_silence(), app.refresh()),
+        rebreathe=lambda el: (e.toggle_rebreathing(), app.refresh()),
         freeze=lambda el: (e.set_frozen(not e.frozen), app.refresh()),
         mark=mark,
         test_alarm=test_alarm,
