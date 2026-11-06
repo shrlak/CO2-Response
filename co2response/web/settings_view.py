@@ -199,7 +199,9 @@ class SettingsView:
         )
         bridge = (
             '<section class="card"><div class="card-head"><h3>Python bridge</h3><span class="meta">Safari, Firefox, another computer</span></div>'
-            '<p class="note">Run <span class="mono">python bridge/serial_ws_bridge.py --port COM3</span> on the computer with the Arduino, then connect here.</p>'
+            '<p class="note">Run <span class="mono">python bridge/serial_ws_bridge.py --port COM3</span> on the computer with the Arduino, then connect here. '
+            'On an https:// page (GitHub Pages) the browser allows only a bridge on this computer, <span class="mono">ws://localhost:8765</span>; '
+            'for one on another computer use the desktop app.</p>'
             + field("Bridge address", f'<input id="bridge-url" type="url" class="wide" value="{esc(st.bridge_url)}" data-change="bridge-url">', None, "bridge-url")
             + f'<div class="row-actions">{btn("Connect to bridge", "connect-bridge", "btn primary")}</div></section>'
         )

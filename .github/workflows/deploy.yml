@@ -1,0 +1,55 @@
+# Publishes the browser build of the monitor to GitHub Pages.
+#
+# One-time setup: in the repository's Settings > Pages, set "Source" to "GitHub Actions".
+# After that, every push to main rebuilds and republishes the site; it can also be run by
+# hand from the Actions tab ("Deploy to GitHub Pages" > Run workflow).
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# one deployment at a time; a newer push replaces a queued one but never cuts off a running one
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and test the site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the site (dist/site)
+        run: python scripts/build_site.py dist/site
+      - name: Install the test browser
+        run: |
+          pip install pytest playwright
+          python -m playwright install --with-deps chromium
+      - name: Drive the built site in Chromium
+        run: pytest -q tests/test_web.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/site
+
+  deploy:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

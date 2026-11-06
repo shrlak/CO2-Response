@@ -31,6 +31,21 @@ jobs:
       - name: The command-line entry point starts
         run: python -m co2response --version
 
+  web:
+    name: Browser build (GitHub Pages site in Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/build_site.py dist/site
+      - run: |
+          pip install pytest playwright
+          python -m playwright install --with-deps chromium
+      - name: Boot the site under Pyodide and drive it (simulator, Web Serial, record, review, settings)
+        run: pytest -q tests/test_web.py
+
   bridge:
     name: Python bridge smoke test + analysis loader
     runs-on: ubuntu-latest

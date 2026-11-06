@@ -163,8 +163,32 @@ class WebBridgeSource(Source):
             pass
 
 
+def _insecure_remote(url: str) -> bool:
+    """An https page may open ws:// only to this computer (browsers block the rest as
+    mixed content)."""
+    if str(js.location.protocol) != "https:" or not url.lower().startswith("ws://"):
+        return False
+    return ws_host(url) not in ("localhost", "127.0.0.1", "::1")
+
+
+def ws_host(url: str) -> str:
+    """The host part of a ws:// or wss:// address, lower case, without brackets or port."""
+    netloc = url.split("://", 1)[-1].split("/", 1)[0].rsplit("@", 1)[-1]
+    if netloc.startswith("["):
+        return netloc[1:].split("]", 1)[0].lower()
+    return netloc.split(":", 1)[0].lower()
+
+
 async def open_websocket(url: str, timeout: float = 4.0):
-    ws = js.WebSocket.new(url)
+    if _insecure_remote(url):
+        raise RuntimeError(
+            "This page is served over https, so the browser only allows a ws:// bridge on this computer (ws://localhost:8765). "
+            "To watch a bridge on another computer, use the desktop app (python -m co2response) or a wss:// address."
+        )
+    try:
+        ws = js.WebSocket.new(url)
+    except Exception as e:  # noqa: BLE001  (a malformed address throws straight away)
+        raise RuntimeError(f"Could not open {url}: {e}") from None
     fut = asyncio.get_event_loop().create_future()
     ok = create_proxy(lambda ev: fut.done() or fut.set_result(True))
     bad = create_proxy(lambda ev: fut.done() or fut.set_result(False))
