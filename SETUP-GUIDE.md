@@ -145,6 +145,8 @@ Use `-e mega` or `-e nano` for those boards. `pio device monitor -b 115200` show
 
 The monitor is a Python desktop program. It runs on Windows, macOS and Linux and talks to the Arduino's USB serial port directly.
 
+> **No install?** The same monitor runs in the browser at <https://shrlak.github.io/CO2-Response/>. In desktop Chrome or Edge it can read the Arduino over USB (Web Serial); press **Connect Arduino (USB)** and pick the port. Sessions recorded there are kept in the browser, so export the ones you want to keep. For long or important sessions, the desktop app below is the more robust choice: it writes each recording straight to a file.
+
 1. Install **Python 3.10 or newer** from [python.org](https://www.python.org/downloads/). On Windows, tick **Add python.exe to PATH** in the installer.
 2. Get the code: on the GitHub repository page, **Code → Download ZIP** and unzip it, or `git clone` it.
 3. Open a terminal (Windows: **PowerShell**; macOS: **Terminal**) in the unzipped folder and install the app's packages. Doing it inside a virtual environment keeps them separate from anything else on the computer:
