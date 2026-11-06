@@ -161,7 +161,7 @@ class WebApp:
 
     async def choose_port(self) -> None:
         if not web_serial_supported():
-            toast("This browser has no Web Serial. Use desktop Chrome or Edge, or the Python bridge.", 6000)
+            toast("This browser has no Web Serial. Use desktop Chrome or Edge, or Python acquisition (co2r-daq).", 6000)
             return
         try:
             port = await js.navigator.serial.requestPort()  # first await: still part of the click

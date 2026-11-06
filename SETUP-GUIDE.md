@@ -183,17 +183,21 @@ The first time, a banner explains that this is research software; press **I unde
 
 On Linux, alarm sounds need PortAudio (`sudo apt install libportaudio2`); without it the app falls back to the system beep and says so.
 
-**Watching from a second computer.** Run the bridge on the computer that has the Arduino, then on the other computer open the monitor and use **Settings → Connection → Python bridge** with that computer's address (for example `ws://192.168.1.20:8765`):
+**Watching from a second computer.** Run Python acquisition on the computer that has the Arduino:
 
 ```bash
-pip install -r bridge/requirements.txt
+pip install -e python
 ```
 
 ```bash
-python bridge/serial_ws_bridge.py --port COM3 --host 0.0.0.0
+co2r-daq serve --driver arduino --port COM3 --host 0.0.0.0
 ```
 
-Use `--list` to see port names. Only use `--host 0.0.0.0` on a trusted network: anyone who can reach the port can see the data.
+Use `co2r-daq list` to see port names. On the other computer, open the monitor and use **Settings → Connection → Python acquisition → Connect to Python** with the first computer's address (for example `ws://192.168.1.20:8765`). Only use `--host 0.0.0.0` on a trusted network: anyone who can reach the port can see the data. (`python bridge/serial_ws_bridge.py --port COM3 --host 0.0.0.0` does the same.)
+
+### Using a different data-acquisition system
+
+The same Python program runs other DAQs instead of the Arduino and ADS1115: NI-DAQmx boards (`--driver nidaq`), LabJack (`--driver labjack`), or any board with a Python library via a small driver file. The sensors connect to the DAQ's first three analog inputs (CO2, flow, pneumotach, in that order). Start it with, for example, `co2r-daq serve --driver nidaq --device Dev1`, then connect from **Settings → Connection → Python acquisition** (`ws://localhost:8765`). The monitor, noise removal, alarms, calibration and recording work unchanged. See **[docs/python-daq.md](docs/python-daq.md)**.
 
 ---
 

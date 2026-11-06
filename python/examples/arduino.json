@@ -1,0 +1,5 @@
+{
+  "driver": "arduino",
+  "port": "COM3",
+  "baud": 115200
+}

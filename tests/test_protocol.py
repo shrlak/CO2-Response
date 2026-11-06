@@ -131,3 +131,31 @@ def test_javascript_compatible_formatting():
     assert js_json({"a": 2.0, "b": [0.5, None, True], "c": "x"}) == '{"a":2,"b":[0.5,null,true],"c":"x"}'
     assert to_exponential(0.00123, 1) == "1.2e-3"
     assert iso_ms(1793682000010) == "2026-11-03T05:00:00.010Z"  # from node: new Date(…).toISOString()
+
+
+# ------------------------------------------------------------------ shared fixtures
+
+
+def _fixtures():
+    import json
+
+    from conftest import ROOT
+
+    return json.loads((ROOT / "docs" / "protocol-fixtures.json").read_text(encoding="utf-8"))
+
+
+def test_formats_every_shared_fixture_exactly():
+    # the same vectors are checked by the Python acquisition package (python/tests) and
+    # match the firmware's formatter, so all three produce byte-identical lines
+    for f in _fixtures()["format"]:
+        assert format_data_line(f["seq"], f["tMs"], f["volts"]) == f["line"]
+
+
+def test_parses_every_shared_fixture():
+    names = {"tMs": "t_ms"}
+    for f in _fixtures()["parse"]:
+        p = parse_line(f["line"])
+        assert p.kind == f["kind"], f["line"]
+        for k in ("seq", "tMs", "volts", "reason", "fields", "code"):
+            if k in f:
+                assert getattr(p, names.get(k, k)) == f[k], (f["line"], k)

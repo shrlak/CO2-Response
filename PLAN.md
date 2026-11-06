@@ -29,7 +29,9 @@ All seven phases are built and pushed. What is verified and what still needs har
 | 6 Firmware + hardware link | Firmware builds for Uno/Mega/Nano and its line format matches the dashboard byte for byte. **Not yet run on a real Arduino**: the "< 0.1 % drops over 10 min" check needs hardware. |
 | 7 Recording, docs | Done. Replay reproduces recorded numbers exactly (tested). |
 | + Hardware | Hardware check in Diagnostics (link, ADC, per-sensor rail/noise), one-click and automatic USB reconnect, firmware I2C scan and bus timeout. Step-by-step [SETUP-GUIDE.md](SETUP-GUIDE.md) with a wiring diagram. |
-| + Data | Each recording is one analysis-ready CSV (format v2), written to disk every second (crash-safe). Data & recordings screen: import, review with charts, export whole/breaths/events/time range, replay, delete. Python loader in `analysis/`. |
+| + Python / other DAQs | `python/` package `co2r` (Python 3.9+): `co2r-daq serve` feeds the monitor (desktop or browser, Settings > Connection > Python acquisition) from the Arduino, NI-DAQmx, LabJack or a simulated DAQ; template for any other board; session loader (`co2r.session`, wrapped by `analysis/load_session.py`). NI and LabJack drivers are not yet tested on hardware. See [docs/python-daq.md](docs/python-daq.md). |
+| + Data | Each recording is one analysis-ready CSV (format v3, with each breath's noise-screen quality), written to disk every second (crash-safe). Data & recordings screen: import, review with charts, export whole/breaths/events/time range, replay, delete. Python loader in `analysis/`. |
+| + Noise removal | Hampel spike filter on every sample and a per-breath screen (noisy / partial / impossible / isolated jump) before anything is interpreted; rejected breaths stay in the file, marked. README §5.7. |
 
 **Changes from the plan made during the build**
 
@@ -363,7 +365,7 @@ This is a research prototype, not a medical device. It must never be the only CO
 - Electrical isolation: if anything connects to a person, the Arduino/ADC must be isolated from mains (battery laptop or USB isolator). Go through the lab's safety process before any human or animal use.
 - The alarm look and tones are styled after IEC 60601-1-8 conventions so they feel familiar. They are not certified to that standard.
 
-**Open questions** (each uses the stated default, with a `TODO` in code and a line under README "Assumptions")
+**Open questions** (each uses the stated default, with a `TODO` in code and a line under README "Assumptions"). The full, current list is in [docs/open-questions.md](docs/open-questions.md); discuss and answer them in [issue #4](https://github.com/shrlak/CO2-Response/issues/4).
 
 - [ ] CO2 sensor/capnograph model, its analog output range and scaling
 - [ ] Flow sensor and pneumotach + pressure transducer models

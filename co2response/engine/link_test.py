@@ -50,6 +50,8 @@ class LinkStats:
     adc_errors: int
     i2c_scan: str | None
     channels: dict[str, ChannelStats]
+    #: the reason a Python DAQ driver (co2r-daq) sent with ADC_NOT_FOUND
+    adc_detail: str | None = None
 
 
 class LinkTestCollector:
@@ -135,7 +137,11 @@ def analyze_link_test(s: LinkStats, channels: dict, barometric_mmhg: float = 760
             )
         elif scan == "none":
             fix = f"Nothing answers on the I2C bus. {fix}"
-        out.append(CheckResult("adc", "ADC board", "fail", f"Firmware reports ADC_NOT_FOUND{f' (I2C scan: {scan})' if scan else ''}", fix))
+        if s.adc_detail:
+            fix = f"{s.adc_detail}. Check that the DAQ is plugged in, its vendor driver is installed, and the device name in the co2r-daq settings matches (run co2r-daq list)."
+            out.append(CheckResult("adc", "DAQ device", "fail", "The Python DAQ driver cannot open the device", fix))
+        else:
+            out.append(CheckResult("adc", "ADC board", "fail", f"Firmware reports ADC_NOT_FOUND{f' (I2C scan: {scan})' if scan else ''}", fix))
 
     if not info:
         out.append(

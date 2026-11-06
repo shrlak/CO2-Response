@@ -1,4 +1,4 @@
-"""Settings > Connection: the Arduino, the simulator, replay, and the network bridge."""
+"""Settings > Connection: the Arduino, the simulator, replay, and Python acquisition (co2r-daq)."""
 
 from __future__ import annotations
 
@@ -109,11 +109,13 @@ class ConnectionPage(Page):
         rep.add(hbox(self.replay_btn, button("Replay a file…", self._replay_file), stretch_end=True))
         cards.add(rep)
 
-        # ---- bridge
-        br = Card("Python bridge", "Arduino on another computer")
+        # ---- Python acquisition server (python/co2r: co2r-daq serve)
+        br = Card("Python acquisition", "other DAQs, another computer")
         br.add(
             label(
-                "Run python bridge/serial_ws_bridge.py --port COM3 --host 0.0.0.0 on the computer with the Arduino, then connect here to watch it from this one.",
+                "co2r-daq reads the hardware and sends the same data here: an NI or LabJack DAQ, a simulated DAQ, or an Arduino on another "
+                "computer. Start it where the hardware is plugged in, for example co2r-daq serve --driver nidaq --device Dev1, or "
+                "co2r-daq serve --driver arduino --port COM3 --host 0.0.0.0 to watch from another computer. See docs/python-daq.md.",
                 "note",
                 wrap=True,
             )
@@ -122,9 +124,9 @@ class ConnectionPage(Page):
         self.bridge_url = QLineEdit(s.bridge_url)
         self.bridge_url.setFixedWidth(260)
         self.bridge_url.editingFinished.connect(lambda: engine.update_settings(bridge_url=self.bridge_url.text().strip()))
-        f.add("url", "Bridge address", self.bridge_url)
+        f.add("url", "Server address", self.bridge_url, hint="ws://localhost:8765 unless you changed --ws-port or it runs on another computer.")
         br.add(f)
-        br.add(hbox(button("Connect to bridge", self._bridge, kind="primary"), stretch_end=True))
+        br.add(hbox(button("Connect to Python", self._bridge, kind="primary"), stretch_end=True))
         cards.add(br)
         lay.addWidget(cards)
         lay.addStretch(1)

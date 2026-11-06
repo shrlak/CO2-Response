@@ -610,7 +610,7 @@ ruff check .
 
 | Tests | What they cover |
 | --- | --- |
-| `test_protocol.py` | parser, checksums, sequence gaps |
+| `test_protocol.py` | parser, checksums, sequence gaps, and the shared vectors in `docs/protocol-fixtures.json` |
 | `test_simulator.py` | physiological model and firmware emulation |
 | `test_processing.py` | calibration, filter, breath detection, metrics |
 | `test_denoise.py` | spike removal, breath screen, and noise removal through the pipeline, the engine, the alarms and the analysis loader |
@@ -618,6 +618,7 @@ ruff check .
 | `test_engine.py` | the full data path on a fake clock, including a pseudo-terminal posing as the Arduino (Linux/macOS) |
 | `test_recording.py` | session file, recovery, import/export; the sample file reproduces byte for byte |
 | `test_link_test.py` | hardware check |
+| `test_python_daq.py` | the monitor fed by a real `co2r-daq serve` process (simulated DAQ), and a DAQ that cannot be opened |
 | `test_ui.py` | the desktop window, headless (`QT_QPA_PLATFORM=offscreen` if there is no display) |
 | `test_web.py` | the browser build in Chromium |
 
@@ -637,6 +638,17 @@ It needs internet access to download Pyodide. It covers:
 - a fake Arduino over Web Serial, including unplug and reconnect
 - recording, import, review and storage that survives a reload
 - calibration edits
+- the browser build fed by a `co2r-daq serve` process (needs `pip install -e python`; skipped otherwise)
+
+**The acquisition package** has its own tests (Python 3.9–3.13):
+
+```bash
+pip install -e "python[test]"
+```
+
+```bash
+python -m pytest python/tests
+```
 
 **Other commands:**
 
@@ -650,14 +662,15 @@ It needs internet access to download Pyodide. It covers:
 | --- | --- |
 | app | lint and the full suite on Linux, Windows and macOS |
 | web | the browser tests in Chromium |
-| bridge | a smoke test of the bridge and the analysis loader |
+| python, python-oldest | the `co2r` acquisition package on Python 3.9–3.13 (Linux, Windows, macOS) and with its oldest supported dependencies; its command line and the analysis loader |
+| bridge | a smoke test of `bridge/serial_ws_bridge.py` |
 | firmware | builds for Uno, Mega and Nano, plus the line-format test |
 
 ---
 
 ## 9. Assumptions and open questions
 
-These are placeholders until the open questions in [PLAN.md](PLAN.md) are answered. Each is marked `TODO` in the code or config.
+These are placeholders until the [open questions](docs/open-questions.md) are answered; discuss them in [issue #4](https://github.com/shrlak/CO2-Response/issues/4). Each is marked `TODO` in the code or config.
 
 - **CO2 sensor:** analog output 0–5 V, linear, 0–10 % CO2 (gain 2 %/V). Replace with the real capnograph scaling.
 - **Flow sensor:** bidirectional, 2.5 V = 0 L/min, 40 L/min per volt. It is treated as a second airway flow signal in its own panel. If it measures a gas-delivery line instead, relabel it in `channels.json`.
@@ -667,7 +680,7 @@ These are placeholders until the open questions in [PLAN.md](PLAN.md) are answer
 - **Alarm defaults:** high EtCO2 50 mmHg, low off, 2-breath delay, 2 mmHg hysteresis, 120 s silence, apnea after 20 s, keyed on EtCO2 per breath.
 - **Noise screen:** signal-to-noise ratio of 8, a plateau over 10 % of expiration, and outliers over 5 mmHg. These were tuned on simulated data. Check them against real recordings with `--all-breaths` and adjust them in `co2response/processing/denoise.py` if real breaths are being left out.
 - **Barometric pressure:** 760 mmHg default; Pittsburgh is usually near 735 mmHg. Set the lab's value in Display & units.
-- **Hardware:** the firmware and the hardware check have not yet been run on a real Arduino with the lab's sensors.
+- **Hardware:** the firmware and the hardware check have not yet been run on a real Arduino with the lab's sensors. The NI and LabJack drivers have been tested against stand-ins for their vendor libraries, not on real devices.
 
 ## 10. Documentation
 
@@ -675,11 +688,13 @@ These are placeholders until the open questions in [PLAN.md](PLAN.md) are answer
 | --- | --- |
 | **[SETUP-GUIDE.md](SETUP-GUIDE.md)** | Step-by-step setup and operation: wiring, firmware, install, checks, calibration, sessions, troubleshooting |
 | [docs/wiring.md](docs/wiring.md) | Pin-by-pin wiring |
-| [docs/protocol.md](docs/protocol.md) | Serial protocol |
+| [docs/protocol.md](docs/protocol.md) | Serial protocol (test vectors in `docs/protocol-fixtures.json`) |
+| [docs/python-daq.md](docs/python-daq.md) | Python acquisition: NI, LabJack and other DAQs, `co2r-daq` |
 | [docs/calibration.md](docs/calibration.md) | Calibration procedures |
 | [docs/data-format.md](docs/data-format.md) | Session file format (v3), noise-removal details, import/export, analysis in Python/MATLAB/Excel |
 | [docs/safety.md](docs/safety.md) | Safety and limitations |
-| [PLAN.md](PLAN.md) | Build plan, requirements and open questions |
+| [docs/open-questions.md](docs/open-questions.md) | Open questions for the lab ([issue #4](https://github.com/shrlak/CO2-Response/issues/4)) |
+| [PLAN.md](PLAN.md) | Build plan and requirements |
 | [docs/design/monitor-mockup.html](docs/design/monitor-mockup.html) | Phase 0 UI mockup |
 | [sample-data/synthetic_session.csv](sample-data/synthetic_session.csv) | A sample recorded session |
 

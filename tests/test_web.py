@@ -267,3 +267,43 @@ def test_arduino_over_web_serial(page, site_url):
     assert page.evaluate("window.__fake.serial.requests") == 1  # no second port picker
     assert page.evaluate("window.__fake.port.opens") == 2
     assert page.errors == []
+
+
+def test_monitor_on_the_python_acquisition_server(page, site_url):
+    """The browser build fed by co2r-daq (python/co2r) running its simulated DAQ: the path
+    an NI or LabJack DAQ takes. Skipped when co2r's dependencies are not installed."""
+    import socket
+    import subprocess
+    import sys
+    import time
+
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "python"), "PYTHONUNBUFFERED": "1"}
+    if subprocess.run([sys.executable, "-c", "import websockets, serial, co2r"], env=env, capture_output=True).returncode != 0:
+        pytest.skip("needs the co2r package's dependencies (pip install -e python)")
+    with socket.socket() as so:
+        so.bind(("127.0.0.1", 0))
+        port = so.getsockname()[1]
+    srv = subprocess.Popen(
+        [sys.executable, "-m", "co2r", "serve", "--driver", "simulated", "--seed", "1", "--ws-port", str(port)],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        end = time.monotonic() + 20
+        while time.monotonic() < end and "serving on" not in (srv.stdout.readline() or ""):
+            assert srv.poll() is None, "co2r-daq exited"
+        boot(page, site_url)
+        page.locator('[data-act="open-settings"]').last.click()
+        page.locator("#nav-connection").click()
+        page.fill("#bridge-url", f"ws://localhost:{port}")
+        page.press("#bridge-url", "Enter")
+        page.get_by_role("button", name="Connect to Python").click()
+        sync_api.expect(page.locator(".header")).to_contain_text("Simulated DAQ (Python)", timeout=15_000)
+        page.wait_for_selector(".monitor-screen")  # connecting returns to the monitor
+        numbers_ok(page)
+        assert page.errors == []
+    finally:
+        srv.kill()
+        srv.wait()

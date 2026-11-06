@@ -31,7 +31,7 @@ jobs:
         run: python scripts/build_site.py dist/site
       - name: Install the test browser
         run: |
-          pip install pytest playwright
+          pip install pytest playwright -e python   # co2r: the monitor on a Python acquisition server
           python -m playwright install --with-deps chromium
       - name: Drive the built site in Chromium
         run: pytest -q tests/test_web.py

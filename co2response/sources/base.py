@@ -1,4 +1,4 @@
-"""Anything that produces protocol lines: the Arduino, the simulator, a CSV replay, the bridge.
+"""Anything that produces protocol lines: the Arduino, the simulator, a CSV replay, Python acquisition.
 
 Sources are polled: the monitor engine calls ``poll()`` many times a second and gets
 back the lines that arrived since the last call, plus any status changes. Sources that

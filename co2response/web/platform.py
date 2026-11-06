@@ -1,4 +1,4 @@
-"""Browser adapters for the engine: Web Serial (Arduino), WebSocket (bridge), Web Audio
+"""Browser adapters for the engine: Web Serial (Arduino), WebSocket (Python acquisition), Web Audio
 (alarm tones), persistent storage and the screen wake lock."""
 
 from __future__ import annotations
@@ -127,7 +127,7 @@ class WebBridgeSource(Source):
 
     def __init__(self, ws, url: str) -> None:
         self.ws = ws
-        self.label = f"Bridge {url}"
+        self.label = f"Python {url}"
         self._q: collections.deque[SourceItem] = collections.deque()
         self._closing = False
         self._split = LineSplitter()
@@ -141,7 +141,7 @@ class WebBridgeSource(Source):
 
         def on_close(ev):
             if not self._closing:
-                self._q.append(StatusEvent("error", "Bridge connection closed"))
+                self._q.append(StatusEvent("error", "Python acquisition server closed the connection"))
 
         self._procs = [create_proxy(on_message), create_proxy(on_close)]
         self.ws.onmessage, self.ws.onclose = self._procs
@@ -182,8 +182,8 @@ def ws_host(url: str) -> str:
 async def open_websocket(url: str, timeout: float = 4.0):
     if _insecure_remote(url):
         raise RuntimeError(
-            "This page is served over https, so the browser only allows a ws:// bridge on this computer (ws://localhost:8765). "
-            "To watch a bridge on another computer, use the desktop app (python -m co2response) or a wss:// address."
+            "This page is served over https, so the browser only allows a ws:// server on this computer (ws://localhost:8765). "
+            "For co2r-daq on another computer, use the desktop app (python -m co2response) or a wss:// address."
         )
     try:
         ws = js.WebSocket.new(url)
@@ -202,7 +202,7 @@ async def open_websocket(url: str, timeout: float = 4.0):
     ws.onopen = ws.onerror = None
     if not opened:
         ws.close()
-        raise RuntimeError(f"Could not reach the bridge at {url}. Is serial_ws_bridge.py running?")
+        raise RuntimeError(f"Could not reach {url}. Is `co2r-daq serve` running?")
     return ws
 
 

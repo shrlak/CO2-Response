@@ -224,6 +224,7 @@ class HardwareCheckJob:
             info=e._info,
             adc_errors=e._adc_error_count - adc + (1 if e.alarms.is_active("adcError") else 0),
             i2c_scan=e._i2c_scan,
+            adc_detail=e._adc_detail,
             channels=self.collector.stats(),
         )
         self.results = analyze_link_test(stats, e.effective_channels, e.settings.processing.barometric_mm_hg)
@@ -268,6 +269,8 @@ class MonitorEngine:
         self._reconnect_at: float | None = None
         self._last_port_scan = -math.inf
         self._i2c_scan: str | None = None
+        #: the reason a Python DAQ driver gives after ADC_NOT_FOUND (co2r-daq)
+        self._adc_detail: str | None = None
         self._adc_error_count = 0
         self._source: Source | None = None
         self._status = "idle"
@@ -494,6 +497,7 @@ class MonitorEngine:
         self._awaiting_reconnect = False
         self._reconnect_at = None
         self._i2c_scan = None
+        self._adc_detail = None
         self._adc_error_count = 0
         self._status = "connecting"
         self._status_detail = ""
@@ -672,10 +676,14 @@ class MonitorEngine:
         elif kind == "error":
             if p.code == "ADC_NOT_FOUND":
                 self._adc_error_count += 1
+                # a Python DAQ driver (co2r-daq) says why after the code
+                detail = ",".join(p.raw.split(",")[2:]).strip()
+                self._adc_detail = detail or None
                 if not self.alarms.is_active("adcError"):
                     scan = f" (I2C devices answering: {self._i2c_scan})" if self._i2c_scan else ""
-                    self.alarms.set_condition("adcError", True, now, "medium", f"ADC NOT FOUND: check I2C wiring and power{scan}")
-            self._add_log(f"Device error: {p.code}", "error")
+                    msg = f"DAQ NOT FOUND: {detail}" if detail else f"ADC NOT FOUND: check I2C wiring and power{scan}"
+                    self.alarms.set_condition("adcError", True, now, "medium", msg)
+            self._add_log(f"Device error: {p.raw[2:]}", "error")
             self.recorder.event(now, f"DEVICE_ERROR {p.code}")
         elif kind == "ack":
             self._add_log(f"Device: {p.raw}")
@@ -1055,6 +1063,17 @@ class MonitorEngine:
         if len(self.log) > 2000:
             del self.log[:500]
 
+    def _source_label(self) -> str:
+        """The source's name; a Python acquisition server (co2r-daq) names its device in
+        INFO, e.g. "NI Dev1 (Python)"."""
+        src = self._source
+        if src is None:
+            return ""
+        info = self._info or {}
+        if src.kind == "bridge" and str(info.get("FW", "")).startswith("co2r-py") and info.get("ADC"):
+            return f"{info['ADC']} (Python)"
+        return src.label
+
     def snapshot(self) -> Snapshot:
         now = self.clock()
         connected = self._status == "connected"
@@ -1088,7 +1107,7 @@ class MonitorEngine:
             status=self._status,
             status_detail=self._status_detail,
             source_kind=src.kind if src else None,
-            source_label=src.label if src else "",
+            source_label=self._source_label(),
             info=self._info,
             rate_hz=self._rate(),
             measured_rate_hz=self._measured_rate if connected else 0,

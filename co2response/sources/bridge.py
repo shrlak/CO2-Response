@@ -1,5 +1,7 @@
-"""Lines relayed by bridge/serial_ws_bridge.py over a WebSocket: watch an Arduino that
-is plugged into another computer on the lab network."""
+"""Lines from the Python acquisition server (python/co2r, ``co2r-daq serve``, which is
+also what bridge/serial_ws_bridge.py runs) over a WebSocket: an NI, LabJack or simulated
+DAQ, or an Arduino plugged into another computer on the lab network. The server sends
+several lines per message."""
 
 from __future__ import annotations
 
@@ -15,7 +17,7 @@ class BridgeSource(ThreadedSource):
     def __init__(self, url: str) -> None:
         super().__init__()
         self.url = url
-        self.label = f"Bridge {url}"
+        self.label = f"Python {url}"
         self._ws = None
         self._thread: threading.Thread | None = None
 
@@ -25,9 +27,10 @@ class BridgeSource(ThreadedSource):
         except ImportError as e:
             raise RuntimeError("The websockets package is not installed (pip install websockets).") from e
         try:
-            self._ws = connect(self.url, open_timeout=3, close_timeout=1)
+            # entered by hand (closed in stop()); newer websockets warn about a bare connect()
+            self._ws = connect(self.url, open_timeout=3, close_timeout=1).__enter__()
         except Exception as e:
-            raise RuntimeError(f"Could not reach the bridge at {self.url}. Is serial_ws_bridge.py running? ({e})") from e
+            raise RuntimeError(f"Could not reach {self.url}. Is `co2r-daq serve` running? ({e})") from e
         self._closing = False
         self._thread = threading.Thread(target=self._read_loop, name="bridge", daemon=True)
         self._thread.start()
@@ -42,7 +45,7 @@ class BridgeSource(ThreadedSource):
         except Exception:
             pass
         if not self._closing:
-            self._q.put(StatusEvent("error", "Bridge connection closed"))
+            self._q.put(StatusEvent("error", "Python acquisition server closed the connection"))
 
     def send(self, command: str) -> None:
         try:

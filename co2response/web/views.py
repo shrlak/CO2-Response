@@ -355,7 +355,7 @@ class MonitorView:
             "Choose another port…" if known else "Connect Arduino (USB)", "connect-serial", "btn" if known else "btn primary", disabled=not ws
         )
         buttons += btn("Start simulator", "start-sim") + btn("Replay the sample session", "replay-sample") + btn("More sources…", "open-settings", arg="connection")
-        note = "" if ws else '<p class="note">This browser has no Web Serial, so it cannot read the Arduino directly. Use desktop Chrome or Edge, the Python bridge, or the desktop app (python -m co2response).</p>'
+        note = "" if ws else '<p class="note">This browser has no Web Serial, so it cannot read the Arduino directly. Use desktop Chrome or Edge, Python acquisition (co2r-daq, in Settings > Connection), or the desktop app (python -m co2response).</p>'
         return (
             f'<div class="connect-overlay"><div class="connect-card"><h2>{title}</h2>{detail}{waiting}'
             "<p>Connect the Arduino over USB, or start the simulator to try the monitor without hardware. Waveforms and alarms start as soon as data arrives.</p>"

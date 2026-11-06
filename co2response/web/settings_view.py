@@ -152,7 +152,7 @@ class SettingsView:
         usb_note = (
             '<p class="note">Uses Web Serial. Works in desktop Chrome or Edge on https:// pages or localhost. The browser asks which port to use.</p>'
             if ws
-            else '<p class="warn">This browser has no Web Serial. Use desktop Chrome or Edge, the Python bridge below, or the desktop app (python -m co2response).</p>'
+            else '<p class="warn">This browser has no Web Serial. Use desktop Chrome or Edge, Python acquisition below, or the desktop app (python -m co2response).</p>'
         )
         usb = (
             f'<section class="card"><div class="card-head"><h3>Arduino over USB</h3></div>{usb_note}'
@@ -198,12 +198,13 @@ class SettingsView:
             f'{btn("Replay the sample session", "replay-sample")}</div></section>'
         )
         bridge = (
-            '<section class="card"><div class="card-head"><h3>Python bridge</h3><span class="meta">Safari, Firefox, another computer</span></div>'
-            '<p class="note">Run <span class="mono">python bridge/serial_ws_bridge.py --port COM3</span> on the computer with the Arduino, then connect here. '
-            'On an https:// page (GitHub Pages) the browser allows only a bridge on this computer, <span class="mono">ws://localhost:8765</span>; '
-            'for one on another computer use the desktop app.</p>'
-            + field("Bridge address", f'<input id="bridge-url" type="url" class="wide" value="{esc(st.bridge_url)}" data-change="bridge-url">', None, "bridge-url")
-            + f'<div class="row-actions">{btn("Connect to bridge", "connect-bridge", "btn primary")}</div></section>'
+            '<section class="card"><div class="card-head"><h3>Python acquisition</h3><span class="meta">other DAQs, Safari/Firefox</span></div>'
+            '<p class="note">Python reads the hardware and sends the same data here: the Arduino, an NI or LabJack DAQ, or a simulated DAQ. '
+            'Start it on this computer, for example <span class="mono">co2r-daq serve --driver nidaq --device Dev1</span> or '
+            '<span class="mono">co2r-daq serve --driver arduino --port COM3</span>. See docs/python-daq.md. '
+            'On an https:// page (GitHub Pages) the browser allows only a server on this computer; for one on another computer use the desktop app.</p>'
+            + field("Server address", f'<input id="bridge-url" type="url" class="wide" value="{esc(st.bridge_url)}" data-change="bridge-url">', "ws://localhost:8765 unless you changed --ws-port.", "bridge-url")
+            + f'<div class="row-actions">{btn("Connect to Python", "connect-bridge", "btn primary")}</div></section>'
         )
         return out + f'<div class="cards">{usb}{simc}{rep}{bridge}</div></div>'
 
