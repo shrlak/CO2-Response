@@ -1,6 +1,6 @@
 """
-The CO2-Response line protocol (docs/protocol.md), byte-identical to the dashboard
-(web/src/protocol/protocol.ts) and the firmware (firmware/CO2Response/line_format.h).
+The CO2-Response line protocol (docs/protocol.md), byte-identical to the monitor
+(co2response/protocol.py) and the firmware (firmware/CO2Response/line_format.h).
 docs/protocol-fixtures.json holds shared test vectors that all three must reproduce.
 """
 from __future__ import annotations

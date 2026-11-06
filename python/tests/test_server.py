@@ -1,10 +1,8 @@
 """End to end: a simulated DAQ served over WebSocket, read by a client the way the
 dashboard reads it (lines may arrive several to a message)."""
 import asyncio
-import threading
 
 import websockets
-
 from co2r.drivers.simulated import SimulatedDriver
 from co2r.protocol import SeqTracker, parse_line
 from co2r.server import serve
@@ -31,7 +29,7 @@ def test_serves_lines_and_answers_commands():
         return lines
 
     lines = asyncio.run(main())
-    parsed = [parse_line(l) for l in lines]
+    parsed = [parse_line(ln) for ln in lines]
     assert any(p["kind"] == "info" and p["fields"]["ADC"] == "Simulated DAQ" for p in parsed)
     assert "A,RATE,50" in lines
     data = [p for p in parsed if p["kind"] == "data"]

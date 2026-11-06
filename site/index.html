@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <title>CO2-Response Monitor</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%223%22 fill=%22%23000%22/%3E%3Cpath d=%22M1 11h3l2-7 3 9 2-5h4%22 stroke=%22%23ffd60a%22 stroke-width=%221.6%22 fill=%22none%22/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="root">
+      <div class="loading">
+        <div>
+          <h1>CO2-Response</h1>
+          <div id="boot-status">Loading the Python runtime…</div>
+          <div class="bar"><div></div></div>
+          <p class="note" style="max-width: 46ch; margin: 18px auto 0">
+            Research use only. The monitor is written in Python and runs entirely in this browser tab (Pyodide); no data leaves the computer.
+          </p>
+        </div>
+      </div>
+    </div>
+    <!--
+      The only JavaScript in the app: load Pyodide (CPython compiled to WebAssembly),
+      unpack the co2response Python package, and hand over to co2response/web/app.py.
+    -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.js"></script>
+    <script>
+      (async () => {
+        const status = document.getElementById('boot-status');
+        try {
+          const pyodide = await loadPyodide();
+          status.textContent = 'Loading numpy…';
+          await pyodide.loadPackage('numpy');
+          status.textContent = 'Loading the monitor…';
+          const zip = await (await fetch('co2response.zip', { cache: 'no-cache' })).arrayBuffer();
+          pyodide.unpackArchive(zip, 'zip', { extractDir: '/app' });
+          await pyodide.runPythonAsync('import sys; sys.path.insert(0, "/app")\nfrom co2response.web.app import main\nawait main()');
+        } catch (e) {
+          status.innerHTML = '<b style="color: var(--alarm-high)">Could not start the monitor.</b><br>' + String(e).replace(/</g, '&lt;');
+          console.error(e);
+        }
+      })();
+    </script>
+  </body>
+</html>

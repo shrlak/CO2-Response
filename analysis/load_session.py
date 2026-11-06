@@ -4,8 +4,9 @@ Load a CO2-Response session file for analysis (thin wrapper around co2r.session)
     import sys; sys.path.append("analysis")
     from load_session import load_session
     s = load_session("co2r_STUDY-01_20261105-010203.csv")
+    s.breaths      # clean breaths only (the monitor's noise screen); s.breaths_all has every breath
 
-Command line:  python analysis/load_session.py file.csv --breaths breaths.csv
+Command line:  python analysis/load_session.py file.csv --breaths breaths.csv   (--all-breaths keeps the rejected ones)
 Needs pandas. The full package installs with:  pip install -e "python[analysis]"
 """
 from __future__ import annotations

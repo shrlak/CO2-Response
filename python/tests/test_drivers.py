@@ -8,7 +8,6 @@ import time
 import types
 
 import pytest
-
 from co2r.drivers.base import DaqError, DaqOverrun
 from co2r.drivers.simulated import SimulatedDriver
 

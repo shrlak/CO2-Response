@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "co2response"
+dynamic = ["version"]
+description = "Research capnography and flow monitor: Arduino + 16-bit ADC + a bedside-style desktop monitor. Research use only."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6-Essentials>=6.6",
+    "pyqtgraph>=0.13.3",
+    "numpy>=1.24",
+    "pyserial>=3.5",
+    "websockets>=11",
+    "sounddevice>=0.4.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-qt>=4.4", "ruff>=0.5"]
+analysis = ["pandas>=2.0"]
+
+[project.scripts]
+co2response = "co2response.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "co2response.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["co2response*"]
+
+[tool.setuptools.package-data]
+co2response = ["config/*.json", "fonts/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"
+
+[tool.ruff]
+line-length = 180
+target-version = "py310"
+extend-exclude = ["firmware"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I"]
+ignore = ["E501", "E731", "B905"]

@@ -6,57 +6,48 @@ on:
     branches: [main]
 
 jobs:
-  web:
-    name: Web (lint, typecheck, test, build)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
+  app:
+    name: App (lint, tests, headless UI) · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
-
-  e2e:
-    name: Browser smoke tests (simulator mode)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Python acquisition package (for the dashboard-on-Python test)
-        run: pip install -e ../python
-      - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
-        env:
-          CO2R_PYTHON: python
-      - uses: actions/upload-artifact@v4
-        if: failure()
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Qt and audio system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon0 libfontconfig1 libdbus-1-3 libportaudio2
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: pytest -q
+      - name: The command-line entry point starts
+        run: python -m co2response --version
+
+  web:
+    name: Browser build (GitHub Pages site in Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          name: playwright-report
-          path: web/test-results
-          retention-days: 7
+          python-version: '3.12'
+      - run: python scripts/build_site.py dist/site
+      - run: |
+          pip install pytest playwright -e python   # co2r: the monitor on a Python acquisition server
+          python -m playwright install --with-deps chromium
+      - name: Boot the site under Pyodide and drive it (simulator, Web Serial, record, review, settings)
+        run: pytest -q tests/test_web.py
 
   python:
-    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    name: Acquisition package (co2r) · Python ${{ matrix.python }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -82,7 +73,7 @@ jobs:
           python analysis/load_session.py sample-data/synthetic_session.csv --breaths breaths.csv
 
   python-oldest:
-    name: Python 3.9 with the oldest supported packages
+    name: Acquisition package (co2r) · Python 3.9, oldest supported packages
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

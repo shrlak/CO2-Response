@@ -5,11 +5,11 @@ CO2-Response is a **research prototype, not a medical device**. It is not certif
 ## Rules for any live study
 
 - **Never the only monitor.** Keep a certified capnograph/monitor as the primary alarm on any person or animal.
-- **The alarm only works while:** the browser tab is open, the computer is awake (the app requests a screen wake lock but the OS can still sleep), the device is connected, and **audio is armed** (press **Arm audio** once per session; browsers block sound until you click). A persistent blue "Audible alarm NOT armed" notice shows until it is.
+- **The alarm only works while:** the app is running, the computer is awake (the app asks Windows and macOS to stay awake while a device is connected, but power settings and updates can still sleep it), the device is connected, and a **sound output is armed**. Audio arms by itself when the app finds a speaker; if it cannot, a persistent blue "Audible alarm NOT armed" notice shows and the app falls back to the system beep.
 - **Test before every session:** **Alarm limits > Test alarm** plays the high and medium tones and shows the banner.
 - **Silence is limited** to 120 s and re-arms by itself. Volume cannot be set to zero.
 - **Technical alarms** fire for: no data for 3 s, device disconnected, ADC not found, a channel stuck at an ADC rail, and apnea (no breath for 20 s by default).
-- **Browsers can crash, update, or throttle background tabs.** Alarm checks run in the data path rather than the drawing loop, so they continue in a background tab, but a closed or crashed tab stops everything.
+- **Software can crash, and computers update and sleep.** Alarm checks run in the data path rather than the drawing code, so they continue while the window is minimised or covered (a high alarm also flashes the taskbar entry), but a closed or crashed app stops everything.
 
 ## Electrical safety
 
@@ -18,9 +18,9 @@ If anything connects to a person or animal, the Arduino and ADC must be isolated
 ## Data handling
 
 - **No patient identifiers.** Sessions are named by study code and date/time only. Do not put names, MRNs or dates of birth in the study code or event labels.
-- Data never leaves the computer: the page is static and talks to the Arduino directly. The optional bridge listens on localhost unless you choose otherwise.
+- Data never leaves the computer: the app talks to the Arduino directly and has no network features apart from the optional bridge, which listens on localhost unless you choose otherwise.
 - Recorded CSVs, calibrations and settings stay on the computer that made them.
 
-## Browser support
+## Supported computers
 
-Web Serial needs desktop Chrome or Edge on `https://` or `localhost`. Use the Python bridge for Safari or Firefox.
+The monitor app runs on Windows 10/11, macOS and Linux with Python 3.10 or newer. CI runs the full test suite, including the window, on all three.

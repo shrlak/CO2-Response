@@ -52,7 +52,7 @@ def test_streams_firmware_compatible_lines():
     src = SampledSource(FakeDriver(), rate_hz=100)
     lines, _ = run(src)
     src.stop()
-    parsed = [parse_line(l) for l in lines]
+    parsed = [parse_line(ln) for ln in lines]
     info = parsed[0]
     assert info["kind"] == "info"
     assert info["fields"]["ADC"] == "Fake DAQ"
@@ -75,8 +75,8 @@ def test_overrun_leaves_a_sequence_gap_and_reports_it():
     src.stop()
     assert "E,OVERRUN" in lines
     seq = SeqTracker()
-    for l in lines:
-        p = parse_line(l)
+    for ln in lines:
+        p = parse_line(ln)
         if p["kind"] == "data":
             seq.push(p["seq"], p["tMs"])
     assert seq.dropped == 7
@@ -87,10 +87,10 @@ def test_missing_device_reports_adc_not_found_then_recovers():
     src = SampledSource(drv, rate_hz=100)
     lines, log = run(src, 2.6)
     src.stop()
-    errs = [l for l in lines if l.startswith("E,ADC_NOT_FOUND")]
+    errs = [ln for ln in lines if ln.startswith("E,ADC_NOT_FOUND")]
     assert errs and "Dev9 not found" in errs[0]
     assert "," not in errs[0].split(",", 2)[2] or True  # detail kept on one field
-    assert any(parse_line(l)["kind"] == "data" for l in lines)  # recovered after retry
+    assert any(parse_line(ln)["kind"] == "data" for ln in lines)  # recovered after retry
 
 
 def test_commands_match_the_firmware():
@@ -102,7 +102,7 @@ def test_commands_match_the_firmware():
     time.sleep(0.1)
     n_stopped = len(lines)
     time.sleep(0.15)
-    stopped_data = [l for l in lines[n_stopped:] if l.startswith("D,")]
+    stopped_data = [ln for ln in lines[n_stopped:] if ln.startswith("D,")]
     src.command("START")
     src.command("RATE 250")
     src.command("RATE 9999")
@@ -114,7 +114,7 @@ def test_commands_match_the_firmware():
         assert expected in lines
     assert drv.opens == [100, 250]
     # the device clock keeps counting across the rate change
-    t = [parse_line(l)["tMs"] for l in lines if l.startswith("D,")]
+    t = [parse_line(ln)["tMs"] for ln in lines if ln.startswith("D,")]
     assert all(b >= a for a, b in zip(t, t[1:]))
 
 

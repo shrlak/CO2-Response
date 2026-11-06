@@ -10,7 +10,6 @@ commands (INFO, START, STOP, RATE n). Each runs in its own thread and hands line
 from __future__ import annotations
 
 import threading
-import time
 from typing import Callable
 
 from . import __version__
