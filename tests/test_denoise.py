@@ -194,3 +194,22 @@ def test_analysis_loader_keeps_only_clean_breaths(tmp_path):
     assert (q != "ok").sum() >= 1 and len(s.breaths) == (q == "ok").sum()
     assert s.breaths["etco2_mmHg"].min() > 36  # the partial breaths (about 25 mmHg) are gone
     assert len(mod.load_session(str(ROOT / "sample-data" / "synthetic_session.csv"), clean=False).breaths) == len(s.breaths_all)
+    # the samples of those breaths are blanked too, so analysing the samples skips them
+    bad = s.samples["breath_quality"].isin(["noisy", "artifact", "outlier"])
+    assert bad.any() and s.samples.loc[bad, "co2_mmHg"].isna().all() and s.samples.loc[bad, "v0"].notna().all()
+
+
+def test_trend_line_leaves_out_the_co2_of_rejected_breaths(tmp_path):
+    e = make_engine(tmp_path)
+    e.set_sim(scenario="artifacts")
+    e.connect("simulator")
+    run(e, 120)
+    tt, vv, join = e.trend_trace(0)
+    assert len(tt) == len(vv) == len(join) and not join[-1]
+    hidden = [t for t, ok in zip(e.trace_t, e.trace_ok) if not ok]
+    rejected = [tp for tp in e.trend if tp.quality != "ok"]
+    assert rejected and hidden and len(tt) == len(e.trace_t) - len(hidden)
+    # every hidden point lies within a rejected breath (and the line breaks there)
+    for t in hidden:
+        assert any(tp.t - 6 < t <= tp.t for tp in rejected), t
+    assert sum(not j for j in join) > len(rejected) // 2

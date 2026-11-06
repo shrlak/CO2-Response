@@ -421,8 +421,8 @@ class MonitorView:
         left_out = len(window) - len(pts)
         removed = f" · {left_out} noisy breath{'s' if left_out != 1 else ''} left out" if left_out else ""
         if self.tab == "trend":
-            tt = [t for t in e.trace_t if t >= t0]
-            vv = e.trace_v[len(e.trace_v) - len(tt) :] if tt else []
+            # continuous CO2, without the stretches of breaths the noise screen left out
+            tt, vv, join = e.trend_trace(t0)
             fin = [(q.t, disp(q.etco2)) for q in pts if math.isfinite(q.etco2)]
             self.trend.draw(
                 t0,
@@ -434,6 +434,7 @@ class MonitorView:
                 [b for _, b in fin],
                 tt,
                 [disp(v) for v in vv],
+                join,
                 [(m.t / 1000, m.label) for m in e.markers if m.t / 1000 >= t0],
                 [(a / 1000, p) for a, p in e.alarm_starts if a / 1000 >= t0],
                 pct,

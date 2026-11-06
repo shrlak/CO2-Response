@@ -49,6 +49,24 @@ def test_loads_the_sample_session(sample_session):
     assert (s.breaths_all.breath_quality != "ok").sum() == 2  # two partial breaths in the sample
     assert len(s.breaths) == 37 and (s.breaths.breath_quality == "ok").all()  # only clean breaths
     assert len(load_session(sample_session, clean=False).breaths) == 39
+    # samples inside the two partial breaths keep their raw volts but lose their calibrated values
+    bad = s.samples.breath_quality == "artifact"
+    assert 100 < bad.sum() < 1000
+    assert s.samples.loc[bad, "co2_mmHg"].isna().all() and s.samples.loc[bad, "v0"].notna().all()
+    assert s.samples.loc[s.samples.breath_quality == "ok", "co2_mmHg"].notna().all()
+    raw = load_session(sample_session, clean=False)
+    assert raw.samples.loc[bad, "co2_mmHg"].notna().all()
     assert set(s.events.type) >= {"MARK", "ALARM_START"}
     assert (s.samples.time_s.diff().dropna().round(6) == 0.01).all()
     assert isinstance(s.samples, pd.DataFrame)
+
+
+def test_sample_quality_follows_breath_boundaries():
+    import pytest
+
+    pytest.importorskip("pandas")
+    from co2r.session import sample_quality
+
+    q = sample_quality([0.5, 1.5, 2.0, 2.5, 4.0, 5.5], [2.0, 4.0], ["ok", "noisy"], first_period=1.0)
+    # before the first breath, breath 1 (1.0, 2.0], breath 2 (2.0, 4.0], after the last
+    assert list(q) == ["", "ok", "ok", "noisy", "noisy", ""]

@@ -8,6 +8,7 @@ the drawing code. Everything can be driven from tests with a fake clock.
 
 from __future__ import annotations
 
+import bisect
 import collections
 import dataclasses
 import math
@@ -307,6 +308,8 @@ class MonitorEngine:
         #: continuous CO2 behind the trend: wall s, peak mmHg per 0.5 s
         self.trace_t: list[float] = []
         self.trace_v: list[float] = []
+        #: False where a point covers a breath the noise screen left out (not drawn)
+        self.trace_ok: list[bool] = []
         self.markers: list[Marker] = []
         #: where alarms started, for the trend chart: (wall ms, priority)
         self.alarm_starts: list[tuple[float, str]] = []
@@ -732,9 +735,11 @@ class MonitorEngine:
             if math.isfinite(self._trace_max):
                 self.trace_t.append(now / 1000)
                 self.trace_v.append(self._trace_max)
+                self.trace_ok.append(True)
                 if len(self.trace_t) > MAX_TRACE:
                     del self.trace_t[:1000]
                     del self.trace_v[:1000]
+                    del self.trace_ok[:1000]
             self._trace_max = -math.inf
             self._trace_start = now
 
@@ -765,6 +770,9 @@ class MonitorEngine:
             self._flow_peak_last = peak
         else:
             self._add_log(f"Breath left out ({b.quality}): {b.reason}")
+            # its stretch of the continuous CO2 is left off the trend too
+            self._hide_trace(now / 1000 - b.period_sec, now / 1000)
+            self._trace_max = -math.inf
         mv = minute_ventilation(self.good, b.t_end)
         rr = respiratory_rate(self.good)
         tp = TrendPoint(now / 1000, b.etco2, mv, b.vt_ml, rr, b.quality)
@@ -787,12 +795,34 @@ class MonitorEngine:
         tp = self._trend_of.get(id(b))
         if tp is not None:
             tp.quality = "outlier"
+            self._hide_trace(tp.t - b.period_sec, tp.t)
         if b in self.good:
             self.good.remove(b)
         self.trend_version += 1
         self._add_log(f"Breath left out (outlier): {b.reason}")
         if b.rec_n is not None:
             self.recorder.event(now, f"BREATH_REJECTED {b.rec_n} outlier: {b.reason}")
+
+    def _hide_trace(self, t_from: float, t_to: float) -> None:
+        """Leave the continuous CO2 from wall time ``t_from`` to ``t_to`` (s) off the trend."""
+        tt, ok = self.trace_t, self.trace_ok
+        i = len(tt) - 1
+        while i >= 0 and tt[i] > t_from:
+            if tt[i] <= t_to:
+                ok[i] = False
+            i -= 1
+        self.trend_version += 1
+
+    def trend_trace(self, t0: float) -> tuple[list[float], list[float], list[bool]]:
+        """The continuous CO2 behind the EtCO2 trend from wall time ``t0`` (s): times,
+        peak mmHg per 0.5 s, and whether each point joins the next. Stretches that cover
+        breaths the noise screen left out are not included; the line is broken there and
+        where data stopped for more than 5 s."""
+        tt, vv, ok = self.trace_t, self.trace_v, self.trace_ok
+        keep = [i for i in range(bisect.bisect_left(tt, t0), len(tt)) if ok[i]]
+        ts = [tt[i] for i in keep]
+        join = [keep[k + 1] == keep[k] + 1 and ts[k + 1] - ts[k] <= 5 for k in range(len(keep) - 1)]
+        return ts, [vv[i] for i in keep], join + [False] if keep else []
 
     def take_waves(self) -> dict[str, list[float]]:
         """Display values since the last call, per channel (for the sweep waveforms)."""

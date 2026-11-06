@@ -180,14 +180,11 @@ class TrendPanel(QFrame):
             if low is not None:
                 self.low_band.setRegion((-ymax, disp(low)))
                 self.low_line.setValue(disp(low))
-            # continuous CO2 behind the breath points, broken where data stopped
-            tt = np.asarray(e.trace_t)
-            vv = np.asarray(e.trace_v)
-            keep = tt >= t0
-            tt, vv = tt[keep], vv[keep]
+            # continuous CO2 behind the breath points, without the stretches of rejected
+            # breaths, broken there and where data stopped
+            tt, vv, join = e.trend_trace(t0)
             if len(tt) > 1:
-                connect = np.append(np.diff(tt) <= 5, False)
-                self.trace.setData(tt, np.asarray([disp(v) for v in vv]) if pct else vv, connect=connect)
+                self.trace.setData(np.asarray(tt), np.asarray([disp(v) for v in vv]), connect=np.asarray(join))
             else:
                 self.trace.setData([], [])
             xs = [q.t for q in pts if math.isfinite(q.etco2)]

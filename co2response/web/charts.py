@@ -305,7 +305,7 @@ def elapsed(s: float) -> str:
 
 
 class TrendChart(Plot):
-    def draw(self, t0, t1, ymax, high, low, pts_t, pts_v, trace_t, trace_v, markers, alarms, pct: bool) -> None:
+    def draw(self, t0, t1, ymax, high, low, pts_t, pts_v, trace_t, trace_v, trace_join, markers, alarms, pct: bool) -> None:
         self.c.fit()
         self.x0, self.x1, self.y0, self.y1 = t0, t1, 0.0, ymax
         _, _, w, _ = self.box
@@ -325,9 +325,7 @@ class TrendChart(Plot):
             g.fillRect(left, yl, w, max(0, top + h - yl))
         g.globalAlpha = 1
         if len(trace_t) > 1:
-            tt = np.asarray(trace_t)
-            connect = np.append(np.diff(tt) <= 5, False)
-            self.stroke(path_d([self.px(x) for x in trace_t], [self.py(v) for v in trace_v], connect), co2, 1, 0.25)
+            self.stroke(path_d([self.px(x) for x in trace_t], [self.py(v) for v in trace_v], trace_join), co2, 1, 0.25)
         self.stroke(f"M{left} {yh}L{left + w} {yh}", hi_c, 1.5, dash=(8, 6))
         if low is not None:
             yl = self.py(low)

@@ -91,7 +91,7 @@ Noise is removed before anything is interpreted, both live and when a recording 
 | `artifact` | A partial breath with no alveolar plateau (less than 10 % of expiration within 90 % of EtCO2: a shallow breath, sample-line kink or cough), an impossible EtCO2 (outside −2 to 120 mmHg), or a tidal volume under 1 mL |
 | `outlier` | An isolated EtCO2 jump: more than 5 mmHg and 3× the usual breath-to-breath change away from both the breath before and the breath after. A real step (the start of rebreathing) is kept, because the next breath stays at the new level. Known one breath later, so it is written as a `BREATH_REJECTED` event |
 
-Breaths that are not `ok` are left out of the EtCO2/RR/VT/MV numbers, the EtCO2 trend, the MV-versus-EtCO2 response plot, the review summary and charts, the EtCO2 alarms and `s.breaths` in `analysis/load_session.py`. They stay in the recording, marked. If 3 of the last 5 breaths are rejected as noisy or partial, the **SIGNAL TOO NOISY** technical alarm (medium priority) sounds instead of false CO2 alarms; it clears when no more than 1 of the last 5 is rejected. A flat CO2 trace (sample line off) is not called noisy, so the low-CO2 and apnea alarms still see it.
+Breaths that are not `ok` are left out of the EtCO2/RR/VT/MV numbers, the EtCO2 trend (both the breath points and the continuous CO2 line behind them, which is broken over a rejected breath), the MV-versus-EtCO2 response plot, the review summary and charts, the EtCO2 alarms and `s.breaths` in `analysis/load_session.py`. The loader also blanks (NaN) the calibrated values of every sample inside a rejected breath in `s.samples`, so averages, plots and fits of the samples skip them too; the raw volts and the rows stay. They stay in the recording, marked. If 3 of the last 5 breaths are rejected as noisy or partial, the **SIGNAL TOO NOISY** technical alarm (medium priority) sounds instead of false CO2 alarms; it clears when no more than 1 of the last 5 is rejected. A flat CO2 trace (sample line off) is not called noisy, so the low-CO2 and apnea alarms still see it.
 
 Turn both switches off to see the signal exactly as it arrives, for example while calibrating.
 
@@ -111,7 +111,7 @@ alarms = s.events[s.events.type == "ALARM_START"]
 s.breaths_all.breath_quality.value_counts()                                     # every breath, with its quality
 ```
 
-`load_session(path, clean=False)` keeps every breath in `s.breaths`.
+Each row of `s.samples` has a `breath_quality` column: the quality of the breath it belongs to (empty before the first breath and after the last). `load_session(path, clean=False)` keeps every breath in `s.breaths` and every calibrated value in `s.samples`.
 
 Or by hand:
 

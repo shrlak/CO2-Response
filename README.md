@@ -327,7 +327,8 @@ The breath screen gives each breath a quality:
 
 Breaths that are not `ok`:
 
-- are left out of the EtCO2/RR/VT/MV numbers, the trend points, the MV-against-EtCO2 fit, the review summary and charts, the EtCO2 alarms, and `s.breaths` in the analysis loader
+- are left out of the EtCO2/RR/VT/MV numbers, the EtCO2 trend (the breath points, and the continuous CO2 line behind them, which breaks over a rejected breath), the MV-against-EtCO2 fit, the review summary and charts, the EtCO2 alarms, and `s.breaths` in the analysis loader
+- have their samples blanked in the analysis loader: in `s.samples`, the calibrated values of every sample inside a rejected breath are NaN, so averages, plots and fits of the samples skip them too (the raw volts stay)
 - stay in the recording, marked in the `breath_quality` column, so nothing is lost and the decision can be revisited
 
 If 3 of the last 5 breaths are rejected as noisy or partial, a **SIGNAL TOO NOISY** technical alarm sounds, instead of false CO2 alarms. A flat CO2 trace (sample line off) is not called noisy, so the low-CO2 and apnea alarms still see it.
@@ -425,7 +426,7 @@ import sys; sys.path.append("analysis")
 from load_session import load_session
 
 s = load_session("co2r_STUDY-01_20261105-010203.csv")
-s.samples       # one row per sample (cleaned values + raw volts)
+s.samples       # one row per sample: cleaned values (blanked inside noisy breaths) + raw volts + breath_quality
 s.breaths       # one row per CLEAN breath: etco2_mmHg, rr_bpm, vt_ml, mv_lpm, ...
 s.breaths_all   # every breath, with breath_quality
 s.events        # alarms, markers, connections

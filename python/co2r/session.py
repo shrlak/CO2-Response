@@ -3,7 +3,7 @@ Load a CO2-Response session file (one .csv per recording) for analysis.
 
     from co2r.session import load_session
     s = load_session("co2r_STUDY-01_20261105-010203.csv")
-    s.samples      # one row per sample: time_s, volts, co2_mmHg, flow_lpm, pneumo_lpm, ...
+    s.samples      # one row per sample: time_s, volts, co2_mmHg, flow_lpm, pneumo_lpm, ..., breath_quality
     s.breaths      # one row per CLEAN breath: time_s, etco2_mmHg, rr_bpm, vt_ml, mv_lpm, ...
     s.breaths_all  # every breath, with breath_quality: ok, noisy, artifact or outlier
     s.events       # alarms, markers, connections: time_s, type, event
@@ -16,7 +16,11 @@ Noise is removed before anything is analysed, the same way the monitor does it:
   after spike removal and low-pass filtering; v0-v2 are the raw volts, untouched;
 - every breath carries a quality from the monitor's breath screen (noisy, a partial
   breath with no plateau, an impossible value, or an isolated EtCO2 jump), and
-  ``s.breaths`` keeps only the ``ok`` ones. Pass ``clean=False`` to keep them all.
+  ``s.breaths`` keeps only the ``ok`` ones;
+- each sample carries the quality of the breath it belongs to, and in ``s.samples`` the
+  calibrated values of samples inside a rejected breath are blanked (NaN), so averages,
+  plots and fits of the samples skip them too. The raw volts and every row stay.
+  Pass ``clean=False`` to keep every breath and every calibrated value.
   Files from before the screen existed (v2) are screened here, for isolated jumps and
   impossible values (noise can only be judged live, from the samples), when the
   monitor's code (co2response/) is next to this package.
@@ -38,10 +42,13 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 BREATH_COLS = ["time_s", "wall_time_iso", "breath", "etco2_mmHg", "fico2_mmHg", "rr_bpm", "vt_ml", "mv_lpm", "peak_insp_lpm", "breath_quality"]
 SAMPLE_COLS = ["time_s", "wall_time_iso", "t_ms", "seq", "v0", "v1", "v2", "co2_mmHg", "co2_pct", "flow_lpm", "pneumo_pa", "pneumo_lpm"]
+#: the cleaned, calibrated sample columns (v0-v2, the raw volts, are never blanked)
+CALIBRATED_COLS = ["co2_mmHg", "co2_pct", "flow_lpm", "pneumo_pa", "pneumo_lpm"]
 
 
 @dataclass
@@ -64,6 +71,22 @@ def _screen(etco2: list, quality: list) -> list:
         print("note: the monitor's code (co2response/) was not found; breaths in older files are not screened", file=sys.stderr)
         return [q or "ok" for q in quality]
     return screen_series(etco2, quality)
+
+
+def sample_quality(sample_t, breath_end_t, breath_quality, first_period: float = 4.0) -> np.ndarray:
+    """The quality of the breath each sample belongs to ("" before the first breath and
+    after the last). A breath runs from the end of the previous one to its own end, the
+    sample on which it was recorded; the first is taken to last ``first_period`` s."""
+    t = np.asarray(sample_t, float)
+    ends = np.asarray(breath_end_t, float)
+    q = np.asarray(breath_quality, dtype=object)
+    out = np.full(len(t), "", dtype=object)
+    if len(ends) == 0:
+        return out
+    i = np.searchsorted(ends, t, side="left")  # first breath ending at or after each sample
+    inside = (i < len(ends)) & (t > ends[0] - first_period)
+    out[inside] = q[i[inside]]
+    return out
 
 
 def load_session(path: str, clean: bool = True) -> Session:
@@ -103,6 +126,15 @@ def load_session(path: str, clean: bool = True) -> Session:
     breaths["breath_quality"] = quality
     good = breaths[breaths["breath_quality"] == "ok"].reset_index(drop=True)
 
+    # each sample gets its breath's quality; with clean=True the calibrated values of
+    # samples inside a rejected breath are blanked, so they are not analysed either
+    rr0 = breaths["rr_bpm"].iloc[0] if len(breaths) else float("nan")
+    first = 60 / rr0 if np.isfinite(rr0) and rr0 > 0 else 4.0
+    samples["breath_quality"] = sample_quality(samples["time_s"], breaths["time_s"], breaths["breath_quality"], first)
+    if clean:
+        rejected = samples["breath_quality"].isin(["noisy", "artifact", "outlier"])
+        samples.loc[rejected, CALIBRATED_COLS] = np.nan
+
     try:
         channels = json.loads(meta.get("channels", "{}"))
     except json.JSONDecodeError:
@@ -120,9 +152,12 @@ def main(argv: list | None = None) -> None:
     dur = s.raw["time_s"].max()
     b = s.breaths
     left_out = len(s.breaths_all) - (s.breaths_all["breath_quality"] == "ok").sum()
+    blanked = int(s.samples["co2_mmHg"].isna().sum() - s.raw.loc[s.raw["t_ms"].notna(), "co2_mmHg"].isna().sum())
     print(f"study {s.meta.get('study_code')}  started {s.meta.get('started')}  length {dur:.1f} s")
     print(f"{len(s.samples)} samples at {s.meta.get('rate_hz')} Hz, {len(s.breaths_all)} breaths ({left_out} left out as noisy), "
           f"{(s.events['type'] == 'ALARM_START').sum()} alarms, {(s.events['type'] == 'MARK').sum()} markers")
+    if blanked:
+        print(f"{blanked} samples inside noisy breaths blanked (raw volts kept)")
     if len(b):
         print(f"EtCO2 {b.etco2_mmHg.mean():.1f} mmHg (min {b.etco2_mmHg.min():.1f}, max {b.etco2_mmHg.max():.1f}); "
               f"RR {b.rr_bpm.mean():.1f}/min; VT {b.vt_ml.mean():.0f} mL; MV {b.mv_lpm.mean():.2f} L/min"
