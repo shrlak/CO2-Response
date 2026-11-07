@@ -1,8 +1,9 @@
 """Building the page from Python (runs in the browser under Pyodide).
 
 The page is made of HTML strings. Buttons and inputs name a Python action in a
-``data-act`` (click) or ``data-change`` (inputs: fires on Enter or when the field is
-left) attribute; one listener on the document dispatches every event to the
+``data-act`` (click), ``data-change`` (inputs: fires on Enter or when the field is
+left) or ``data-input`` (fires continuously, e.g. while a slider is dragged)
+attribute; one listener on the document dispatches every event to the
 registered Python function. Re-rendering a section therefore never leaks listeners.
 """
 
@@ -104,8 +105,14 @@ def install() -> None:
         if data(el, "change"):
             _dispatch(data(el, "change"), el)
 
+    def on_input(ev):
+        el = ev.target
+        if data(el, "input"):
+            _dispatch(data(el, "input"), el)
+
     document.addEventListener("click", proxy(on_click))
     document.addEventListener("change", proxy(on_change))
+    document.addEventListener("input", proxy(on_input))
 
 
 def byid(i: str):

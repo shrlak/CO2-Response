@@ -42,6 +42,7 @@ from ..settings import (
     sanitize_alarms,
     to_dict,
 )
+from ..sim.controls import SITUATION_BY_ID, model_params, situation_settings, switch_patch
 from ..sim.core import Encoders
 from ..sources.base import Source, StatusEvent
 from ..sources.bridge import BridgeSource
@@ -73,6 +74,23 @@ def simulator_encoders() -> Encoders:
         flow=lambda lpm: invert_calibration(c["flow"]["calibration"], lpm, lo, hi),
         pneumo=lambda pa: invert_calibration(c["pneumo"]["calibration"], pa, lo, hi),
     )
+
+
+def sim_clipping(core, exp: dict) -> list[str]:
+    """The simulated sensors whose signal would pass the ADC rails at the current
+    peak flows (so the values set in the simulation panel cannot all be measured)."""
+    if "insp_flow" not in exp:  # apnea: nothing flows
+        return []
+    p = core.model.params
+    lo, hi = core._rail_low_v + 0.01, core._rail_high_v - 0.01
+    enc = core.encoders
+    out = []
+    flows = (exp["insp_flow"], -exp["exp_flow"])
+    if not p.flow_disconnected and any(not lo < enc.flow(p.flow_gain * q + p.flow_offset_lpm) < hi for q in flows):
+        out.append("flow sensor")
+    if not p.pneumo_disconnected and any(not lo < enc.pneumo(q / p.k_pneumo) < hi for q in flows):
+        out.append("pneumotach")
+    return out
 
 
 @dataclass
@@ -376,9 +394,41 @@ class MonitorEngine:
             self.library_changed()
 
     def set_sim(self, **patch) -> None:
+        """Change simulator settings; a running simulator follows at once."""
+        if "preset" not in patch:
+            patch.setdefault("adjusted", True)
         self.update_settings(sim=dataclasses.replace(self.settings.sim, **patch))
         if isinstance(self._source, SimulatorSource):
-            self._source.core.model.set_params(**patch)
+            self._source.core.model.set_params(**model_params(patch))
+
+    def set_sim_switch(self, key: str, on: bool) -> None:
+        """Flip a simulation switch (apnea, an unplugged sensor, the CO2 rise, ...)."""
+        self.set_sim(**switch_patch(self.settings.sim, key, on))
+
+    def apply_situation(self, sid: str, start: bool = True) -> None:
+        """Set every simulator value for a ready-made situation. Starts the simulator
+        (when ``start``) or changes the running one in place, without a gap in the data."""
+        sim = situation_settings(sid)
+        self.update_settings(sim=sim)
+        running = isinstance(self._source, SimulatorSource)
+        if running:
+            self._source.core.model.set_params(**model_params(dataclasses.asdict(sim)))
+        elif start:
+            self.connect("simulator")
+        marker = SITUATION_BY_ID[sid].marker
+        if marker and isinstance(self._source, SimulatorSource):
+            self.add_marker(marker)
+        self._add_log(f"Simulation: {SITUATION_BY_ID[sid].label}")
+
+    def sim_expected(self) -> dict[str, float] | None:
+        """What the running simulator is producing now (for comparing with the
+        monitor's numbers), or None when the simulator is not the source."""
+        if not isinstance(self._source, SimulatorSource):
+            return None
+        core = self._source.core
+        exp = core.model.expected()
+        exp["clipping"] = sim_clipping(core, exp)
+        return exp
 
     def set_channels(self, c: dict) -> None:
         """Save a new calibration (applies immediately)."""
@@ -440,11 +490,8 @@ class MonitorEngine:
                 a["railLowV"],
                 a["railHighV"],
                 clock=self._seconds,
-                scenario=sim.scenario,
-                rr=sim.rr,
-                etco2=sim.etco2,
-                vt_ml=sim.vt_ml,
                 seed=int(self.clock()) & 0xFFFF,
+                **model_params(dataclasses.asdict(sim)),
             )
         elif kind == "bridge":
             src = BridgeSource(self.settings.bridge_url)

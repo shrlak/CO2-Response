@@ -8,7 +8,7 @@ import math
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPen
+from PySide6.QtGui import QColor, QFont, QPen
 from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
 )
@@ -24,6 +25,7 @@ from ..engine.monitor import MonitorEngine, Snapshot
 from ..processing.co2 import mmhg_to_pct
 from ..processing.metrics import co2_response_summary
 from . import theme
+from .monitor_widgets import expand_button
 from .theme import ui_font
 from .widgets import fmt, set_combo
 
@@ -38,8 +40,8 @@ def style_plot(pw: pg.PlotWidget) -> None:
         ax = pi.getAxis(name)
         ax.setPen(pg.mkPen(p.grid))
         ax.setTextPen(pg.mkPen(p.muted))
-        ax.setStyle(tickFont=ui_font(12), tickLength=-4)
-    pi.showGrid(x=True, y=True, alpha=0.25)
+        ax.setStyle(tickFont=ui_font(15, QFont.Weight.DemiBold), tickLength=-5)
+    pi.showGrid(x=True, y=True, alpha=0.35)
 
 
 class TrendPanel(QFrame):
@@ -47,7 +49,7 @@ class TrendPanel(QFrame):
         super().__init__()
         self.engine = engine
         self.setProperty("panel", True)
-        self.setMinimumHeight(140)
+        self.setMinimumHeight(150)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(10, 4, 10, 4)
         lay.setSpacing(2)
@@ -67,8 +69,12 @@ class TrendPanel(QFrame):
         head.addStretch(1)
         self.meta = QLabel()
         self.meta.setProperty("role", "muted")
-        self.meta.setStyleSheet("font-size:14px;")
-        head.addWidget(self.meta)
+        self.meta.setStyleSheet("font-size:15px;")
+        self.meta.setMinimumWidth(40)
+        self.meta.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.meta.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._meta_text = ""
+        head.addWidget(self.meta, 1)
         wl = QLabel("Window")
         wl.setProperty("role", "muted")
         head.addWidget(wl)
@@ -78,6 +84,9 @@ class TrendPanel(QFrame):
         self.window.setAccessibleName("Trend window")
         self.window.activated.connect(lambda i: engine.update_settings(trend_minutes=self.window.itemData(i)))
         head.addWidget(self.window)
+        #: enlarges the trend to fill the monitor; the monitor screen connects it
+        self.expand = expand_button(self, "trend")
+        head.addWidget(self.expand)
         lay.addLayout(head)
 
         self.stack = QStackedWidget()
@@ -95,15 +104,15 @@ class TrendPanel(QFrame):
         self.high_line = pg.InfiniteLine(angle=0, movable=False)
         self.low_line = pg.InfiniteLine(angle=0, movable=False)
         self.trace = pg.PlotCurveItem()
-        self.points = pg.ScatterPlotItem(size=5)
-        self.alarm_marks = pg.ScatterPlotItem(symbol="t", size=12)
+        self.points = pg.ScatterPlotItem(size=9)
+        self.alarm_marks = pg.ScatterPlotItem(symbol="t", size=17)
         for it in (self.high_band, self.low_band, self.trace, self.high_line, self.low_line, self.points, self.alarm_marks):
             ti.addItem(it)
         self.marker_lines: list[pg.InfiniteLine] = []
         ri = self.resp.getPlotItem()
-        self.resp_points = pg.ScatterPlotItem(size=5)
+        self.resp_points = pg.ScatterPlotItem(size=10)
         # baseline breaths (before the rebreathing marker): hollow, not fitted
-        self.resp_base = pg.ScatterPlotItem(size=6)
+        self.resp_base = pg.ScatterPlotItem(size=11)
         self.resp_fit = pg.PlotCurveItem()
         ri.addItem(self.resp_base)
         ri.addItem(self.resp_points)
@@ -112,6 +121,17 @@ class TrendPanel(QFrame):
         ri.setLabel("left", "MV (L/min)")
         self._key = None
         self.apply_theme()
+
+    def set_meta(self, text: str) -> None:
+        """The caption, cut short with an ellipsis when it does not fit (full text in the tooltip)."""
+        self._meta_text = text
+        self.meta.setToolTip(text)
+        self.meta.setText(self.meta.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, max(40, self.meta.width())))
+
+    def resizeEvent(self, e) -> None:  # noqa: N802
+        super().resizeEvent(e)
+        if self._meta_text:
+            self.set_meta(self._meta_text)
 
     def _tab(self, i: int) -> None:
         self.stack.setCurrentIndex(i)
@@ -128,23 +148,25 @@ class TrendPanel(QFrame):
             for line in band.lines:
                 line.setPen(pg.mkPen(None))
         for line, color in ((self.high_line, p.alarm_high), (self.low_line, p.alarm_med)):
-            pen = QPen(QColor(color), 2)
+            pen = QPen(QColor(color), 2.5)
             pen.setCosmetic(True)
             pen.setDashPattern([4, 3])
             line.setPen(pen)
         c = QColor(p.co2)
         c.setAlphaF(0.3)
-        self.trace.setPen(pg.mkPen(c, width=1))
+        self.trace.setPen(pg.mkPen(c, width=1.5))
         self.points.setBrush(pg.mkBrush(p.co2))
         self.points.setPen(pg.mkPen(p.co2))
         self.resp_points.setBrush(pg.mkBrush(p.pneumo))
         self.resp_points.setPen(pg.mkPen(p.pneumo))
         self.resp_base.setBrush(pg.mkBrush(None))
-        self.resp_base.setPen(pg.mkPen(p.muted, width=1.2))
-        self.resp_fit.setPen(pg.mkPen(p.text, width=1.5))
+        self.resp_base.setPen(pg.mkPen(p.muted, width=2))
+        self.resp_fit.setPen(pg.mkPen(p.text, width=3))
         for pw in (self.resp,):
             for ax in ("left", "bottom"):
-                pw.getPlotItem().getAxis(ax).label.setDefaultTextColor(QColor(p.muted))
+                lab = pw.getPlotItem().getAxis(ax).label
+                lab.setDefaultTextColor(QColor(p.muted))
+                lab.setFont(ui_font(14, QFont.Weight.DemiBold))
         self._key = None
 
     def refresh(self, s: Snapshot) -> None:
@@ -206,17 +228,18 @@ class TrendPanel(QFrame):
             for line in self.marker_lines:
                 pi.removeItem(line)
             self.marker_lines = []
-            pen = QPen(QColor(p.text), 1)
+            pen = QPen(QColor(p.text), 1.5)
             pen.setDashPattern([3, 3])
             pen.setCosmetic(True)
             for m in e.markers:
                 if m.t / 1000 < t0:
                     continue
                 line = pg.InfiniteLine(m.t / 1000, angle=90, pen=pen, label=f"▼ {m.label}", labelOpts={"position": 0.92, "color": p.text, "anchors": [(0, 0.5), (0, 0.5)]})
+                line.label.setFont(ui_font(14, QFont.Weight.DemiBold))
                 pi.addItem(line)
                 self.marker_lines.append(line)
             span = f"{minutes:g} min" if minutes > 0 else "whole session"
-            self.meta.setText(f"{span} · one point per breath · {len(pts)} breaths{removed}")
+            self.set_meta(f"{span} · one point per breath · {len(pts)} breaths{removed}")
         else:
             # Read's method: baseline breaths averaged, the line fitted to rebreathing only
             res = e.co2_response(t0)
@@ -228,10 +251,10 @@ class TrendPanel(QFrame):
             if fit:
                 ends = [min(rx), max(rx)]
                 self.resp_fit.setData(ends, [fit.slope * x + fit.intercept for x in ends])
-                self.meta.setText(co2_response_summary(res, fmt) + removed)
+                self.set_meta(co2_response_summary(res, fmt) + removed)
             else:
                 self.resp_fit.setData([], [])
-                self.meta.setText(co2_response_summary(res, fmt))
+                self.set_meta(co2_response_summary(res, fmt))
             xy = res.baseline + res.rebreathing
             xs = [a for a, _ in xy]
             ys = [b for _, b in xy]

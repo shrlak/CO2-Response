@@ -72,7 +72,10 @@ def path_d(xs, ys, connect=None) -> str:
 
 
 class Sweep:
-    """Monitor-style sweep: drawn left to right with an erase gap ahead of the pen."""
+    """Monitor-style sweep: drawn left to right with an erase gap ahead of the pen.
+
+    The samples on screen are also kept in a ring buffer, so the trace is redrawn
+    (not lost) when the graph changes size, e.g. when it is enlarged."""
 
     def __init__(self, fg, bg, color_var: str) -> None:
         self.fg, self.bg = Canvas(fg), Canvas(bg)
@@ -82,6 +85,7 @@ class Sweep:
         self.signed = False
         self.limit: float | None = None
         self.n = 1200
+        self.hist = np.full(self.n, np.nan)
         self.pending: list[float] = []
         self.pos = 0
         self.last: tuple[float, float] | None = None
@@ -100,10 +104,11 @@ class Sweep:
             self.clear()
         self.color = css_var(self.color_var) or "#fff"
         self.draw_background()
+        self._redraw()
 
     def _y(self, v: float) -> float:
         d = self.fg.dpr
-        top, bot = 26 * d, 8 * d
+        top, bot = 32 * d, 10 * d
         c = min(self.vmax, max(self.vmin, v))
         return self.fg.H - bot - (c - self.vmin) / (self.vmax - self.vmin) * (self.fg.H - top - bot)
 
@@ -113,10 +118,10 @@ class Sweep:
         g = self.bg.ctx
         d, W = self.bg.dpr, self.bg.W
         g.clearRect(0, 0, W, self.bg.H)
-        g.font = f"{12 * d}px {FONT}"
+        g.font = f"600 {15 * d}px {FONT}"
         g.textAlign = "right"
         g.textBaseline = "middle"
-        right = W - 34 * d
+        right = W - 44 * d
         grid, muted, alarm = css_var("--grid"), css_var("--muted"), css_var("--alarm-high")
         g.setLineDash(js.Array.new())
         for t in self.ticks:
@@ -133,8 +138,8 @@ class Sweep:
         if lim is not None and self.vmin < lim < self.vmax:
             y = round(self._y(lim)) + 0.5
             g.strokeStyle = alarm
-            g.lineWidth = 1.5 * d
-            g.setLineDash(js.Array.of(8 * d, 6 * d))
+            g.lineWidth = 2.5 * d
+            g.setLineDash(js.Array.of(10 * d, 7 * d))
             g.beginPath()
             g.moveTo(0, y)
             g.lineTo(right, y)
@@ -152,27 +157,55 @@ class Sweep:
 
     def clear(self) -> None:
         self.fg.ctx.clearRect(0, 0, self.fg.W, self.fg.H)
+        self.hist = np.full(self.n, np.nan)
         self.pending.clear()
         self.pos = 0
         self.last = None
 
+    def _pen(self) -> None:
+        ctx = self.fg.ctx
+        ctx.strokeStyle = self.color
+        ctx.lineWidth = 3 * self.fg.dpr
+        ctx.lineJoin = "round"
+        ctx.lineCap = "round"
+
+    def _redraw(self) -> None:
+        """Draw the whole trace again from the buffer (after a resize or rescale)."""
+        ctx = self.fg.ctx
+        W, H, N = self.fg.W, self.fg.H, self.n
+        ctx.clearRect(0, 0, W, H)
+        self.last = None
+        if not W or len(self.hist) != N:
+            return
+        ys = self.hist.copy()
+        pos = self.pos % N
+        gap = math.ceil((21 * self.fg.dpr) / W * N) + 1  # the erase gap ahead of the pen
+        ys[(pos + np.arange(gap)) % N] = np.nan
+        if not np.isfinite(ys).any():
+            return
+        xs = np.arange(N) / N * W
+        yy = np.array([self._y(v) if math.isfinite(v) else math.nan for v in ys.tolist()])
+        self._pen()
+        ctx.stroke(js.Path2D.new(path_d(xs, yy)))
+        last = (pos - 1) % N
+        if pos != 0 and math.isfinite(self.hist[last]):
+            self.last = (last / N * W, self._y(float(self.hist[last])))
+
     def draw(self) -> None:
         if self.fg.fit():
-            self.last = None
             self.draw_background()
+            self._redraw()
         if not self.pending or not self.fg.W:
             return
         ctx = self.fg.ctx
         d, W, H = self.fg.dpr, self.fg.W, self.fg.H
         N = self.n
-        gap, lw = 16 * d, 2 * d
-        ctx.strokeStyle = self.color
-        ctx.lineWidth = lw
-        ctx.lineJoin = "round"
-        ctx.lineCap = "round"
+        gap, lw = 18 * d, 3 * d
+        self._pen()
         ctx.beginPath()
         for v in self.pending:
             i = self.pos % N
+            self.hist[i] = v
             x = i / N * W
             if i == 0:
                 self.last = None
@@ -198,7 +231,7 @@ class Sweep:
 class Plot:
     """A plot area with axes. Subclasses draw the data."""
 
-    PAD = (44, 12, 8, 24)  # left, right, top, bottom in CSS px
+    PAD = (56, 16, 12, 30)  # left, right, top, bottom in CSS px
 
     def __init__(self, el) -> None:
         self.c = Canvas(el)
@@ -226,7 +259,7 @@ class Plot:
         g.clearRect(0, 0, self.c.W, self.c.H)
         left, top, w, h = self.box
         grid, muted = css_var("--grid"), css_var("--muted")
-        g.font = f"{12 * d}px {FONT}"
+        g.font = f"600 {15 * d}px {FONT}"
         g.lineWidth = d
         g.strokeStyle = grid
         g.fillStyle = muted
@@ -238,7 +271,7 @@ class Plot:
             g.moveTo(left, y)
             g.lineTo(left + w, y)
             g.stroke()
-            g.fillText(yfmt(t), left - 6 * d, y)
+            g.fillText(yfmt(t), left - 8 * d, y)
         if right_ticks:
             g.textAlign = "left"
             ticks, a, b, fmt = right_ticks
@@ -252,7 +285,7 @@ class Plot:
             g.moveTo(X, top)
             g.lineTo(X, top + h)
             g.stroke()
-            g.fillText(text, X, top + h + 5 * d)
+            g.fillText(text, X, top + h + 7 * d)
 
     def clip(self) -> None:
         g = self.c.ctx
@@ -274,7 +307,27 @@ class Plot:
         g.setLineDash(js.Array.new())
         g.globalAlpha = 1
 
-    def dots(self, xs, ys, color: str, size: float = 2.5) -> None:
+    def y_tick_count(self, h: float) -> int:
+        """More grid lines on a taller plot (one about every 55 px)."""
+        return max(3, min(10, int(h / self.c.dpr / 55)))
+
+    def axis_titles(self, x: str, y: str) -> None:
+        """Axis names inside the plot: x at the bottom right, y at the top left."""
+        g = self.c.ctx
+        d = self.c.dpr
+        left, top, w, h = self.box
+        g.save()
+        g.fillStyle = css_var("--muted")
+        g.font = f"600 {14 * d}px {FONT}"
+        g.textBaseline = "bottom"
+        g.textAlign = "right"
+        g.fillText(x, left + w - 6 * d, top + h - 5 * d)
+        g.textBaseline = "top"
+        g.textAlign = "left"
+        g.fillText(y, left + 6 * d, top + 4 * d)
+        g.restore()
+
+    def dots(self, xs, ys, color: str, size: float = 4.5) -> None:
         g = self.c.ctx
         g.fillStyle = color
         r = size * self.c.dpr
@@ -308,8 +361,8 @@ class TrendChart(Plot):
     def draw(self, t0, t1, ymax, high, low, pts_t, pts_v, trace_t, trace_v, trace_join, markers, alarms, pct: bool) -> None:
         self.c.fit()
         self.x0, self.x1, self.y0, self.y1 = t0, t1, 0.0, ymax
-        _, _, w, _ = self.box
-        self.frame(time_labels(t0, t1, w / self.c.dpr), nice_ticks(0, ymax, 3), (lambda v: f"{v:.1f}") if pct else (lambda v: f"{v:.0f}"))
+        _, _, w, h = self.box
+        self.frame(time_labels(t0, t1, w / self.c.dpr), nice_ticks(0, ymax, self.y_tick_count(h)), (lambda v: f"{v:.1f}") if pct else (lambda v: f"{v:.0f}"))
         g = self.c.ctx
         d = self.c.dpr
         left, top, w, h = self.box
@@ -325,24 +378,24 @@ class TrendChart(Plot):
             g.fillRect(left, yl, w, max(0, top + h - yl))
         g.globalAlpha = 1
         if len(trace_t) > 1:
-            self.stroke(path_d([self.px(x) for x in trace_t], [self.py(v) for v in trace_v], trace_join), co2, 1, 0.25)
-        self.stroke(f"M{left} {yh}L{left + w} {yh}", hi_c, 1.5, dash=(8, 6))
+            self.stroke(path_d([self.px(x) for x in trace_t], [self.py(v) for v in trace_v], trace_join), co2, 1.5, 0.3)
+        self.stroke(f"M{left} {yh}L{left + w} {yh}", hi_c, 2.5, dash=(10, 7))
         if low is not None:
             yl = self.py(low)
-            self.stroke(f"M{left} {yl}L{left + w} {yl}", med_c, 1.5, dash=(8, 6))
+            self.stroke(f"M{left} {yl}L{left + w} {yl}", med_c, 2.5, dash=(10, 7))
         self.dots([self.px(x) for x in pts_t], [self.py(v) for v in pts_v], co2)
-        g.font = f"{12 * d}px {FONT}"
+        g.font = f"600 {15 * d}px {FONT}"
         g.textAlign = "left"
         g.textBaseline = "top"
         for mt, label in markers:
             X = round(self.px(mt)) + 0.5
-            self.stroke(f"M{X} {top}L{X} {top + h}", text, 1, 0.55, (3, 3))
+            self.stroke(f"M{X} {top}L{X} {top + h}", text, 1.5, 0.7, (4, 4))
             g.fillStyle = text
             g.fillText(f"▼ {label}", X + 3 * d, top + 2 * d)
         for at, pri in alarms:
             X = self.px(at)
             g.fillStyle = hi_c if pri == "high" else med_c
-            g.fill(js.Path2D.new(f"M{X} {top + h - d}L{X - 6 * d} {top + h - 12 * d}L{X + 6 * d} {top + h - 12 * d}Z"))
+            g.fill(js.Path2D.new(f"M{X} {top + h - d}L{X - 9 * d} {top + h - 17 * d}L{X + 9 * d} {top + h - 17 * d}Z"))
         g.restore()
 
 
@@ -356,26 +409,27 @@ class ResponseChart(Plot):
         self.x0 = math.floor((min(xs) if xs else 30) - 2)
         self.x1 = math.ceil((max(xs) if xs else 50) + 2)
         self.y0, self.y1 = 0.0, max(10, math.ceil((max(ys) if ys else 10) * 1.2))
-        _, _, w, _ = self.box
+        _, _, w, h = self.box
         xt = nice_ticks(self.x0, self.x1, max(2, int(w / self.c.dpr / 70)))
-        self.frame([(x, f"{x:g}") for x in xt], nice_ticks(self.y0, self.y1, 3), lambda v: f"{v:g}")
+        self.frame([(x, f"{x:g}") for x in xt], nice_ticks(self.y0, self.y1, self.y_tick_count(h)), lambda v: f"{v:g}")
         self.clip()
         if base:
             g = self.c.ctx
             d = self.c.dpr
             g.strokeStyle = css_var("--muted")
-            g.lineWidth = 1.2 * d
+            g.lineWidth = 2 * d
             g.beginPath()
             for x, y in base:
                 X, Y = self.px(x), self.py(y)
-                g.moveTo(X + 3 * d, Y)
-                g.arc(X, Y, 3 * d, 0, 2 * math.pi)
+                g.moveTo(X + 5 * d, Y)
+                g.arc(X, Y, 5 * d, 0, 2 * math.pi)
             g.stroke()
-        self.dots([self.px(x) for x, _ in reb], [self.py(y) for _, y in reb], css_var("--pneumo"))
+        self.dots([self.px(x) for x, _ in reb], [self.py(y) for _, y in reb], css_var("--pneumo"), 5)
         if fit:
             a, b = min(x for x, _ in reb), max(x for x, _ in reb)
-            self.stroke(f"M{self.px(a)} {self.py(fit.slope * a + fit.intercept)}L{self.px(b)} {self.py(fit.slope * b + fit.intercept)}", css_var("--text"), 1.5)
+            self.stroke(f"M{self.px(a)} {self.py(fit.slope * a + fit.intercept)}L{self.px(b)} {self.py(fit.slope * b + fit.intercept)}", css_var("--text"), 3)
         self.c.ctx.restore()
+        self.axis_titles("EtCO2 (mmHg)", "MV (L/min)")
 
 
 def minmax_decimate(t: np.ndarray, v: np.ndarray, i0: int, i1: int, buckets: int):
@@ -400,7 +454,7 @@ class ReviewChart(Plot):
     """Elapsed time on x, one family of series on the left axis and one on the right.
     Dragging across it selects a time range."""
 
-    PAD = (52, 52, 8, 24)
+    PAD = (60, 60, 12, 30)
 
     def __init__(self, el, on_zoom: Callable[[float, float], None]) -> None:
         super().__init__(el)
@@ -479,9 +533,9 @@ class ReviewChart(Plot):
             a, b = (ry0, ry1) if right else (ly0, ly1)
             PX = [self.px(x) for x in xs.tolist()]
             PY = [self.py(y, a, b) for y in ys.tolist()]
-            self.stroke(path_d(PX, PY), color, 1)
+            self.stroke(path_d(PX, PY), color, 2)
             if points:
-                self.dots(PX, PY, color, 2)
+                self.dots(PX, PY, color, 3.5)
         if self._drag:
             a, b = sorted(self._drag)
             g.globalAlpha = 0.18
@@ -491,7 +545,7 @@ class ReviewChart(Plot):
         g.restore()
         g.save()
         g.fillStyle = css_var("--muted")
-        g.font = f"{12 * d}px {FONT}"
+        g.font = f"600 {15 * d}px {FONT}"
         g.textBaseline = "top"
         g.textAlign = "left"
         g.fillText(self.left_label, left + 4 * d, top + 2 * d)

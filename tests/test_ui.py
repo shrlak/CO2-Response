@@ -227,3 +227,49 @@ def test_sample_session_replays_through_the_window(win):
     advance(win, 16)
     assert win.engine.snapshot().status_detail == "Replay finished"
     assert len(win.engine.breaths) >= 30
+
+
+def test_simulation_panel_sets_the_monitor_and_graphs_enlarge(win):
+    from co2response.sim.controls import SLIDERS, slider_index
+
+    m, e = win.monitor, win.engine
+    win._tick()
+    assert not m.sim.isVisible()
+    m.k_sim.click()
+    assert m.sim.isVisible() and m.sim.start_box.isVisible()  # the simulator is not running yet
+    m.sim.sit_buttons["hypoventilation"].click()  # starts it with the situation's values
+    advance(win, 45)
+    assert e.snapshot().source_kind == "simulator"
+    assert m.tiles["rr"].value == "7"
+    assert 54 <= int(m.tiles["etco2"].value) <= 58
+    assert e.alarms.is_active("co2High")
+    assert m.sim.set_labels["rr"].text() == "7" and m.sim.mon_labels["rr"].text() == "7"
+    assert m.sim.sit_buttons["hypoventilation"].isChecked() and not m.sim.start_box.isVisible()
+
+    # a slider changes the running simulator; the monitor follows
+    m.sim.sliders["rr"].slider.setValue(slider_index(SLIDERS["rr"], 20))
+    assert e.settings.sim.rr == 20 and e.settings.sim.adjusted
+    win._tick()
+    assert "(adjusted)" in m.sim.current.text()
+    advance(win, 25)
+    assert m.tiles["rr"].value == "20"
+    m.sim.switches["apnea"].setChecked(True)
+    advance(win, 25)
+    assert e.alarms.is_active("apnea")
+
+    # enlarging a graph hides the others; Esc brings them back
+    m.sweeps["co2"].expand.click()
+    assert m.focus == "co2" and m.sweeps["co2"].isVisible()
+    assert not m.sweeps["flow"].isVisible() and not m.trend.isVisible()
+    win.grab()
+    win._escape()
+    assert m.focus is None and m.sweeps["flow"].isVisible() and m.trend.isVisible()
+    m.trend.expand.click()
+    assert m.focus == "trend" and not m.rows.isVisible() and m.trend.isVisible()
+    m.trend.expand.click()
+    assert m.focus is None and m.rows.isVisible()
+    m.k_sim.click()
+    assert not m.sim.isVisible()
+    win.open_settings("connection")
+    win.open_simulation()
+    assert win.stack.currentWidget() is m and m.sim.isVisible()

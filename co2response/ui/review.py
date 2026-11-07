@@ -96,7 +96,7 @@ class DualPlot(pg.PlotWidget):
         self.vb2.setXLink(pi)
         self.vb.sigResized.connect(lambda: self.vb2.setGeometry(self.vb.sceneBoundingRect()))
         self.vb.zoomed.connect(on_zoom)
-        self.legend = pi.addLegend(offset=(10, 4), labelTextSize="9pt")
+        self.legend = pi.addLegend(offset=(10, 4), labelTextSize="11pt")
         self.legend.setColumnCount(4)
         self.events: list[pg.InfiniteLine] = []
         self.style()
@@ -109,16 +109,16 @@ class DualPlot(pg.PlotWidget):
             ax = pi.getAxis(name)
             ax.setPen(pg.mkPen(p.grid))
             ax.setTextPen(pg.mkPen(p.muted))
-            ax.setStyle(tickFont=ui_font(12))
+            ax.setStyle(tickFont=ui_font(14))
             ax.label.setDefaultTextColor(QColor(p.muted))
-        pi.showGrid(x=True, y=True, alpha=0.2)
+        pi.showGrid(x=True, y=True, alpha=0.3)
         self.legend.setLabelTextColor(p.muted)
 
     def curve(self, x, y, color: str, right: bool = False, name: str = "", points: bool = False) -> pg.PlotDataItem:
-        it = pg.PlotDataItem(np.asarray(x, float), np.asarray(y, float), pen=pg.mkPen(color, width=1), name=name, connect="finite")
+        it = pg.PlotDataItem(np.asarray(x, float), np.asarray(y, float), pen=pg.mkPen(color, width=2), name=name, connect="finite")
         if points:
             it.setSymbol("o")
-            it.setSymbolSize(4)
+            it.setSymbolSize(6)
             it.setSymbolBrush(color)
             it.setSymbolPen(None)
         if right:
@@ -229,18 +229,18 @@ class ReviewScreen(QFrame):
         b = clean_breaths(s)  # breaths left out as noisy, artifact or outlier are not drawn
         bt = [x.time_s for x in b]
         lay.addWidget(label("ETCO2 AND RR PER BREATH", "h3"))
-        self.p1 = DualPlot("EtCO2 mmHg", "RR /min", 200, self._on_zoom)
+        self.p1 = DualPlot("EtCO2 mmHg", "RR /min", 300, self._on_zoom)
         self.p1.curve(bt, [x.etco2 for x in b], p.co2, name="EtCO2", points=True)
         self.p1.curve(bt, [x.rr for x in b], p.text, right=True, name="RR")
         lay.addWidget(self.p1)
         lay.addWidget(label("TIDAL VOLUME AND MINUTE VENTILATION", "h3"))
-        self.p2 = DualPlot("VT mL", "MV L/min", 180, self._on_zoom)
+        self.p2 = DualPlot("VT mL", "MV L/min", 280, self._on_zoom)
         self.p2.curve(bt, [x.vt for x in b], p.pneumo, name="VT", points=True)
         self.p2.curve(bt, [x.mv for x in b], p.flow, right=True, name="MV")
         lay.addWidget(self.p2)
         self.wave_title = label("WAVEFORMS", "h3")
         lay.addWidget(self.wave_title)
-        self.p3 = DualPlot("CO2 mmHg", "Flow L/min", 230, self._on_zoom)
+        self.p3 = DualPlot("CO2 mmHg", "Flow L/min", 340, self._on_zoom)
         self.p3.curve(s.time_s, s.co2_mmhg, p.co2, name="CO2")
         self.p3.curve(s.time_s, s.flow_lpm, p.flow, right=True, name="Flow")
         self.p3.curve(s.time_s, s.pneumo_lpm, p.pneumo, right=True, name="Pneumotach")

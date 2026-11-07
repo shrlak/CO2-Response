@@ -16,7 +16,7 @@ from ..engine.monitor import Snapshot
 from ..jsfmt import precision
 from ..processing.calibration import apply_calibration, fit_polynomial, pneumo_flow, syringe_k1, two_point_linear
 from ..processing.co2 import pct_to_mmhg
-from ..sim.physiology import SCENARIOS
+from ..sim.controls import SITUATION_BY_ID, SITUATIONS
 from ..storage.library import STATUS_LABELS
 from ..storage.session_file import breaths_csv, events_csv, parse_session_text
 from .dom import actions, as_float, btn, byid, data, download, editing_inside, esc, field, num, number_field, read_files, seg, select, set_html, stat, toast, toggle
@@ -171,12 +171,19 @@ class SettingsView:
         sim = st.sim
         simc = (
             '<section class="card"><div class="card-head"><h3>Simulator</h3><span class="meta">no hardware needed</span></div>'
-            '<p class="note">Generates realistic capnogram, flow and pneumotach signals through the same protocol, parser and processing as the Arduino.</p>'
-            + field("Scenario", select("sim-scenario", sim.scenario, SCENARIOS, "scenario"), None, "scenario")
+            '<p class="note">Generates realistic capnogram, flow and pneumotach signals through the same protocol, parser and processing as the Arduino. '
+            "The <b>Simulation</b> key on the monitor opens a panel that sets every value the monitor shows.</p>"
+            + field(
+                "Situation",
+                select("sim-situation-pick", sim.preset if sim.preset in SITUATION_BY_ID else "normal", [(x.id, f"{x.group}: {x.label}") for x in SITUATIONS], "sim-situation-pick"),
+                esc(SITUATION_BY_ID[sim.preset].description) if sim.preset in SITUATION_BY_ID and not sim.adjusted else "Values changed by hand in the simulation panel.",
+                "sim-situation-pick",
+            )
             + number_field("Respiratory rate", "sim", sim.rr, "/min", None, "sim-rr", 4, 60, 1, "rr")
             + number_field("Baseline EtCO2", "sim", sim.etco2, "mmHg", None, "sim-et", 10, 80, 1, "etco2")
             + number_field("Tidal volume", "sim", sim.vt_ml, "mL", None, "sim-vt", 100, 1500, 10, "vt_ml")
-            + f'<div class="row-actions">{btn("Restart simulator" if s.source_kind == "simulator" else "Start simulator", "start-sim", "btn primary")}</div></section>'
+            + f'<div class="row-actions">{btn("Restart simulator" if s.source_kind == "simulator" else "Start simulator", "start-sim", "btn primary")}'
+            f'{btn("Open the simulation panel", "sim-open-panel")}</div></section>'
         )
         chosen = self.replay["id"] if any(r.id == self.replay["id"] for r in sessions) else (sessions[0].id if sessions else None)
         self.replay["id"] = chosen
@@ -970,7 +977,8 @@ def install_settings_actions(app: "WebApp") -> None:
             "disconnect": lambda el: (e.disconnect(), sv.bump()),
             "baud": lambda el: (e.update_settings(baud_rate=int(el.value)), sv.bump()),
             "autoreconnect": lambda el: (e.update_settings(auto_reconnect=bool(el.checked)), sv.bump()),
-            "sim-scenario": lambda el: (e.set_sim(scenario=el.value), sv.bump()),
+            "sim-situation-pick": lambda el: (e.apply_situation(el.value, start=False), app.monitor.sim.bump(), sv.bump()),
+            "sim-open-panel": lambda el: (setattr(app.monitor.sim, "open", True), app.show("monitor")),
             "replay-pick": lambda el: sv.replay.__setitem__("id", el.value),
             "replay-speed": lambda el: (sv.replay.__setitem__("speed", float(data(el, "arg"))), sv.bump()),
             "replay-cal": lambda el: sv.replay.__setitem__("use_cal", bool(el.checked)),
