@@ -263,10 +263,26 @@ class FakeArduino(threading.Thread):
         self.start()
 
     def _write(self, b: bytes) -> None:
-        try:
-            os.write(self.master, b)
-        except (BlockingIOError, OSError):
-            pass  # nobody reading: the bytes are lost, like a real UART
+        """Send whole lines. A full pty (nobody reading) drops the line, as a UART
+        overrun loses data. But a short write is finished, never left as a cut line:
+        a cut line fails its checksum, and the hardware check would count it as
+        corrupt. macOS's small pty buffer makes short writes common under load."""
+        view = memoryview(b)
+        deadline = time.monotonic() + 0.5
+        while view:
+            try:
+                n = os.write(self.master, view)
+            except BlockingIOError:
+                n = 0
+            except OSError:
+                return
+            if n == 0 and len(view) == len(b):
+                return  # nothing written: the whole line is lost
+            view = view[n:]
+            if view:
+                if time.monotonic() > deadline:
+                    return  # the reader went away mid-line
+                select.select([], [self.master], [], 0.01)
 
     def run(self) -> None:
         self._write(INFO)
