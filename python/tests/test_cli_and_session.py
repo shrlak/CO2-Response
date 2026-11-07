@@ -61,6 +61,45 @@ def test_loads_the_sample_session(sample_session):
     assert isinstance(s.samples, pd.DataFrame)
 
 
+def test_co2_response_splits_baseline_from_rebreathing(sample_session):
+    import math
+
+    import pytest
+
+    pytest.importorskip("pandas")
+    from co2r.session import co2_response, load_session
+
+    s = load_session(sample_session)
+    r = co2_response(s)
+    # the sample's marker "CO2 rebreathing started" is at 60.03 s
+    assert r["rebreathing_start_s"] == pytest.approx(60.03)
+    assert r["baseline_n"] + r["n"] == len(s.breaths)
+    assert r["baseline_n"] >= 10 and r["n"] >= 20
+    assert 36 < r["baseline_etco2_mmHg"] < 40
+    assert r["slope"] > 0 and 0.9 < r["r"] <= 1
+    assert r["x_intercept"] == pytest.approx(-r["intercept"] / r["slope"])
+    # with no split every breath is fitted
+    whole = co2_response(s, start=-math.inf)
+    assert whole["baseline_n"] == 0 and whole["n"] == len(s.breaths)
+
+
+def test_rebreathing_marker_found_after_a_rename():
+    import pytest
+
+    pd = pytest.importorskip("pandas")
+    from co2r.session import rebreathing_start
+
+    ev = pd.DataFrame(
+        {
+            "time_s": [5.0, 30.0, 31.5, 90.0],
+            "type": ["MARK", "MARK", "MARK_RENAMED", "MARK"],
+            "event": ["MARK Event 1", "MARK Event 2", "MARK_RENAMED 2 Rebreathing", "MARK Event 3"],
+        }
+    )
+    assert rebreathing_start(ev) == 30.0  # when it was placed, not when it was labelled
+    assert rebreathing_start(ev.iloc[[0, 1, 3]]) is None
+
+
 def test_sample_quality_follows_breath_boundaries():
     import pytest
 

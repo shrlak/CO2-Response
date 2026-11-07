@@ -114,6 +114,26 @@ def test_co2_ramp_raises_the_high_alarm_and_acknowledge_silences_it(tmp_path):
     assert s.silence_ms > 0 and e.alarms.get("co2High").acknowledged
 
 
+def test_rebreathing_marker_sets_the_baseline_apart(tmp_path):
+    e = make_engine(tmp_path)
+    e.connect("simulator")
+    run(e, 30)
+    assert e.rebreathing_start() is None
+    whole = e.co2_response()
+    assert not whole.split and len(whole.rebreathing) >= 6
+    e.add_marker("Event")
+    assert e.rebreathing_start() is None
+    m = e.add_marker()
+    e.rename_marker(m.id, "Rebreathing")
+    assert e.rebreathing_start() == m.t / 1000
+    e.set_sim(scenario="co2Ramp")
+    run(e, 40)
+    res = e.co2_response()
+    assert res.split and len(res.baseline) >= 6 and len(res.rebreathing) >= 6
+    assert 36 <= res.baseline_etco2 <= 39
+    assert max(a for a, _ in res.rebreathing) > res.baseline_etco2
+
+
 def test_apnea_and_no_data_alarms(tmp_path):
     e = make_engine(tmp_path)
     e.connect("simulator")

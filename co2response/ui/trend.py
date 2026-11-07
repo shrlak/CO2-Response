@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from ..engine.monitor import MonitorEngine, Snapshot
 from ..processing.co2 import mmhg_to_pct
-from ..processing.metrics import linear_fit
+from ..processing.metrics import co2_response_summary
 from . import theme
 from .theme import ui_font
 from .widgets import fmt, set_combo
@@ -102,7 +102,10 @@ class TrendPanel(QFrame):
         self.marker_lines: list[pg.InfiniteLine] = []
         ri = self.resp.getPlotItem()
         self.resp_points = pg.ScatterPlotItem(size=5)
+        # baseline breaths (before the rebreathing marker): hollow, not fitted
+        self.resp_base = pg.ScatterPlotItem(size=6)
         self.resp_fit = pg.PlotCurveItem()
+        ri.addItem(self.resp_base)
         ri.addItem(self.resp_points)
         ri.addItem(self.resp_fit)
         ri.setLabel("bottom", "EtCO2 (mmHg)")
@@ -136,6 +139,8 @@ class TrendPanel(QFrame):
         self.points.setPen(pg.mkPen(p.co2))
         self.resp_points.setBrush(pg.mkBrush(p.pneumo))
         self.resp_points.setPen(pg.mkPen(p.pneumo))
+        self.resp_base.setBrush(pg.mkBrush(None))
+        self.resp_base.setPen(pg.mkPen(p.muted, width=1.2))
         self.resp_fit.setPen(pg.mkPen(p.text, width=1.5))
         for pw in (self.resp,):
             for ax in ("left", "bottom"):
@@ -213,18 +218,23 @@ class TrendPanel(QFrame):
             span = f"{minutes:g} min" if minutes > 0 else "whole session"
             self.meta.setText(f"{span} · one point per breath · {len(pts)} breaths{removed}")
         else:
-            xy = sorted(((q.etco2, q.mv) for q in pts if math.isfinite(q.etco2) and math.isfinite(q.mv)), key=lambda a: a[0])
-            xs = [a[0] for a in xy]
-            ys = [a[1] for a in xy]
-            fit = linear_fit(xs, ys)
-            self.resp_points.setData(xs, ys)
+            # Read's method: baseline breaths averaged, the line fitted to rebreathing only
+            res = e.co2_response(t0)
+            fit = res.fit
+            rx = [a for a, _ in res.rebreathing]
+            self.resp_points.setData(rx, [b for _, b in res.rebreathing])
+            self.resp_base.setData([a for a, _ in res.baseline], [b for _, b in res.baseline])
             pi = self.resp.getPlotItem()
             if fit:
-                self.resp_fit.setData(xs, [fit.slope * x + fit.intercept for x in xs])
-                self.meta.setText(f"MV (L/min) vs EtCO2 (mmHg) · slope {fmt(fit.slope, 2)} L/min/mmHg · r² {fmt(fit.r2, 2)} · n {len(xs)}{removed}")
+                ends = [min(rx), max(rx)]
+                self.resp_fit.setData(ends, [fit.slope * x + fit.intercept for x in ends])
+                self.meta.setText(co2_response_summary(res, fmt) + removed)
             else:
                 self.resp_fit.setData([], [])
-                self.meta.setText("MV vs EtCO2 · needs at least 3 breaths")
+                self.meta.setText(co2_response_summary(res, fmt))
+            xy = res.baseline + res.rebreathing
+            xs = [a for a, _ in xy]
+            ys = [b for _, b in xy]
             lo = math.floor((min(xs) if xs else 30) - 2)
             hi = math.ceil((max(xs) if xs else 50) + 2)
             pi.setXRange(lo, hi, padding=0)

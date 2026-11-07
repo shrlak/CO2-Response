@@ -150,8 +150,9 @@ Wiring, firmware upload and first checks are covered in detail, with a wiring di
    - press **Test alarm** to confirm you can see and hear both tones
 9. **Enter a study code** (never a name or other identifier) and press **Record**. The file is saved every second while recording.
 10. **During the session:**
-    - press **Mark event** (or the `M` key) to timestamp events such as "rebreathing started"; markers appear on the trend and in the file
-    - watch the **Ventilatory response** tab for the MV-against-EtCO2 slope
+    - press **Mark event** (or the `M` key) to timestamp events; markers appear on the trend and in the file
+    - when the valve is turned to the rebreathing bag, press `M` and label the marker **Rebreathing**. Breaths before it are the baseline; the response line is fitted to the breaths after it (Read's method, as CHOP runs the test)
+    - watch the **Ventilatory response** tab for the slope, r and x-intercept
     - if an alarm sounds, **Silence** mutes it for 120 s; **Acknowledge** clears a resolved alarm
 11. **Stop rec.** The session is listed in **Settings > Data & recordings**.
 12. **Review and export.** **Open** the session to see its summary and zoomable charts, then export:
@@ -187,7 +188,7 @@ If the USB cable comes out, the device-disconnected alarm sounds. Plugging the s
   - one EtCO2 point per clean breath over 15 min, 30 min, 2 h or the whole session
   - the continuous CO2 trace behind the points, the alarm-limit bands, alarm marks and your event markers
   - the caption counts breaths left out as noisy
-- **Ventilatory response tab:** MV against EtCO2 for clean breaths, with a least-squares line. It shows the slope (L/min per mmHg), r² and n: the CO2 response.
+- **Ventilatory response tab:** MV against EtCO2 for clean breaths. Once a marker labelled **Rebreathing** is placed, breaths before it are drawn as hollow rings and summarized as the baseline (mean EtCO2 and MV), and the least-squares line is fitted to the rebreathing breaths only, the way CHOP reports the test. It shows the slope (L/min per mmHg), r, the x-intercept ("x-int", the EtCO2 where the line reaches MV = 0) and n, then the baseline mean EtCO2 and MV. Without the marker, every breath is fitted.
 - **Soft keys:** Silence (120 s), Arm audio, Mark event (`M`), Record, Freeze, Alarm limits, Settings.
 - **Settings** has these tabs: Connection, Calibration, Alarms, Display & units, Data & recordings, Diagnostics. Alarms keep running while you are in Settings.
 
@@ -362,7 +363,7 @@ If there is no valid flow signal, detection falls back to the capnogram: a breat
 | EtCO2 | Median of the last 3 breaths |
 | RR | 60 / mean breath period of the last 4 breaths |
 | MV | ΣVT / Σbreath period over the last 60 s, in L/min. This is correct from the first minute, rather than under-reading until 60 s have passed. |
-| Ventilatory response | Ordinary least-squares fit of MV against EtCO2 over the trend window; slope in L/min per mmHg, with r² and n |
+| Ventilatory response | Ordinary least-squares fit of MV against EtCO2 over the trend window, on the breaths after the **Rebreathing** marker (all breaths if there is none); slope in L/min per mmHg, r, x-intercept and n, plus the baseline mean EtCO2 and MV before the marker (`processing/metrics.py` → `co2_response`) |
 
 ### 5.9 Alarms (`co2response/alarms/`)
 
@@ -431,12 +432,11 @@ s.breaths       # one row per CLEAN breath: etco2_mmHg, rr_bpm, vt_ml, mv_lpm, .
 s.breaths_all   # every breath, with breath_quality
 s.events        # alarms, markers, connections
 
-import numpy as np
-step = s.breaths[(s.breaths.time_s > t_start) & (s.breaths.time_s < t_end)]
-slope, intercept = np.polyfit(step.etco2_mmHg, step.mv_lpm, 1)   # CO2 response, L/min per mmHg
+from co2r.session import co2_response
+co2_response(s)   # baseline before the "Rebreathing" marker, then slope, r, x-intercept of the rebreathing breaths
 ```
 
-From the command line, `python analysis/load_session.py session.csv --breaths breaths.csv` prints a summary and writes the clean breath table. `--all-breaths` keeps the rejected breaths, marked.
+From the command line, `python analysis/load_session.py session.csv --breaths breaths.csv` prints a summary (including the CO2 response) and writes the clean breath table. `--all-breaths` keeps the rejected breaths, marked.
 
 ### 5.11 Calibration ([docs/calibration.md](docs/calibration.md))
 
@@ -694,6 +694,7 @@ These are placeholders until the [open questions](docs/open-questions.md) are an
 | [docs/calibration.md](docs/calibration.md) | Calibration procedures |
 | [docs/data-format.md](docs/data-format.md) | Session file format (v3), noise-removal details, import/export, analysis in Python/MATLAB/Excel |
 | [docs/safety.md](docs/safety.md) | Safety and limitations |
+| [docs/project-background.md](docs/project-background.md) | The clinical test (Read's rebreathing method at CHOP), what the mentors and the capstone team's documents ask for, and how the repo measures up |
 | [docs/open-questions.md](docs/open-questions.md) | Open questions for the lab ([issue #4](https://github.com/shrlak/CO2-Response/issues/4)) |
 | [PLAN.md](PLAN.md) | Build plan and requirements |
 | [docs/design/monitor-mockup.html](docs/design/monitor-mockup.html) | Phase 0 UI mockup |

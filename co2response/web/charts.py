@@ -347,7 +347,11 @@ class TrendChart(Plot):
 
 
 class ResponseChart(Plot):
-    def draw(self, xs: list[float], ys: list[float], fit) -> None:
+    def draw(self, reb: list[tuple[float, float]], base: list[tuple[float, float]], fit) -> None:
+        """Rebreathing breaths as dots with the fitted line over their range; baseline
+        breaths (before the rebreathing marker) as hollow rings, not fitted."""
+        xs = [a for a, _ in reb + base]
+        ys = [b for _, b in reb + base]
         self.c.fit()
         self.x0 = math.floor((min(xs) if xs else 30) - 2)
         self.x1 = math.ceil((max(xs) if xs else 50) + 2)
@@ -356,9 +360,21 @@ class ResponseChart(Plot):
         xt = nice_ticks(self.x0, self.x1, max(2, int(w / self.c.dpr / 70)))
         self.frame([(x, f"{x:g}") for x in xt], nice_ticks(self.y0, self.y1, 3), lambda v: f"{v:g}")
         self.clip()
-        self.dots([self.px(x) for x in xs], [self.py(y) for y in ys], css_var("--pneumo"))
+        if base:
+            g = self.c.ctx
+            d = self.c.dpr
+            g.strokeStyle = css_var("--muted")
+            g.lineWidth = 1.2 * d
+            g.beginPath()
+            for x, y in base:
+                X, Y = self.px(x), self.py(y)
+                g.moveTo(X + 3 * d, Y)
+                g.arc(X, Y, 3 * d, 0, 2 * math.pi)
+            g.stroke()
+        self.dots([self.px(x) for x, _ in reb], [self.py(y) for _, y in reb], css_var("--pneumo"))
         if fit:
-            self.stroke(f"M{self.px(self.x0)} {self.py(fit.slope * self.x0 + fit.intercept)}L{self.px(self.x1)} {self.py(fit.slope * self.x1 + fit.intercept)}", css_var("--text"), 1.5)
+            a, b = min(x for x, _ in reb), max(x for x, _ in reb)
+            self.stroke(f"M{self.px(a)} {self.py(fit.slope * a + fit.intercept)}L{self.px(b)} {self.py(fit.slope * b + fit.intercept)}", css_var("--text"), 1.5)
         self.c.ctx.restore()
 
 

@@ -11,7 +11,7 @@ import js
 
 from ..engine.monitor import Snapshot
 from ..processing.co2 import mmhg_to_pct
-from ..processing.metrics import linear_fit
+from ..processing.metrics import co2_response_summary
 from ..settings import AlarmSettings
 from .charts import ResponseChart, Sweep, TrendChart
 from .dom import as_float, btn, byid, data, esc, field, number_field, seg, set_html, toast, toggle
@@ -442,11 +442,10 @@ class MonitorView:
             span = f"{minutes:g} min" if minutes > 0 else "whole session"
             byid("trend-meta").textContent = f"{span} · one point per breath · {len(pts)} breaths{removed}"
         else:
-            xy = sorted(((q.etco2, q.mv) for q in pts if math.isfinite(q.etco2) and math.isfinite(q.mv)), key=lambda a: a[0])
-            xs, ys = [a for a, _ in xy], [b for _, b in xy]
-            fit = linear_fit(xs, ys)
-            self.resp.draw(xs, ys, fit)
-            byid("trend-meta").textContent = f"MV (L/min) vs EtCO2 (mmHg) · slope {fmt(fit.slope, 2)} L/min/mmHg · r² {fmt(fit.r2, 2)} · n {len(xs)}{removed}" if fit else "MV vs EtCO2 · needs at least 3 breaths"
+            # Read's method: baseline breaths averaged, the line fitted to rebreathing only
+            res = e.co2_response(t0)
+            self.resp.draw(res.rebreathing, res.baseline, res.fit)
+            byid("trend-meta").textContent = co2_response_summary(res, fmt) + (removed if res.fit else "")
 
 
 def install_monitor_actions(app: "WebApp") -> None:
