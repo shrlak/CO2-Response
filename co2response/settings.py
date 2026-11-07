@@ -98,10 +98,41 @@ class AlarmSettings:
 
 @dataclass
 class SimSettings:
+    """The simulator's settings. The simulation panel (``co2response/sim/controls.py``)
+    sets every one of them; the defaults are a normal adult at rest."""
+
     scenario: str = "normal"
     rr: float = 15
     etco2: float = 38
     vt_ml: float = 500
+    #: inspired CO2, mmHg
+    fico2: float = 0
+    #: I:E ratio as 1:x
+    ie_ratio: float = 2
+    #: airway obstruction (capnogram shape), %
+    obstruction_pct: float = 0
+    #: CO2 challenge (rebreathing): CO2 climbs at this rate up to the maximum
+    ramp: bool = False
+    ramp_mm_hg_per_min: float = 15
+    ramp_max_mm_hg: float = 62
+    #: ventilatory response to the rising CO2 (1 = normal, 0 = none)
+    drive: float = 1
+    apnea: bool = False
+    co2_disconnected: bool = False
+    flow_disconnected: bool = False
+    pneumo_disconnected: bool = False
+    stop_data: bool = False
+    #: noise multiplier, ADC spikes %, partial breaths %, lost/corrupt serial lines %
+    noise: float = 1
+    spike_pct: float = 0
+    partial_pct: float = 0
+    line_error_pct: float = 0
+    #: the flow sensor reads gain % of the true flow, plus an offset
+    flow_gain_pct: float = 100
+    flow_offset_lpm: float = 0
+    #: the situation last chosen in the simulation panel, and whether a value was changed since
+    preset: str = "normal"
+    adjusted: bool = False
 
 
 @dataclass

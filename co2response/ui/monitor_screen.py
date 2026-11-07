@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -21,8 +20,12 @@ from ..engine.monitor import MonitorEngine, Snapshot
 from ..processing.co2 import mmhg_to_pct
 from .alarm_form import AlarmForm
 from .monitor_widgets import NumericTile, SweepWidget
+from .sim_panel import SimPanel
 from .trend import TrendPanel
 from .widgets import button, fmt, hbox, label, mss, scroll_page, set_prop
+
+#: relative heights of the CO2, flow and pneumotach rows
+ROW_STRETCH = (130, 100, 100)
 
 
 class SoftKey(QPushButton):
@@ -226,22 +229,38 @@ class MonitorScreen(QWidget):
         co2nums.setColumnStretch(0, 135)
         co2nums.setColumnStretch(1, 100)
         rows = [("co2", co2nums), ("flow", hbox(self.tiles["flow"], self.tiles["peak"], spacing=6)), ("pneumo", hbox(self.tiles["vt"], self.tiles["mv"], spacing=6))]
+        self.holders: dict[str, QWidget] = {}
         for r, (cid, nums) in enumerate(rows):
             grid.addWidget(self.sweeps[cid], r, 0)
             holder = QWidget()
             holder.setLayout(nums)
             nums.setContentsMargins(0, 0, 0, 0)
             grid.addWidget(holder, r, 1)
-        grid.setColumnStretch(0, 68)
-        grid.setColumnStretch(1, 32)
-        for r, s in enumerate((135, 100, 100)):
+            self.holders[cid] = holder
+            self.sweeps[cid].on_expand = lambda cid=cid: self.toggle_focus(cid)
+        # the graphs take the space; the numbers keep a readable column
+        grid.setColumnStretch(0, 73)
+        grid.setColumnStretch(1, 27)
+        self.grid = grid
+        for r, s in enumerate(ROW_STRETCH):
             grid.setRowStretch(r, s)
-        outer.addWidget(self.rows, 1)
 
+        # waveforms above, the trend below (a third of the height, growing with the
+        # window), and the simulation panel docked at the right when it is open
         self.trend = TrendPanel(engine)
-        self.trend.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.trend.setFixedHeight(190)
-        outer.addWidget(self.trend)
+        self.trend.expand.clicked.connect(lambda _=False: self.toggle_focus("trend"))
+        left = QVBoxLayout()
+        left.setSpacing(6)
+        left.addWidget(self.rows, 19)
+        left.addWidget(self.trend, 10)
+        body = QHBoxLayout()
+        body.setSpacing(6)
+        body.addLayout(left, 1)
+        self.sim = SimPanel(engine, self.toggle_sim)
+        body.addWidget(self.sim)
+        outer.addLayout(body, 1)
+        #: one graph enlarged to fill the monitor ("co2", "flow", "pneumo", "trend"), or None
+        self.focus: str | None = None
 
         keys = QHBoxLayout()
         keys.setSpacing(6)
@@ -251,8 +270,9 @@ class MonitorScreen(QWidget):
         self.k_rec = SoftKey(self.toggle_recording.emit)
         self.k_freeze = SoftKey(lambda: engine.set_frozen(not engine.frozen))
         self.k_limits = SoftKey(self.show_drawer)
+        self.k_sim = SoftKey(self.toggle_sim)
         self.k_settings = SoftKey(lambda: self.open_settings.emit(""))
-        for k in (self.k_silence, self.k_audio, self.k_mark, self.k_rec, self.k_freeze, self.k_limits, self.k_settings):
+        for k in (self.k_silence, self.k_audio, self.k_mark, self.k_rec, self.k_freeze, self.k_limits, self.k_sim, self.k_settings):
             keys.addWidget(k, 1)
         outer.addLayout(keys)
 
@@ -281,6 +301,30 @@ class MonitorScreen(QWidget):
 
     def start_simulator(self) -> None:
         self.engine.connect("simulator")
+
+    def toggle_sim(self) -> None:
+        self.show_sim(not self.sim.isVisible())
+
+    def show_sim(self, on: bool = True) -> None:
+        self.sim.setVisible(on)
+        if on:
+            self.sim.refresh(self.engine.snapshot())
+
+    def toggle_focus(self, target: str) -> None:
+        self.set_focus(None if self.focus == target else target)
+
+    def set_focus(self, target: str | None) -> None:
+        """Enlarge one graph to fill the monitor, or (None) go back to the full layout."""
+        self.focus = target
+        for r, (cid, sw) in enumerate(self.sweeps.items()):
+            show = target in (None, cid)
+            sw.setVisible(show)
+            self.holders[cid].setVisible(show)
+            sw.expand.setChecked(target == cid)
+            self.grid.setRowStretch(r, ROW_STRETCH[r] if show else 0)
+        self.rows.setVisible(target != "trend")
+        self.trend.setVisible(target in (None, "trend"))
+        self.trend.expand.setChecked(target == "trend")
 
     def reconnect_known(self) -> None:
         if not self.engine.reconnect_known_port():
@@ -364,6 +408,8 @@ class MonitorScreen(QWidget):
         t["mv"].set(stale_val(s.stale["pneumo"], n.mv, 1), stale=s.stale["pneumo"])
 
         disconnected = s.status in ("idle", "error")
+        if disconnected and self.focus == "trend":
+            self.set_focus(None)  # the connect card lives over the waveforms
         self.overlay.setVisible(disconnected)
         if disconnected:
             self.overlay.raise_()
@@ -380,6 +426,14 @@ class MonitorScreen(QWidget):
         self.k_freeze.set("Unfreeze" if s.frozen else "Freeze", "waveforms only", "active" if s.frozen else None, p)
         low = f" · low {fmt(disp(a.low_mm_hg), digits)}" if a.low_mm_hg is not None else ""
         self.k_limits.set("Alarm limits", f"high {fmt(disp(a.high_mm_hg), digits)}{low}", None, p)
+        sim_open = self.sim.isVisible()
+        self.k_sim.set(
+            "Simulation",
+            "hide the controls" if sim_open else "situations and values" if s.source_kind == "simulator" else "try situations, no hardware",
+            "active" if sim_open else None,
+            p,
+        )
         self.k_settings.set("Settings", "calibration, connection", None, p)
+        self.sim.refresh(s)
         if self.drawer.isVisible():
             self.drawer.form.refresh(a)

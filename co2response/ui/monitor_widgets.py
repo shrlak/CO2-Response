@@ -8,12 +8,26 @@ import numpy as np
 from pyqtgraph.functions import arrayToQPath
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QSizePolicy, QWidget
+from PySide6.QtWidgets import QPushButton, QSizePolicy, QWidget
 
 from . import theme
 from .theme import ui_font
 
-TOP, BOTTOM, RIGHT_GUTTER = 26, 8, 34
+TOP, BOTTOM, RIGHT_GUTTER = 32, 10, 44
+TITLE_PX, TICK_PX = 18, 15
+
+
+def expand_button(parent: QWidget, what: str) -> QPushButton:
+    """The small button that enlarges a graph to fill the monitor (and back)."""
+    b = QPushButton("\u2922", parent)
+    b.setProperty("expand", True)
+    b.setCheckable(True)
+    b.setFixedSize(30, 24)
+    b.setCursor(Qt.CursorShape.PointingHandCursor)
+    b.setToolTip(f"Enlarge the {what} graph to fill the screen (click again, or Esc, to go back). Double-click the graph does the same.")
+    b.setAccessibleName(f"Enlarge the {what} graph")
+    b.toggled.connect(lambda on: b.setText("\u2921" if on else "\u2922"))
+    return b
 
 
 def _fmt_tick(t: float, signed: bool) -> str:
@@ -31,8 +45,8 @@ class SweepWidget(QWidget):
     buffer only when the size, scale, colors or sweep speed change.
     """
 
-    GAP = 16  # px erased ahead of the pen
-    LW = 2.0
+    GAP = 18  # px erased ahead of the pen
+    LW = 3.0
 
     def __init__(self, cid: str, label: str, unit: str) -> None:
         super().__init__()
@@ -58,6 +72,22 @@ class SweepWidget(QWidget):
         self.setMinimumHeight(60)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self.setAccessibleName(f"{label} waveform")
+        #: called with no arguments when the graph is asked to enlarge (button or double-click)
+        self.on_expand = None
+        self.expand = expand_button(self, label)
+        self.expand.clicked.connect(lambda _=False: self.on_expand and self.on_expand())
+        self._place_expand()
+
+    def _place_expand(self) -> None:
+        f = ui_font(TITLE_PX, QFont.Weight.Bold)
+        f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.6)
+        x = 10 + QFontMetrics(f).horizontalAdvance(self.label.upper()) + 8 + QFontMetrics(ui_font(TITLE_PX - 2)).horizontalAdvance(self.unit) + 12
+        if self.expand.x() != x:
+            self.expand.move(x, 5)
+
+    def mouseDoubleClickEvent(self, e) -> None:  # noqa: N802
+        if self.on_expand:
+            self.on_expand()
 
     # ---------- options
 
@@ -68,6 +98,7 @@ class SweepWidget(QWidget):
             self.clear()
         self.vmin, self.vmax, self.ticks, self.signed, self.limit = vmin, vmax, list(ticks), signed, limit
         self.seconds, self.rate = seconds, rate
+        self._place_expand()
         if self._cache_key() != self._key:
             self.update()
 
@@ -166,7 +197,7 @@ class SweepWidget(QWidget):
         rect = QRectF(0.5, 0.5, w - 1, h - 1)
         g.drawRoundedRect(rect, 4, 4)
         right = w - RIGHT_GUTTER
-        g.setFont(ui_font(12))
+        g.setFont(ui_font(TICK_PX, QFont.Weight.DemiBold))
         fm = QFontMetrics(g.font())
         for t in self.ticks:
             y = int(round(self._y(t)))
@@ -177,29 +208,29 @@ class SweepWidget(QWidget):
             g.drawText(int(w - 6 - fm.horizontalAdvance(s)), int(y + fm.ascent() / 2 - 1), s)
         if self.limit is not None and self.vmin < self.limit < self.vmax:
             y = int(round(self._y(self.limit)))
-            pen = QPen(p.q("alarm_high"), 1.5)
-            pen.setDashPattern([5, 4])
+            pen = QPen(p.q("alarm_high"), 2.5)
+            pen.setDashPattern([4, 3])
             g.setPen(pen)
             g.drawLine(0, y, right, y)
             g.setPen(p.q("alarm_high"))
             s = f"{round(self.limit, 1):g}"
             g.drawText(int(w - 6 - fm.horizontalAdvance(s)), int(y + fm.ascent() / 2 - 1), s)
-        f = ui_font(14, QFont.Weight.DemiBold)
-        f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.4)
+        f = ui_font(TITLE_PX, QFont.Weight.Bold)
+        f.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.6)
         g.setFont(f)
         g.setPen(QColor(p.channel(self.cid)))
         title = self.label.upper()
-        g.drawText(10, 19, title)
+        g.drawText(10, 23, title)
         x = 10 + QFontMetrics(f).horizontalAdvance(title) + 8
-        g.setFont(ui_font(14))
+        g.setFont(ui_font(TITLE_PX - 2))
         g.setPen(p.q("muted"))
-        g.drawText(x, 19, self.unit)
+        g.drawText(x, 23, self.unit)
         if self.tag:
-            tf = ui_font(12, QFont.Weight.Bold)
+            tf = ui_font(13, QFont.Weight.Bold)
             tf.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.4)
             g.setFont(tf)
             tw = QFontMetrics(tf).horizontalAdvance(self.tag) + 12
-            r = QRectF(w - RIGHT_GUTTER - 12 - tw, 6, tw, 18)
+            r = QRectF(w - RIGHT_GUTTER - 12 - tw, 7, tw, 20)
             g.setPen(QPen(p.q("muted"), 1))
             g.setBrush(Qt.BrushStyle.NoBrush)
             g.drawRoundedRect(r, 3, 3)
@@ -320,7 +351,7 @@ class NumericTile(QWidget):
             g.setFont(ui_font(13))
             fm = QFontMetrics(g.font())
             g.setPen(muted)
-            g.drawText(QRectF(12, h - 22, w - 24, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, fm.elidedText(self.qualifier, Qt.TextElideMode.ElideRight, w - 130))
+            g.drawText(QRectF(12, h - 22, w - 24, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, fm.elidedText(self.qualifier, Qt.TextElideMode.ElideRight, w - (130 if self.raw else 24)))
             if self.raw:
                 g.setFont(theme.mono_font(12))
                 g.drawText(QRectF(12, h - 22, w - 24, 18), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, self.raw)

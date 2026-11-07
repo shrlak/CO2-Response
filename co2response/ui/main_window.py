@@ -98,6 +98,11 @@ class MainWindow(QMainWindow):
     def show_monitor(self) -> None:
         self.stack.setCurrentWidget(self.monitor)
 
+    def open_simulation(self) -> None:
+        """The monitor with the simulation panel open."""
+        self.show_monitor()
+        self.monitor.show_sim(True)
+
     def open_review(self, sid: str) -> None:
         from .review import ReviewScreen
 
@@ -144,6 +149,7 @@ class MainWindow(QMainWindow):
     def _escape(self) -> None:
         self.monitor.drawer.hide()
         self.monitor.popover.hide()
+        self.monitor.set_focus(None)
 
     # ---------- refresh
 

@@ -48,7 +48,7 @@ DARK = Palette(
     panel="#0b0f14",
     panel2="#131a23",
     panel3="#1a222d",
-    grid="#1f2933",
+    grid="#2a3643",
     border="#26313d",
     text="#e6ebf0",
     muted="#8693a1",
@@ -71,7 +71,7 @@ LIGHT = Palette(
     panel="#ffffff",
     panel2="#f3f5f8",
     panel3="#e6eaef",
-    grid="#dde2e8",
+    grid="#d0d7df",
     border="#c9d0d8",
     text="#0f151c",
     muted="#56616d",
@@ -173,7 +173,7 @@ QPushButton[seg="true"] {{ border-radius: 0; min-height: 32px; padding: 0 14px; 
 QPushButton[seg="true"]:checked {{ background: {p.text}; color: {p.bg}; font-weight: 600; }}
 QPushButton[tab="true"] {{
   background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
-  color: {p.muted}; font-size: 14px; letter-spacing: 1px; padding: 2px 0; min-height: 24px;
+  color: {p.muted}; font-size: 16px; font-weight: 700; letter-spacing: 1px; padding: 2px 0; min-height: 24px;
 }}
 QPushButton[tab="true"]:checked {{ color: {p.co2}; border-bottom-color: {p.co2}; }}
 QPushButton[nav="true"] {{
@@ -187,6 +187,16 @@ QPushButton#softkey[state="armed"] {{ border-color: {p.ok}; }}
 QPushButton#softkey[state="need"] {{ border-color: {p.advisory}; }}
 QPushButton#softkey[state="active"] {{ border-color: {p.alarm_med}; }}
 QPushButton#softkey[state="rec"] {{ border-color: {p.alarm_high}; }}
+QPushButton[expand="true"] {{ min-height: 0; padding: 0; font-size: 17px; font-weight: 700; background: {p.panel2}; border: 1px solid {p.border}; border-radius: 3px; }}
+QPushButton[expand="true"]:checked {{ color: {p.co2}; border-color: {p.co2}; }}
+QFrame#simpanel {{ background: {p.panel}; border: 1px solid {p.border}; border-radius: 4px; }}
+QFrame#simstart {{ border: 1px solid {p.advisory}; border-radius: 4px; }}
+QLabel#simtitle {{ color: {p.co2}; font-size: 19px; font-weight: 700; letter-spacing: 2px; }}
+QLabel#simsection {{ font-size: 14px; font-weight: 700; letter-spacing: 1px; border-top: 1px solid {p.border}; padding-top: 8px; margin-top: 4px; }}
+QLabel[readback="set"] {{ font-size: 17px; font-weight: 600; }}
+QLabel[readback="monitor"] {{ font-size: 17px; font-weight: 600; color: {p.ok}; }}
+QPushButton[sit="true"] {{ min-height: 30px; padding: 2px 8px; text-align: left; font-size: 14px; }}
+QPushButton[sit="true"]:checked {{ color: {p.co2}; border-color: {p.co2}; }}
 QLineEdit, QDoubleSpinBox, QSpinBox, QComboBox, QPlainTextEdit {{
   background: {p.input_bg}; border: 1px solid {p.border}; border-radius: 3px; padding: 3px 6px; min-height: 26px;
   selection-background-color: {p.co2}; selection-color: {p.bg};

@@ -15,6 +15,7 @@ from ..processing.metrics import co2_response_summary
 from ..settings import AlarmSettings
 from .charts import ResponseChart, Sweep, TrendChart
 from .dom import as_float, btn, byid, data, esc, field, number_field, seg, set_html, toast, toggle
+from .sim_view import SimPanel
 
 if TYPE_CHECKING:
     from .app import WebApp
@@ -205,9 +206,19 @@ def tile_html(tid: str, label: str, unit: str, value: str, big=False, stale=Fals
     return f'<div class="{cls}" data-testid="tile-{tid}"><div class="tlabel"><span><b>{label}</b><span class="unit">{esc(unit)}</span></span>{lim}</div><div class="val{" flash" if flash else ""}">{esc(value)}</div>{qual}</div>'
 
 
+def expand_btn(target: str, what: str) -> str:
+    return (
+        f'<button type="button" class="expand" data-act="focus" data-arg="{target}" id="expand-{target}" '
+        f'title="Enlarge the {what} graph to fill the screen (click again, or Esc, to go back)" aria-label="Enlarge the {what} graph" aria-pressed="false">⤢</button>'
+    )
+
+
 def wave_html(cid: str, label: str, unit: str) -> str:
     tag = '<span class="wtag" id="wtag" hidden></span>' if cid == "co2" else ""
-    return f'<div class="wave" id="wave-{cid}"><div class="wlabel">{label}<span id="unit-{cid}">{unit}</span></div>{tag}<canvas id="bg-{cid}"></canvas><canvas id="fg-{cid}"></canvas></div>'
+    return (
+        f'<div class="wave" id="wave-{cid}"><div class="wlabel">{label}<span id="unit-{cid}">{unit}</span>{expand_btn(cid, label)}</div>{tag}'
+        f'<canvas id="bg-{cid}"></canvas><canvas id="fg-{cid}"></canvas></div>'
+    )
 
 
 class MonitorView:
@@ -218,6 +229,9 @@ class MonitorView:
         self.resp: ResponseChart | None = None
         self.tab = "trend"
         self.drawer = False
+        #: one graph enlarged to fill the monitor ("co2", "flow", "pneumo", "trend"), or None
+        self.focus: str | None = None
+        self.sim = SimPanel(app)
         self.mark: tuple[int, str] | None = None
         self._epoch = -1
         self._trend_key = None
@@ -237,10 +251,36 @@ class MonitorView:
             '<button class="tab" role="tab" data-act="trend-tab" data-arg="trend" id="tab-trend">EtCO2 trend</button>'
             '<button class="tab" role="tab" data-act="trend-tab" data-arg="response" id="tab-response">Ventilatory response</button>'
             '<span class="trend-meta"><span id="trend-meta"></span><label>Window <select id="trend-window" data-change="trend-window" aria-label="Trend window">'
-            '<option value="15">15 min</option><option value="30">30 min</option><option value="120">2 h</option><option value="0">All</option></select></label></span></div>'
+            '<option value="15">15 min</option><option value="30">30 min</option><option value="120">2 h</option><option value="0">All</option></select></label>'
+            f"{expand_btn('trend', 'trend')}</span></div>"
             '<div class="trend-plot"><canvas id="trend-canvas"></canvas></div></section>'
         )
-        return f'<div class="monitor-screen"><main class="monitor">{rows}<div id="overlay"></div></main>{trend}<nav class="softkeys" id="softkeys"></nav><div id="drawer"></div></div>'
+        return (
+            f'<div class="monitor-screen" id="monscreen"><main class="monitor">{rows}<div id="overlay"></div></main>{trend}'
+            '<aside class="simpanel" id="simpanel" aria-label="Simulation" hidden></aside>'
+            '<nav class="softkeys" id="softkeys"></nav><div id="drawer"></div></div>'
+        )
+
+    def set_focus(self, target: str | None) -> None:
+        """Enlarge one graph to fill the monitor, or (None) go back to the full layout."""
+        self.focus = target
+        self._trend_key = None
+        self._apply_focus()
+
+    def _apply_focus(self) -> None:
+        el = byid("monscreen")
+        if el is None:
+            return
+        want = self.focus or ""
+        if (el.getAttribute("data-focus") or "") != want:
+            el.setAttribute("data-focus", want)
+            for t in ("co2", "flow", "pneumo", "trend"):
+                b = byid(f"expand-{t}")
+                if b is not None:
+                    on = t == self.focus
+                    b.setAttribute("aria-pressed", "true" if on else "false")
+                    b.textContent = "\u2921" if on else "\u2922"
+                    b.title = "Back to all graphs (Esc)" if on else "Enlarge this graph to fill the screen (Esc to go back)"
 
     def mount(self) -> None:
         for cid, var in (("co2", "--co2"), ("flow", "--flow"), ("pneumo", "--pneumo")):
@@ -249,8 +289,10 @@ class MonitorView:
         self.resp = ResponseChart(byid("trend-canvas"))
         self._epoch = -1
         self._trend_key = None
+        self.sim._key = None
         for i in TILE_IDS:
             set_html(f"t-{i}", "", force=True)
+        self._apply_focus()
 
     def frame(self) -> None:
         e = self.app.engine
@@ -332,6 +374,10 @@ class MonitorView:
             set_html(f"t-{k}", h)
 
         set_html("overlay", self._overlay(s) if s.status in ("idle", "error") else "")
+        if self.focus == "trend" and s.status in ("idle", "error"):
+            self.set_focus(None)  # the connect card lives over the waveforms
+        self._apply_focus()
+        self.sim.refresh(s)
         self._softkeys(s, disp, digits)
         self._trend(s, disp, pct)
         if self.drawer:
@@ -385,6 +431,12 @@ class MonitorView:
             + key("■ Stop rec" if s.recording.active else "● Record", "saves one CSV on stop" if s.recording.active else "one CSV per session", "record", "rec-on" if s.recording.active else "")
             + key("Unfreeze" if s.frozen else "Freeze", "waveforms only", "freeze", "active" if s.frozen else "")
             + key("Alarm limits", f"high {fmt(disp(a.high_mm_hg), digits)}{low}", "drawer-open")
+            + key(
+                "Simulation",
+                "hide the controls" if self.sim.open else "situations and values" if s.source_kind == "simulator" else "try situations, no hardware",
+                "sim-toggle",
+                "active" if self.sim.open else "",
+            )
             + key("Settings", "calibration, connection", "open-settings")
         )
         if set_html("softkeys", html) and self.mark:
@@ -440,12 +492,15 @@ class MonitorView:
                 pct,
             )
             span = f"{minutes:g} min" if minutes > 0 else "whole session"
-            byid("trend-meta").textContent = f"{span} · one point per breath · {len(pts)} breaths{removed}"
+            meta = f"{span} · one point per breath · {len(pts)} breaths{removed}"
         else:
             # Read's method: baseline breaths averaged, the line fitted to rebreathing only
             res = e.co2_response(t0)
             self.resp.draw(res.rebreathing, res.baseline, res.fit)
-            byid("trend-meta").textContent = co2_response_summary(res, fmt) + (removed if res.fit else "")
+            meta = co2_response_summary(res, fmt) + (removed if res.fit else "")
+        el = byid("trend-meta")
+        el.textContent = meta
+        el.title = meta  # the full text when it is cut short
 
 
 def install_monitor_actions(app: "WebApp") -> None:
@@ -495,6 +550,7 @@ def install_monitor_actions(app: "WebApp") -> None:
             "test-alarm": test_alarm,
             "trend-window": window,
             "trend-tab": tab,
+            "focus": lambda el: (mv.set_focus(None if mv.focus == data(el, "arg") else data(el, "arg")), app.refresh()),
         },
     )
     app.hotkey_mark = mark

@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QComboBox, QFileDialog, QLineEdit, QVBoxLayout
 
 from ...engine.monitor import MonitorEngine, Snapshot
-from ...sim.physiology import SCENARIOS
+from ...sim.controls import SITUATION_BY_ID, SITUATIONS
 from ...storage.session_file import read_session
 from ..widgets import (
     Card,
@@ -80,16 +80,25 @@ class ConnectionPage(Page):
 
         # ---- simulator
         sim = Card("Simulator", "no hardware needed")
-        sim.add(label("Generates realistic capnogram, flow and pneumotach signals through the same protocol, parser and processing as the Arduino.", "note", wrap=True))
+        sim.add(
+            label(
+                "Generates realistic capnogram, flow and pneumotach signals through the same protocol, parser and processing as the Arduino. "
+                "The Simulation key on the monitor opens a panel that sets every value the monitor shows.",
+                "note",
+                wrap=True,
+            )
+        )
         f = Form()
-        self.scenario = combo(SCENARIOS, s.sim.scenario, lambda v: engine.set_sim(scenario=v), 240)
-        f.add("scenario", "Scenario", self.scenario)
+        self.scenario = combo([(x.id, f"{x.group}: {x.label}") for x in SITUATIONS], s.sim.preset, lambda v: engine.apply_situation(v, start=False), 300)
+        f.add("scenario", "Situation", self.scenario)
+        self.sim_desc = label("", "note", wrap=True)
+        sim.add(self.sim_desc)
         self.sim_rr = number_field(f, "rr", "Respiratory rate", s.sim.rr, lambda v: engine.set_sim(rr=v), "/min", lo=4, hi=60)
         self.sim_et = number_field(f, "et", "Baseline EtCO2", s.sim.etco2, lambda v: engine.set_sim(etco2=v), "mmHg", lo=10, hi=80)
         self.sim_vt = number_field(f, "vt", "Tidal volume", s.sim.vt_ml, lambda v: engine.set_sim(vt_ml=v), "mL", lo=100, hi=1500)
         sim.add(f)
         self.sim_btn = button("Start simulator", lambda: engine.connect("simulator"), kind="primary")
-        sim.add(hbox(self.sim_btn, stretch_end=True))
+        sim.add(hbox(self.sim_btn, button("Open the simulation panel", window.open_simulation), stretch_end=True))
         cards.add(sim)
 
         # ---- replay
@@ -207,7 +216,9 @@ class ConnectionPage(Page):
         self.reconnect.setText(f"Reconnect {s.known_port}" if s.known_port else "")
         self.sim_btn.setText("Restart simulator" if s.source_kind == "simulator" else "Start simulator")
         sim = s.settings.sim
-        set_combo(self.scenario, sim.scenario)
+        set_combo(self.scenario, sim.preset)
+        sit = SITUATION_BY_ID.get(sim.preset)
+        self.sim_desc.setText(sit.description if sit and not sim.adjusted else "Values changed by hand in the simulation panel.")
         self.sim_rr.set(sim.rr)
         self.sim_et.set(sim.etco2)
         self.sim_vt.set(sim.vt_ml)

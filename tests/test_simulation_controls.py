@@ -1,0 +1,220 @@
+"""The simulation panel's controls: every value the monitor shows can be set, the
+ready-made situations reach the monitor through the real engine, and the old
+scenarios keep working."""
+
+import dataclasses
+import math
+
+import pytest
+from conftest import DEFAULT_ENCODERS
+from test_engine import make_engine, run
+
+from co2response.protocol import SeqTracker, parse_line
+from co2response.settings import SimSettings
+from co2response.sim.controls import (
+    GROUPS,
+    SITUATIONS,
+    SLIDERS,
+    SWITCHES,
+    fmt_value,
+    model_params,
+    monitor_values,
+    situation_settings,
+    slider_index,
+    slider_value,
+    switch_on,
+    switch_patch,
+)
+from co2response.sim.core import SimulatorCore
+from co2response.sim.physiology import PhysioModel
+
+
+def co2_trace(m: PhysioModel, seconds: float) -> list[float]:
+    return [((m.step(0.01).co2_pct or 0) / 100) * 760 for _ in range(int(seconds * 100))]
+
+
+def lines(core: SimulatorCore, seconds: float):
+    out = []
+    for _ in range(int(seconds * core.rate_hz)):
+        out += [parse_line(x) for x in core.next_sample()]
+    return out
+
+
+# ------------------------------------------------------------------ the model
+
+
+def test_every_control_is_a_simulator_setting_and_in_range():
+    fields = {f.name for f in dataclasses.fields(SimSettings)}
+    for key, s in SLIDERS.items():
+        assert key in fields
+        assert s.lo <= getattr(SimSettings(), key) <= s.hi, key
+        assert slider_value(s, slider_index(s, getattr(SimSettings(), key))) == pytest.approx(getattr(SimSettings(), key))
+    for key in SWITCHES:
+        assert getattr(SimSettings(), key) is False
+    assert sum(len(g.items) for g in GROUPS) == len(SLIDERS) + len(SWITCHES)
+    assert fmt_value(SLIDERS["ie_ratio"], 2) == "1:2.0"
+    assert fmt_value(SLIDERS["rr"], 15) == "15 /min"
+
+
+def test_every_situation_stays_within_the_slider_ranges():
+    for sit in SITUATIONS:
+        sim = situation_settings(sit.id)
+        for key, s in SLIDERS.items():
+            assert s.lo <= getattr(sim, key) <= s.hi, (sit.id, key)
+
+
+def test_default_settings_reproduce_the_original_model():
+    a = PhysioModel(seed=4)
+    b = PhysioModel(seed=4, **model_params(dataclasses.asdict(SimSettings())))
+    for _ in range(3000):
+        sa, sb = a.step(0.01), b.step(0.01)
+        assert (sa.co2_pct, sa.flow_lpm, sa.pneumo_pa) == (sb.co2_pct, sb.flow_lpm, sb.pneumo_pa)
+
+
+def test_inspired_co2_raises_the_baseline():
+    m = PhysioModel(fico2=8, etco2=40)
+    trace = co2_trace(m, 20)[500:]
+    assert 6.5 < min(trace) < 9
+    assert 39 < max(trace) < 41.5
+
+
+def test_obstruction_rounds_the_capnogram_but_keeps_etco2():
+    def rise_time(**kw) -> float:
+        """Seconds from the start of expiration until CO2 is within 10 % of EtCO2."""
+        m = PhysioModel(rr=15, etco2=40, noise=0, **kw)
+        tr = co2_trace(m, 8)[400:800]  # breath 2: 1.33 s inspiration then expiration
+        return next(i for i, v in enumerate(tr) if i > 133 and v > 36) / 100 - 4 / 3
+
+    assert rise_time() < 0.6
+    assert rise_time(obstruction_pct=90) > 1.2
+    m = PhysioModel(rr=15, etco2=40, obstruction_pct=90, noise=0)
+    assert max(co2_trace(m, 20)) == pytest.approx(40, abs=0.6)
+
+
+def test_ie_ratio_sets_peak_inspiratory_flow():
+    fast = PhysioModel(**model_params({"ie_ratio": 1.0}))
+    slow = PhysioModel(**model_params({"ie_ratio": 3.0}))
+    assert fast.expected()["vt"] == pytest.approx(500)
+    # half-sine: peak = VT * 60 * pi / (2 * Ti); Ti is 2 s at 1:1, 1 s at 1:3
+    assert fast.expected()["peak"] == pytest.approx(0.5 * 60 * math.pi / 4)
+    assert slow.expected()["peak"] == pytest.approx(2 * fast.expected()["peak"])
+
+
+def test_drive_scales_the_breathing_response_to_co2():
+    def mv_at_top(drive):
+        m = PhysioModel(ramp=True, ramp_max_mm_hg=55, drive=drive)
+        m._et = 55
+        m._plan_breath()
+        return m.expected()["mv"]
+
+    assert mv_at_top(0) == pytest.approx(7.5)
+    assert mv_at_top(1) > 1.5 * mv_at_top(0)
+    assert mv_at_top(2) > mv_at_top(1)
+
+
+def test_switches_unplug_sensors_and_stop_the_stream():
+    core = SimulatorCore(DEFAULT_ENCODERS, flow_disconnected=True, pneumo_disconnected=True)
+    for p in lines(core, 1):
+        assert p.volts[1] == 5 and p.volts[2] == 5 and p.volts[0] < 5
+    core.model.set_params(stop_data=True)
+    assert lines(core, 1) == []
+    core.model.set_params(stop_data=False, apnea=True)
+    flows = [abs(core.model.step(0.01).flow_lpm) for _ in range(500)]
+    assert max(flows) < 2
+
+
+def test_line_errors_drop_and_corrupt_lines():
+    data = lines(SimulatorCore(DEFAULT_ENCODERS, line_error_pct=6, seed=2), 30)
+    seq = SeqTracker()
+    for p in data:
+        if p.kind == "data":
+            seq.push(p.seq)
+    bad = sum(p.kind == "bad" for p in data)
+    assert 80 < bad < 160  # 4 % of 3000 corrupted
+    assert 120 < seq.dropped < 240  # 2 % lost + the 4 % corrupted, which are discarded
+
+
+def test_flow_sensor_gain_and_offset():
+    m = PhysioModel(noise=0, flow_gain=0.5, flow_offset_lpm=5)
+    ref = PhysioModel(noise=0)
+    for _ in range(300):
+        a, b = m.step(0.01), ref.step(0.01)
+        assert a.flow_lpm == pytest.approx(0.5 * b.flow_lpm + 5)
+        assert a.pneumo_pa == pytest.approx(b.pneumo_pa)  # the pneumotach is unaffected
+
+
+def test_switches_follow_the_old_scenarios():
+    sim = SimSettings(scenario="apnea")
+    assert switch_on(sim, "apnea")
+    assert switch_patch(sim, "apnea", False) == {"apnea": False, "scenario": "normal"}
+    assert switch_patch(SimSettings(), "apnea", True) == {"apnea": True}
+    assert switch_on(SimSettings(scenario="co2Ramp"), "ramp")
+
+
+# ------------------------------------------------------------------ through the engine
+
+
+@pytest.mark.parametrize("sit", SITUATIONS, ids=[s.id for s in SITUATIONS])
+def test_each_situation_reaches_the_monitor(tmp_path, sit):
+    """The monitor measures what the situation sets: every number within a few %."""
+    e = make_engine(tmp_path)
+    e.apply_situation(sit.id)
+    assert e.source.kind == "simulator"
+    run(e, 75 if sit.values.get("ramp") else 40)
+    s = e.snapshot()
+    exp = e.sim_expected()
+    mon = monitor_values(s.numbers)
+    assert exp["clipping"] == []
+    stale = {k for k, v in s.stale.items() if v}
+    active = {a.id for a in s.alarms if a.state == "active"}
+    v = sit.values
+    if v.get("stop_data"):
+        assert "noData" in active
+        return
+    if v.get("apnea"):
+        assert "apnea" in active and math.isnan(mon["rr"])
+        return
+    expected_alarms = {"co2High", "audioOff"}
+    for sensor, alarm, chan in (("co2_disconnected", "railCo2", "co2"), ("flow_disconnected", "railFlow", "flow"), ("pneumo_disconnected", "railPneumo", "pneumo")):
+        assert (alarm in active) == bool(v.get(sensor)), sit.id
+        assert (chan in stale) == bool(v.get(sensor)), sit.id
+        if v.get(sensor):
+            expected_alarms.add(alarm)
+    assert mon["rr"] == pytest.approx(exp["rr"], abs=1.0)
+    if "co2" not in stale:
+        lag = 3 if v.get("ramp") else 1.5  # the median of 3 breaths trails a rising CO2
+        assert mon["etco2"] == pytest.approx(exp["etco2"], abs=lag)
+        assert mon["fico2"] == pytest.approx(exp["fico2"], abs=1.5)
+    if "pneumo" not in stale:
+        assert mon["vt"] == pytest.approx(exp["vt"], rel=0.05 if v.get("ramp") else 0.03)
+    if "flow" not in stale:
+        assert mon["peak"] == pytest.approx(exp["peak"], rel=0.12 if v.get("ramp") else 0.08, abs=2)
+    if not (v.get("noise", 1) > 1 or v.get("line_error_pct") or v.get("partial_pct")):
+        assert not active - expected_alarms, active
+
+
+def test_situations_change_the_running_simulator_in_place(tmp_path):
+    e = make_engine(tmp_path)
+    e.connect("simulator")
+    run(e, 10)
+    src = e.source
+    e.apply_situation("hypoventilation")
+    assert e.source is src  # no reconnect, no gap in the data
+    assert e.settings.sim.preset == "hypoventilation" and not e.settings.sim.adjusted
+    e.set_sim(rr=9)
+    assert e.settings.sim.adjusted
+    assert src.core.model.params.rr == 9
+    e.apply_situation("rebreathing")
+    assert [m.label for m in e.markers] == ["Rebreathing"]
+    assert src.core.model.params.ramp
+
+
+def test_the_panel_warns_when_flow_would_clip(tmp_path):
+    e = make_engine(tmp_path)
+    e.connect("simulator")
+    e.set_sim(vt_ml=1800, rr=30)
+    run(e, 5)
+    assert e.sim_expected()["clipping"] == ["flow sensor", "pneumotach"]
+    e.set_sim(vt_ml=500, rr=15)
+    run(e, 10)
+    assert e.sim_expected()["clipping"] == []

@@ -88,19 +88,33 @@ python -m co2response --sim
 
 On Linux, alarm sounds need PortAudio (`sudo apt install libportaudio2`). Without it, the app falls back to the system beep and says so.
 
-### Simulator scenarios
+### Simulation panel
 
-Choose the scenario in **Settings > Connection > Simulator**:
+Press **Simulation** (the soft key next to Settings) to open the simulation panel beside the monitor. It works in the desktop app and in the browser, with or without the simulator already running.
 
-| Scenario | What it shows |
-| --- | --- |
-| Normal breathing | About 15 breaths/min, EtCO2 38 mmHg, VT 500 mL |
-| CO2 ramp (rebreathing) | EtCO2 climbing 15 mmHg/min (up to 62 mmHg), as in a rebreathing test. Raises the high-CO2 alarm and builds the ventilatory-response plot. |
-| Apnea | Breathing stops; the apnea alarm sounds after 20 s |
-| CO2 sensor disconnected | The CO2 channel sits at the ADC rail; a technical alarm sounds and CO2 shows `---` |
-| Device stops sending | The data stream stops; the no-data alarm sounds |
-| Noisy signal + line errors | Extra noise and corrupted serial lines (counted as checksum errors) |
-| Spikes + partial breaths | Single-sample spikes and shallow breaths, to show the noise removal at work |
+- **Situations:** one click sets every simulator value for a ready-made situation and starts the simulator if it is not running. The monitor changes in place, with no gap in the data.
+
+  | Group | Situations |
+  | --- | --- |
+  | Breathing patterns | Normal at rest, hyperventilation, hypoventilation (crosses the 50 mmHg high alarm), rapid shallow, slow deep, light exercise, child (~6 years) |
+  | Clinical | Bronchospasm / COPD ("shark fin" capnogram), raised inspired CO2, low cardiac output, apnea |
+  | CO2 challenge | Rebreathing test, blunted response, brisk response. Each places a **Rebreathing** marker, so the ventilatory-response plot fits its line. |
+  | Equipment problems | CO2 sensor, flow sensor or pneumotach unplugged; device stops sending; noisy signal; spikes + partial breaths; flow sensor drift |
+
+- **Every value is a slider or a switch,** and dragging a slider changes the running simulator straight away:
+
+  | Group | Controls |
+  | --- | --- |
+  | Breathing | respiratory rate, tidal volume, I:E ratio (sets peak inspiratory flow), end-tidal CO2, inspired CO2, airway obstruction (capnogram shape) |
+  | CO2 challenge | CO2 rising on/off, rise rate, where the rise stops, breathing response (×0 to ×3) |
+  | Events | apnea, CO2 sensor unplugged, flow sensor unplugged, pneumotach unplugged, device stops sending |
+  | Signal quality | sensor noise, ADC spikes, partial breaths, serial line errors |
+  | Flow sensor calibration | gain (% of true flow) and zero offset |
+
+- **Set vs Monitor:** a table at the top shows each value the simulator is producing next to what the monitor measures (EtCO2, FiCO2, RR, VT, MV, peak inspiratory flow). The monitor measures its numbers from the simulated waveforms, the same way it does from real sensors, so its numbers, waveforms, trend and alarms all agree, and it takes a few breaths to follow a change.
+- If the values chosen would push flow past a sensor's range (about ±100 L/min with the default calibration), the panel warns that the signal will clip at the ADC rail.
+
+**Settings > Connection > Simulator** offers the same situations in a drop-down. The simulator's values are saved and come back next time.
 
 ---
 
@@ -179,7 +193,8 @@ If the USB cable comes out, the device-disconnected alarm sounds. Plugging the s
   - blue: advisories
 
   Alarms latch until you press **Acknowledge** or **Clear**. A high alarm also flashes the window title and taskbar entry.
-- **Waveforms** sweep left to right like a bedside monitor: CO2 (yellow, with the high limit dashed), flow sensor (cyan) and pneumotach flow (green).
+- **Waveforms** sweep left to right like a bedside monitor: CO2 (yellow, with the high limit dashed), flow sensor (cyan) and pneumotach flow (green). The graphs take all the space the numbers and keys do not, with thick traces and large scale labels.
+- **Enlarge a graph:** the **⤢** button beside each graph's name (or a double-click on a waveform in the desktop app) makes that graph fill the monitor. Press it again, or `Esc`, to go back. The waveform carries on without losing what is on screen.
 - **Numbers:**
   - EtCO2 with its limits beside it, RR, FiCO2, live and peak flow, VT and MV
   - a channel with no valid data for 2 s shows `---`
@@ -189,7 +204,7 @@ If the USB cable comes out, the device-disconnected alarm sounds. Plugging the s
   - the continuous CO2 trace behind the points, the alarm-limit bands, alarm marks and your event markers
   - the caption counts breaths left out as noisy
 - **Ventilatory response tab:** MV against EtCO2 for clean breaths. Once a marker labelled **Rebreathing** is placed, breaths before it are drawn as hollow rings and summarized as the baseline (mean EtCO2 and MV), and the least-squares line is fitted to the rebreathing breaths only, the way CHOP reports the test. It shows the slope (L/min per mmHg), r, the x-intercept ("x-int", the EtCO2 where the line reaches MV = 0) and n, then the baseline mean EtCO2 and MV. Without the marker, every breath is fitted.
-- **Soft keys:** Silence (120 s), Arm audio, Mark event (`M`), Record, Freeze, Alarm limits, Settings.
+- **Soft keys:** Silence (120 s), Arm audio, Mark event (`M`), Record, Freeze, Alarm limits, Simulation ([the simulation panel](#simulation-panel)), Settings.
 - **Settings** has these tabs: Connection, Calibration, Alarms, Display & units, Data & recordings, Diagnostics. Alarms keep running while you are in Settings.
 
 ---
@@ -457,7 +472,9 @@ The starting values come from `co2response/config/channels.json`, which can be e
 
 ### 5.12 Simulator (`co2response/sim/`)
 
-A physiological model generates CO2 and flow waveforms with adjustable RR, EtCO2 and VT, plus the scenarios listed in [§1](#simulator-scenarios). An emulated firmware turns them into real protocol lines with real checksums and sequence numbers.
+A physiological model (`physiology.py`) generates the CO2 and flow waveforms. Every value the monitor shows can be set: EtCO2 and FiCO2, RR, VT and the I:E ratio (and so peak inspiratory flow), the capnogram's shape, a CO2 rise with an adjustable breathing response, apnea, unplugged sensors, a stalled data stream, sensor noise, ADC spikes, partial breaths, serial line errors and a miscalibrated flow sensor. An emulated firmware (`core.py`) turns the waveforms into real protocol lines with real checksums and sequence numbers.
+
+`controls.py` lists the panel's sliders, switches and situations ([§1](#simulation-panel)); the desktop window and the browser page both build their panel from it. The old single-choice scenarios (`normal`, `co2Ramp`, `apnea`, `co2Disconnect`, `noData`, `noisy`, `artifacts`) still work, and a test runs every situation through the real engine and checks the monitor reads what was set.
 
 It is seeded, so the tests and the sample session are reproducible. `sample-data/synthetic_session.csv` is made by `scripts/make_sample_session.py`, which drives the real engine on a fake clock: 60 s of spikes and partial breaths, then a 12 mmHg/min CO2 ramp with a "CO2 rebreathing started" marker. A test checks the script still reproduces the file byte for byte.
 
@@ -502,7 +519,7 @@ co2response/                    the monitor (python -m co2response)
   paths.py                      where settings and sessions are stored (CO2R_HOME overrides)
   keep_awake.py                 keeps the computer awake while a device is connected
   jsfmt.py                      number/time formatting that keeps session files stable across versions
-  sim/                          physiological model (physiology.py) and firmware emulation (core.py)
+  sim/                          physiological model (physiology.py), firmware emulation (core.py), simulation panel controls and situations (controls.py)
   processing/
     pipeline.py                 per-sample path: despike → rail check → calibrate → low-pass → units → breaths
     denoise.py                  Hampel spike filter, noise meter, breath screen (noise removal)
@@ -613,6 +630,7 @@ ruff check .
 | --- | --- |
 | `test_protocol.py` | parser, checksums, sequence gaps, and the shared vectors in `docs/protocol-fixtures.json` |
 | `test_simulator.py` | physiological model and firmware emulation |
+| `test_simulation_controls.py` | every simulation control, and every situation run through the engine to the monitor's numbers |
 | `test_processing.py` | calibration, filter, breath detection, metrics |
 | `test_denoise.py` | spike removal, breath screen, and noise removal through the pipeline, the engine, the alarms and the analysis loader |
 | `test_alarms.py` | alarm state machine |

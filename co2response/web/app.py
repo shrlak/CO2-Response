@@ -23,6 +23,7 @@ from .dom import actions, byid, data, nn, proxy, run, set_html, toast
 from .platform import Storage, WakeLock, WebAudio, WebBridgeSource, WebSerialSource, find_known_port, open_port, open_websocket, port_label, port_usb_id, web_serial_supported
 from .review_view import ReviewView, install_review_actions
 from .settings_view import SettingsView, install_settings_actions
+from .sim_view import install_sim_actions
 from .views import MonitorView, alarm_slot_html, header_html, install_alarm_actions, install_monitor_actions
 
 SAMPLE = "sample-data/synthetic_session.csv"
@@ -245,7 +246,7 @@ def _install_actions(app: WebApp) -> None:
             "ruo-ok": lambda el: (js.sessionStorage.setItem("co2r.ruo", "1"), byid("ruo").remove()),
             "alarm-more": lambda el: (setattr(app, "alarm_list_open", not app.alarm_list_open), app.refresh()),
             "arm-audio": lambda el: (e.arm_audio(), app.refresh()),
-            "start-sim": lambda el: (e.connect("simulator"), app.show("monitor")),
+            "start-sim": lambda el: (e.connect("simulator"), app.monitor.sim.bump(), app.show("monitor")),
             "connect-serial": lambda el: app.choose_port(),
             "connect-bridge": lambda el: app.connect_bridge(),
             "replay-sample": lambda el: app.replay_sample(),
@@ -255,6 +256,7 @@ def _install_actions(app: WebApp) -> None:
     )
     install_alarm_actions(app)
     install_monitor_actions(app)
+    install_sim_actions(app)
     install_settings_actions(app)
     install_review_actions(app)
 
@@ -272,6 +274,8 @@ def _install_actions(app: WebApp) -> None:
         if ev.key == "Escape":
             app.monitor.drawer = False
             app.monitor.mark = None
+            if app.monitor.focus:
+                app.monitor.set_focus(None)
             app.refresh()
 
     js.document.addEventListener("keydown", proxy(on_key))

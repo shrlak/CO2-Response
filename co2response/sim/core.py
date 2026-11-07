@@ -43,26 +43,33 @@ class SimulatorCore:
         seq = self._seq
         self._seq = (self._seq + 1) & 0xFFFF
         self._t_ms += 1000 * dt
-        if not self.streaming or self.model.params.scenario == "noData":
+        p = self.model.params
+        if not self.streaming or p.stop_data_on:
             return []
 
+        # an unplugged sensor: the recommended pull-up drives its input to the high rail
         volts = [
-            # unplugged capnograph: the recommended pull-up drives CH0 to the high rail
             self._rail_high_v if s.co2_pct is None else self._clamp(self.encoders.co2(s.co2_pct)),
-            self._clamp(self.encoders.flow(s.flow_lpm)),
-            self._clamp(self.encoders.pneumo(s.pneumo_pa)),
+            self._rail_high_v if p.flow_disconnected else self._clamp(self.encoders.flow(s.flow_lpm)),
+            self._rail_high_v if p.pneumo_disconnected else self._clamp(self.encoders.pneumo(s.pneumo_pa)),
         ]
-        if self.model.params.scenario == "artifacts" and self._rand() < 0.01:
+        spikes = max(0.01 if p.scenario == "artifacts" else 0, p.spike_pct / 100)
+        if spikes > 0 and self._rand() < spikes:
             # a glitchy ADC conversion: one sample on one channel jumps by 1–2 V
             ch = min(2, int(self._rand() * 3))
             volts[ch] = self._clamp(volts[ch] + (1 + self._rand()) * (1 if self._rand() < 0.5 else -1))
         line = format_data_line(seq, self._t_ms, volts)
 
-        if self.model.params.scenario == "noisy":
+        # lost and corrupted lines: the "noisy" scenario drops 0.5 % and corrupts 1 %
+        drop, bad = (0.005, 0.015) if p.scenario == "noisy" else (0.0, 0.0)
+        if p.line_error_pct / 100 > bad:
+            bad = p.line_error_pct / 100
+            drop = bad / 3
+        if bad > 0:
             r = self._rand()
-            if r < 0.005:
+            if r < drop:
                 return []  # dropped sample → sequence gap
-            if r < 0.015:
+            if r < bad:
                 line = line[:-2] + ("01" if line.endswith("00") else "00")  # bad checksum
         return [line]
 
