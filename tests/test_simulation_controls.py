@@ -288,7 +288,7 @@ def test_speed_runs_simulated_time_faster(tmp_path):
     e.set_sim(speed=1)
     assert e.source.speed == 1 and e.snapshot().source_label == "Simulator"
     run(e, 1)
-    text = e.stop_recording().path.read_text()
+    text = e.stop_recording().path.read_text(encoding="utf-8")  # session files are UTF-8 on every OS
     assert "# source,Simulator (5× speed)" in text and "SIM_SPEED 1" in text
     # a stored speed out of range runs at the nearest end
     e.set_sim(speed=50)
