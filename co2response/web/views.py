@@ -251,7 +251,7 @@ class MonitorView:
             '<button class="tab" role="tab" data-act="trend-tab" data-arg="trend" id="tab-trend">EtCO2 trend</button>'
             '<button class="tab" role="tab" data-act="trend-tab" data-arg="response" id="tab-response">Ventilatory response</button>'
             '<span class="trend-meta"><span id="trend-meta"></span><label>Window <select id="trend-window" data-change="trend-window" aria-label="Trend window">'
-            '<option value="15">15 min</option><option value="30">30 min</option><option value="120">2 h</option><option value="0">All</option></select></label>'
+            '<option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="120">2 h</option><option value="0">All</option></select></label>'
             f"{expand_btn('trend', 'trend')}</span></div>"
             '<div class="trend-plot"><canvas id="trend-canvas"></canvas></div></section>'
         )

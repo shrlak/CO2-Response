@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -26,10 +27,12 @@ from PySide6.QtWidgets import (
 from ..engine.monitor import MonitorEngine, Snapshot
 from ..sim.controls import (
     GROUPS,
+    MEASURED_NOTE,
     READBACK,
     SITUATION_BY_ID,
     SITUATION_GROUPS,
     SITUATIONS,
+    SPEED,
     Slider,
     Switch,
     fmt_value,
@@ -133,6 +136,14 @@ class SimPanel(QFrame):
         sb.addWidget(button("Start simulator", lambda: engine.connect("simulator"), kind="primary"), 0, Qt.AlignmentFlag.AlignLeft)
         lay.addWidget(self.start_box)
 
+        def set_value(k: str, v: float) -> None:
+            if getattr(engine.settings.sim, k) != v:
+                engine.set_sim(**{k: v})
+
+        # how fast simulated time runs, above everything it speeds up
+        self.sliders: dict[str, SliderRow] = {SPEED.key: SliderRow(SPEED, set_value)}
+        lay.addWidget(self.sliders[SPEED.key])
+
         self.current = QLabel()
         self.current.setStyleSheet("font-size:17px; font-weight:700;")
         self.desc = label("", "note", wrap=True)
@@ -175,18 +186,20 @@ class SimPanel(QFrame):
                 b.setCheckable(True)
                 b.setToolTip(sit.description)
                 b.setCursor(Qt.CursorShape.PointingHandCursor)
+                # two to a row: they share the panel's width (the longest labels lose a little
+                # padding) rather than widening it past the edge, where the values were cut off
+                b.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
                 b.clicked.connect(lambda _=False, sid=sit.id: self._situation(sid))
                 self.sit_buttons[sit.id] = b
                 grid.addWidget(b, i // 2, i % 2)
             lay.addLayout(grid)
 
-        self.sliders: dict[str, SliderRow] = {}
         self.switches: dict[str, QCheckBox] = {}
         for g in GROUPS:
             lay.addWidget(self._section(g.title.upper()))
             for it in g.items:
                 if isinstance(it, Slider):
-                    row = SliderRow(it, lambda k, v: engine.set_sim(**{k: v}) if getattr(engine.settings.sim, k) != v else None)
+                    row = SliderRow(it, set_value)
                     self.sliders[it.key] = row
                     lay.addWidget(row)
                 elif isinstance(it, Switch):
@@ -199,8 +212,7 @@ class SimPanel(QFrame):
                         lay.addWidget(label(it.hint, "note", wrap=True))
         lay.addWidget(
             label(
-                "The monitor measures its numbers from the simulated waveforms, as it would from real sensors, so they can differ a little "
-                "from the values set here and take a few breaths to follow a change.",
+                MEASURED_NOTE,
                 "note",
                 wrap=True,
             )

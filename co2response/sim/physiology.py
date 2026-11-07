@@ -79,6 +79,10 @@ class SimParams:
     #: the flow sensor reads gain × true flow + offset (a miscalibrated or drifting sensor)
     flow_gain: float = 1
     flow_offset_lpm: float = 0
+    #: how much of the way to a new end-tidal CO2 each breath goes: 0.5 halves the gap
+    #: every breath (the original, gradual approach over about five breaths); 1 reaches
+    #: it on the next breath, or on the breath being drawn if that is still inspiring
+    settle: float = 0.5
     #: events, on top of the scenario
     ramp: bool = False
     apnea: bool = False
@@ -139,6 +143,10 @@ class PhysioModel:
         self.params = dataclasses.replace(prev, **patch)
         if scenario_changed or "etco2" in patch or self.params.ramp_on != prev.ramp_on:
             self._target = self.params.etco2
+            # the CO2 of an inspiration does not depend on this breath's EtCO2, so a breath
+            # that is still inspiring can take the new value without a step in the trace
+            if self.params.settle >= 1 and not self.params.apnea_on and self._t - self._breath_start < self._ti:
+                self._et = self._target
         if self.params.apnea_on and not prev.apnea_on:
             self._apnea_co2 = max(self._apnea_co2, self.params.fico2)
 
@@ -217,7 +225,7 @@ class PhysioModel:
             if x >= self._period:
                 self._breath_start += self._period
                 self._prev_end = self._et
-                self._et += (self._target - self._et) * 0.5
+                self._et += (self._target - self._et) * min(1.0, max(0.0, p.settle))
                 self._plan_breath()
                 x = self._t - self._breath_start
             if x < self._ti:

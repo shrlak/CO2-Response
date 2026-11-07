@@ -395,10 +395,15 @@ class MonitorEngine:
 
     def set_sim(self, **patch) -> None:
         """Change simulator settings; a running simulator follows at once."""
-        if "preset" not in patch:
+        if "preset" not in patch and set(patch) - {"speed"}:  # the speed is not part of a situation
             patch.setdefault("adjusted", True)
         self.update_settings(sim=dataclasses.replace(self.settings.sim, **patch))
         if isinstance(self._source, SimulatorSource):
+            if "speed" in patch and self._source.speed != self.settings.sim.speed:
+                self._source.speed = self.settings.sim.speed
+                self._add_log(f"Simulation speed {self._source.run_speed:g}×")
+                # a recording's clock follows the simulated time, so it notes where that changes
+                self.recorder.event(self.clock(), f"SIM_SPEED {self._source.run_speed:g}")
             self._source.core.model.set_params(**model_params(patch))
 
     def set_sim_switch(self, key: str, on: bool) -> None:
@@ -408,7 +413,7 @@ class MonitorEngine:
     def apply_situation(self, sid: str, start: bool = True) -> None:
         """Set every simulator value for a ready-made situation. Starts the simulator
         (when ``start``) or changes the running one in place, without a gap in the data."""
-        sim = situation_settings(sid)
+        sim = dataclasses.replace(situation_settings(sid), speed=self.settings.sim.speed)
         self.update_settings(sim=sim)
         running = isinstance(self._source, SimulatorSource)
         if running:
@@ -490,6 +495,7 @@ class MonitorEngine:
                 a["railLowV"],
                 a["railHighV"],
                 clock=self._seconds,
+                speed=sim.speed,
                 seed=int(self.clock()) & 0xFFFF,
                 **model_params(dataclasses.asdict(sim)),
             )

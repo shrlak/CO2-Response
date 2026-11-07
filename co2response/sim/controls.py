@@ -59,9 +59,9 @@ GROUPS: tuple[Group, ...] = (
         "CO2 challenge (rebreathing)",
         (
             Switch("ramp", "CO2 rising", "EtCO2 climbs from its set value at the rate below."),
-            Slider("ramp_mm_hg_per_min", "Rise rate", "mmHg/min", 1, 30, 1),
+            Slider("ramp_mm_hg_per_min", "Rise rate", "mmHg/min", 1, 60, 1),
             Slider("ramp_max_mm_hg", "Rise stops at", "mmHg", 40, 100, 1),
-            Slider("drive", "Breathing response", "×", 0, 3, 0.05, "How much RR and VT rise with CO2. 1 = normal, 0 = none (blunted)."),
+            Slider("drive", "Breathing response", "×", 0, 5, 0.05, "How much RR and VT rise with CO2. 1 = normal, 0 = none (blunted)."),
         ),
     ),
     Group(
@@ -92,7 +92,27 @@ GROUPS: tuple[Group, ...] = (
     ),
 )
 
-SLIDERS: dict[str, Slider] = {it.key: it for g in GROUPS for it in g.items if isinstance(it, Slider)}
+#: at the top of the panel, above the situations: how fast simulated time runs. It is a
+#: viewing choice, not part of a situation, so choosing a situation keeps it.
+SPEED = Slider(
+    "speed",
+    "Speed",
+    "×",
+    1,
+    10,
+    1,
+    "Runs the simulation faster than real time, like a replay at 2× to 10×: at 5× a minute of breathing passes in 12 s, "
+    "so the numbers, trend and response plot get there five times sooner. Alarm delays stay in real seconds.",
+)
+
+#: under the panel's controls (both front ends)
+MEASURED_NOTE = (
+    "The monitor measures its numbers from the simulated waveforms, as it would from real sensors, so they can differ a little "
+    "from the values set here. A new EtCO2 shows on the next breath; the displayed EtCO2 and RR average the last 3–4 breaths "
+    "and MV the last minute, so those take a little longer (raise Speed to get there sooner)."
+)
+
+SLIDERS: dict[str, Slider] = {SPEED.key: SPEED, **{it.key: it for g in GROUPS for it in g.items if isinstance(it, Slider)}}
 SWITCHES: dict[str, Switch] = {it.key: it for g in GROUPS for it in g.items if isinstance(it, Switch)}
 
 
@@ -131,11 +151,15 @@ class Situation:
 SITUATIONS: tuple[Situation, ...] = (
     # breathing patterns
     Situation("normal", "Normal at rest", "Breathing patterns", "Adult at rest: RR 15 /min, VT 500 mL, EtCO2 38 mmHg.", {}),
-    Situation("hyperventilation", "Hyperventilation", "Breathing patterns", "Fast, deep breathing washes CO2 out (anxiety, pain): EtCO2 about 26 mmHg.", {"rr": 24, "vt_ml": 750, "etco2": 26}),
+    Situation("hyperventilation", "Hyperventilation", "Breathing patterns", "Fast, deep breathing washes CO2 out (anxiety, pain): EtCO2 drops to about 20 mmHg.", {"rr": 28, "vt_ml": 650, "etco2": 20}),
     Situation(
-        "hypoventilation", "Hypoventilation", "Breathing patterns", "Slow, shallow breathing lets CO2 build up (sedation, opioids). EtCO2 crosses the 50 mmHg high alarm.", {"rr": 7, "vt_ml": 380, "etco2": 56}
+        "hypoventilation",
+        "Hypoventilation",
+        "Breathing patterns",
+        "Slow, shallow breathing lets CO2 build up (sedation, opioids): EtCO2 climbs to 58 mmHg, well past the 50 mmHg high alarm.",
+        {"rr": 6, "vt_ml": 320, "etco2": 58},
     ),
-    Situation("tachypnea", "Rapid shallow", "Breathing patterns", "RR 36 /min with small breaths: MV stays about normal while EtCO2 creeps up.", {"rr": 36, "vt_ml": 260, "etco2": 44}),
+    Situation("tachypnea", "Rapid shallow", "Breathing patterns", "RR 40 /min with small breaths: MV stays about normal while EtCO2 creeps up.", {"rr": 40, "vt_ml": 220, "etco2": 46}),
     Situation("bradypnea", "Slow deep", "Breathing patterns", "RR 6 /min with large breaths.", {"rr": 6, "vt_ml": 950, "etco2": 40}),
     Situation("exercise", "Light exercise", "Breathing patterns", "MV about 16 L/min: high flows on both flow traces, near the top of their range.", {"rr": 20, "vt_ml": 800, "etco2": 42}),
     Situation("child", "Child (~6 years)", "Breathing patterns", "RR 24 /min, VT 200 mL.", {"rr": 24, "vt_ml": 200, "etco2": 38}),
@@ -145,17 +169,18 @@ SITUATIONS: tuple[Situation, ...] = (
         "Bronchospasm / COPD",
         "Clinical",
         "Obstructed airways: a slow-rising “shark fin” capnogram with no flat plateau and a long expiration.",
-        {"obstruction_pct": 85, "rr": 20, "ie_ratio": 3.5, "etco2": 46, "vt_ml": 420},
+        {"obstruction_pct": 95, "rr": 20, "ie_ratio": 4, "etco2": 50, "vt_ml": 420},
     ),
-    Situation("inspired_co2", "Raised inspired CO2", "Clinical", "Rebreathing exhausted absorber or dead space: the baseline stays above zero (FiCO2 8 mmHg).", {"fico2": 8, "etco2": 46}),
-    Situation("low_output", "Low cardiac output", "Clinical", "Less CO2 reaches the lungs: EtCO2 falls to 18 mmHg though ventilation is normal.", {"etco2": 18, "rr": 14, "vt_ml": 520}),
+    Situation("inspired_co2", "Raised inspired CO2", "Clinical", "Rebreathing exhausted absorber or dead space: the baseline stays well above zero (FiCO2 12 mmHg).", {"fico2": 12, "etco2": 50}),
+    Situation("low_output", "Low cardiac output", "Clinical", "Less CO2 reaches the lungs: EtCO2 falls to 12 mmHg though ventilation is normal.", {"etco2": 12, "rr": 14, "vt_ml": 520}),
     Situation("apnea", "Apnea", "Clinical", "Breathing stops. The apnea alarm sounds after 20 s.", {"apnea": True}),
     # CO2 challenge
     Situation(
         "rebreathing",
         "Rebreathing test",
         "CO2 challenge",
-        "EtCO2 climbs 12 mmHg/min and breathing rises with it. Places a Rebreathing marker, so the ventilatory-response plot fits the line.",
+        "EtCO2 climbs 12 mmHg/min and breathing rises with it. Places a Rebreathing marker, so the ventilatory-response plot fits the line. "
+        "Set Speed to 5× or 10× to run the whole test in well under a minute.",
         {"ramp": True, "ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 58},
         marker="Rebreathing",
     ),
@@ -163,8 +188,8 @@ SITUATIONS: tuple[Situation, ...] = (
         "blunted",
         "Blunted response",
         "CO2 challenge",
-        "The same rise in CO2, but breathing barely responds (opioids, sleep): a flat response slope.",
-        {"ramp": True, "ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 58, "drive": 0.25, "rr": 12},
+        "The same rise in CO2, but breathing hardly responds (opioids, sleep, CCHS): an almost flat response slope.",
+        {"ramp": True, "ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 58, "drive": 0.1, "rr": 12},
         marker="Rebreathing",
     ),
     Situation(
@@ -186,8 +211,8 @@ SITUATIONS: tuple[Situation, ...] = (
         "flow_drift",
         "Flow sensor drift",
         "Equipment problems",
-        "The flow sensor reads 75 % of the true flow plus 6 L/min, so it disagrees with the pneumotach.",
-        {"flow_gain_pct": 75, "flow_offset_lpm": 6},
+        "The flow sensor reads 65 % of the true flow plus 8 L/min, so it clearly disagrees with the pneumotach.",
+        {"flow_gain_pct": 65, "flow_offset_lpm": 8},
     ),
 )
 
@@ -211,7 +236,7 @@ def model_params(values: dict) -> dict:
     """SimSettings fields (all or some) → PhysioModel parameters."""
     out = {}
     for k, v in values.items():
-        if k in ("preset", "adjusted"):
+        if k in ("preset", "adjusted", "speed"):  # speed belongs to the source, not the model
             continue
         if k == "ie_ratio":
             out["insp_fraction"] = 1 / (1 + v)

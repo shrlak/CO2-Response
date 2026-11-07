@@ -130,6 +130,11 @@ class SimSettings:
     #: the flow sensor reads gain % of the true flow, plus an offset
     flow_gain_pct: float = 100
     flow_offset_lpm: float = 0
+    #: share of the gap to a new EtCO2 closed each breath: 1 = the next breath is at the
+    #: new value (the panel's default), 0.5 = halfway each breath (the original model)
+    settle: float = 1
+    #: simulated seconds per real second (1 = real time). Not part of a situation.
+    speed: float = 1
     #: the situation last chosen in the simulation panel, and whether a value was changed since
     preset: str = "normal"
     adjusted: bool = False

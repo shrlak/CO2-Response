@@ -79,7 +79,7 @@ class TrendPanel(QFrame):
         wl.setProperty("role", "muted")
         head.addWidget(wl)
         self.window = QComboBox()
-        for v, t in ((15, "15 min"), (30, "30 min"), (120, "2 h"), (0, "All")):
+        for v, t in ((5, "5 min"), (15, "15 min"), (30, "30 min"), (120, "2 h"), (0, "All")):
             self.window.addItem(t, v)
         self.window.setAccessibleName("Trend window")
         self.window.activated.connect(lambda i: engine.update_settings(trend_minutes=self.window.itemData(i)))

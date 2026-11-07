@@ -92,26 +92,27 @@ On Linux, alarm sounds need PortAudio (`sudo apt install libportaudio2`). Withou
 
 Press **Simulation** (the soft key next to Settings) to open the simulation panel beside the monitor. It works in the desktop app and in the browser, with or without the simulator already running.
 
+- **Speed** (top of the panel): runs simulated time 1× to 10× faster than real time, like a replay at 2×–10×. At 10× a whole rebreathing test (38 → 58 mmHg, about 100 s of breathing) fills the ventilatory-response plot in about 14 s, with the same slope as at 1×, because everything the monitor measures runs on the device clock. Alarm delays (apnea 20 s, no data 3 s) stay in real seconds. The header shows the speed (e.g. "Simulator (5× speed) · 500 Hz"), and so does the source line of a recording made at that speed. Choosing a situation keeps the speed.
 - **Situations:** one click sets every simulator value for a ready-made situation and starts the simulator if it is not running. The monitor changes in place, with no gap in the data.
 
   | Group | Situations |
   | --- | --- |
-  | Breathing patterns | Normal at rest, hyperventilation, hypoventilation (crosses the 50 mmHg high alarm), rapid shallow, slow deep, light exercise, child (~6 years) |
-  | Clinical | Bronchospasm / COPD ("shark fin" capnogram), raised inspired CO2, low cardiac output, apnea |
-  | CO2 challenge | Rebreathing test, blunted response, brisk response. Each places a **Rebreathing** marker, so the ventilatory-response plot fits its line. |
-  | Equipment problems | CO2 sensor, flow sensor or pneumotach unplugged; device stops sending; noisy signal; spikes + partial breaths; flow sensor drift |
+  | Breathing patterns | Normal at rest, hyperventilation (EtCO2 20 mmHg), hypoventilation (EtCO2 58 mmHg, past the 50 mmHg high alarm), rapid shallow (RR 40), slow deep, light exercise, child (~6 years) |
+  | Clinical | Bronchospasm / COPD ("shark fin" capnogram), raised inspired CO2 (FiCO2 12 mmHg), low cardiac output (EtCO2 12 mmHg), apnea |
+  | CO2 challenge | Rebreathing test, blunted response (almost flat), brisk response. Each places a **Rebreathing** marker, so the ventilatory-response plot fits its line. |
+  | Equipment problems | CO2 sensor, flow sensor or pneumotach unplugged; device stops sending; noisy signal; spikes + partial breaths; flow sensor drift (65 % of true flow + 8 L/min) |
 
 - **Every value is a slider or a switch,** and dragging a slider changes the running simulator straight away:
 
   | Group | Controls |
   | --- | --- |
   | Breathing | respiratory rate, tidal volume, I:E ratio (sets peak inspiratory flow), end-tidal CO2, inspired CO2, airway obstruction (capnogram shape) |
-  | CO2 challenge | CO2 rising on/off, rise rate, where the rise stops, breathing response (×0 to ×3) |
+  | CO2 challenge | CO2 rising on/off, rise rate (up to 60 mmHg/min), where the rise stops, breathing response (×0 to ×5) |
   | Events | apnea, CO2 sensor unplugged, flow sensor unplugged, pneumotach unplugged, device stops sending |
   | Signal quality | sensor noise, ADC spikes, partial breaths, serial line errors |
   | Flow sensor calibration | gain (% of true flow) and zero offset |
 
-- **Set vs Monitor:** a table at the top shows each value the simulator is producing next to what the monitor measures (EtCO2, FiCO2, RR, VT, MV, peak inspiratory flow). The monitor measures its numbers from the simulated waveforms, the same way it does from real sensors, so its numbers, waveforms, trend and alarms all agree, and it takes a few breaths to follow a change.
+- **Set vs Monitor:** a table at the top shows each value the simulator is producing next to what the monitor measures (EtCO2, FiCO2, RR, VT, MV, peak inspiratory flow). The monitor measures its numbers from the simulated waveforms, the same way it does from real sensors, so its numbers, waveforms, trend and alarms all agree. A new EtCO2 is on the next breath (or on the breath being drawn, if it is still inspiring). The large EtCO2 is the median of 3 breaths, RR averages 4 breaths and MV the last minute, so those follow a little later; raise **Speed** to get there sooner. A rise rate much above about 12 mmHg/min outruns MV's one-minute average, so the response plot under-reads the slope; use Speed rather than a faster rise to run a test quickly.
 - If the values chosen would push flow past a sensor's range (about ±100 L/min with the default calibration), the panel warns that the signal will clip at the ADC rail.
 
 **Settings > Connection > Simulator** offers the same situations in a drop-down. The simulator's values are saved and come back next time.
@@ -200,7 +201,7 @@ If the USB cable comes out, the device-disconnected alarm sounds. Plugging the s
   - a channel with no valid data for 2 s shows `---`
   - when the last breath was left out as noisy, the EtCO2 tile says so
 - **Trend tab:**
-  - one EtCO2 point per clean breath over 15 min, 30 min, 2 h or the whole session
+  - one EtCO2 point per clean breath over 5 min, 15 min, 30 min, 2 h or the whole session
   - the continuous CO2 trace behind the points, the alarm-limit bands, alarm marks and your event markers
   - the caption counts breaths left out as noisy
 - **Ventilatory response tab:** MV against EtCO2 for clean breaths. Once a marker labelled **Rebreathing** is placed, breaths before it are drawn as hollow rings and summarized as the baseline (mean EtCO2 and MV), and the least-squares line is fitted to the rebreathing breaths only, the way CHOP reports the test. It shows the slope (L/min per mmHg), r, the x-intercept ("x-int", the EtCO2 where the line reaches MV = 0) and n, then the baseline mean EtCO2 and MV. Without the marker, every breath is fitted.
@@ -476,7 +477,7 @@ A physiological model (`physiology.py`) generates the CO2 and flow waveforms. Ev
 
 `controls.py` lists the panel's sliders, switches and situations ([§1](#simulation-panel)); the desktop window and the browser page both build their panel from it. The old single-choice scenarios (`normal`, `co2Ramp`, `apnea`, `co2Disconnect`, `noData`, `noisy`, `artifacts`) still work, and a test runs every situation through the real engine and checks the monitor reads what was set.
 
-It is seeded, so the tests and the sample session are reproducible. `sample-data/synthetic_session.csv` is made by `scripts/make_sample_session.py`, which drives the real engine on a fake clock: 60 s of spikes and partial breaths, then a 12 mmHg/min CO2 ramp with a "CO2 rebreathing started" marker. A test checks the script still reproduces the file byte for byte.
+It is seeded, so the tests and the sample session are reproducible. `sample-data/synthetic_session.csv` is made by `scripts/make_sample_session.py`, which drives the real engine on a fake clock: 60 s of spikes and partial breaths, then a 12 mmHg/min CO2 ramp with a "CO2 rebreathing started" marker. It keeps the simulator's original pacing (EtCO2 halves its distance to a new value each breath, `settle=0.5`), and a test checks the script still reproduces the file byte for byte.
 
 ---
 

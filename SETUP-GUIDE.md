@@ -294,7 +294,7 @@ To start recording automatically whenever the Arduino connects, turn on **Settin
 | CO2 row | Capnogram (yellow, with the high limit dashed), **EtCO2** (large, with its limits beside it), RR, FiCO2 |
 | Flow row | Flow-sensor waveform (cyan), live flow, peak inspiratory flow |
 | Pneumotach row | Pneumotach flow (green), VT, MV |
-| Bottom chart | EtCO2 per breath over 15 min to the whole session, with alarm and event markers. The **Ventilatory response** tab plots MV against EtCO2: baseline breaths (before a marker labelled **Rebreathing**) as hollow rings, and a line fitted to the rebreathing breaths, with slope, r and x-intercept. |
+| Bottom chart | EtCO2 per breath over 5 min to the whole session, with alarm and event markers. The **Ventilatory response** tab plots MV against EtCO2: baseline breaths (before a marker labelled **Rebreathing**) as hollow rings, and a line fitted to the rebreathing breaths, with slope, r and x-intercept. |
 
 A number shows `---` when its sensor has sent no valid data for 2 s.
 
