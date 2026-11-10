@@ -34,6 +34,9 @@ does; Python's own formatting would round halves to even, so both Python package
 D,<seq>,<t_ms>,<v0>,<v1>,<v2>*<checksum>
 ```
 
+Firmware built with `SPO2_CHANNEL 1` sends a fourth voltage, `<v3>` (a pulse oximeter's analog
+output on A3), and says `CH,4` in its info line. The host reads as many voltages as the line has.
+
 | Field | Type | Notes |
 | --- | --- | --- |
 | `seq` | 0–65535 | Increments by 1 per **scheduled** sample slot and wraps to 0. A skipped slot still advances `seq`, so the host can count dropped samples from gaps. |
@@ -115,12 +118,16 @@ line then carries `VALVE,1`.
 - The pin is HIGH only while the subject should breathe from the bag. The valve must be wired so
   that LOW, and no power, mean **room air**.
 - `VALVE 1` is sent by the app at **Start rebreathing** and `VALVE 0` at **End test**, when the
-  stop alarm or the apnea alarm starts, and at an **emergency stop**. The app does this only when
+  stop alarm, the apnea alarm or the low-SpO2 alarm starts, and at an **emergency stop**. The app does this only when
   **Switch the valve from the app** is on (Settings > Alarms); the emergency stop always sends
   `VALVE 0`.
 - The board returns to room air by itself at power-up, at reset, and when the host's heartbeat
   is lost (it then also sends `A,VALVE,0`). `VALVE 1` is refused while the heartbeat is lost.
-- Before a deliberate disconnect the app sends `VALVE 0`, then `HB OFF`, then `STOP`.
+- Before a deliberate disconnect the app sends `VALVE 0`, then `HB OFF`, then `STOP`. It sends
+  `VALVE 0` whatever it believes the valve is doing.
+- The board answers each command with `A,VALVE,<0|1>`. The app matches answers to the commands
+  it has sent: an answer that newer commands have already overtaken is not taken for the valve
+  moving, while an `A,VALVE,0` nobody asked for (the watchdog) is believed and recorded.
 
 A board without a valve output answers `E,NO_VALVE` and has no `VALVE` field, so the app never
 sends it the command.

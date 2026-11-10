@@ -96,10 +96,12 @@ On Linux, alarm sounds need PortAudio (`sudo apt install libportaudio2`). Withou
 Press **Simulation** (the soft key next to Settings) to open the simulation panel beside the monitor. It works in the desktop app and in the browser, with or without the simulator already running.
 
 - **Speed** (top of the panel): runs simulated time 1× to 10× faster than real time, like a replay at 2×–10×. At 10× a whole rebreathing test (38 → 58 mmHg, about 100 s of breathing) fills the ventilatory-response plot in about 14 s, with the same slope as at 1×, because everything the monitor measures runs on the device clock. Alarm delays (apnea 20 s, no data 3 s) stay in real seconds. The header shows the speed (e.g. "Simulator (5× speed) · 500 Hz"), and so does the source line of a recording made at that speed. Choosing a situation keeps the speed.
+- **Record whole simulated tests** (switch under Speed): also saves a whole simulated test as a session, marked Simulator, so the review charts and the PDF report can be made from it too. A line under the switch says where the test stands ("Whole test: rebreathing 1:20, until the stop alarm").
 - **Situations:** one click sets every simulator value for a ready-made situation and starts the simulator if it is not running. The monitor changes in place, with no gap in the data.
 
   | Group | Situations |
   | --- | --- |
+  | Whole test (runs by itself) | Whole rebreathing test, blunted response, brisk response. The simulation presses the test keys itself: 30 s of baseline, the valve is "turned" and CO2 rises until the stop alarm, then the end of the test and 20 s of recovery. **Every graph fills in from it:** the three waveforms, the EtCO2, MV and RR trends, and the response plot with its baseline and fitted line. At 10× it takes about 20 s. |
   | Breathing patterns | Normal at rest, hyperventilation (EtCO2 20 mmHg), hypoventilation (EtCO2 63 mmHg, past the 60 mmHg warning limit), rapid shallow (RR 40), slow deep, light exercise, child (~6 years) |
   | Clinical | Bronchospasm / COPD ("shark fin" capnogram), raised inspired CO2 (FiCO2 12 mmHg), low cardiac output (EtCO2 12 mmHg), apnea |
   | CO2 challenge | Rebreathing test, blunted response (almost flat), brisk response. Each places a **Rebreathing** marker, so the ventilatory-response plot fits its line. |
@@ -112,6 +114,7 @@ Press **Simulation** (the soft key next to Settings) to open the simulation pane
   | Breathing | respiratory rate, tidal volume, I:E ratio (sets peak inspiratory flow), end-tidal CO2, inspired CO2, airway obstruction (capnogram shape) |
   | CO2 challenge | CO2 rising on/off, rise rate (up to 60 mmHg/min), where the rise stops, breathing response (×0 to ×5) |
   | Events | apnea, CO2 sensor unplugged, flow sensor unplugged, pneumotach unplugged, device stops sending |
+  | Safety channel | SpO2 (shown when the SpO2 channel is switched on in Settings > Display & units) |
   | Signal quality | sensor noise, ADC spikes, partial breaths, serial line errors |
   | Flow sensor calibration | gain (% of true flow) and zero offset |
 
@@ -173,11 +176,13 @@ Wiring, firmware upload and first checks are covered in detail, with a wiring di
     - **Start rebreathing** as the valve is turned to the bag. A timer runs against the time limit.
     - at the **warning** (amber) the end is near; at **STOP TEST** (red) turn the valve back to room air
     - **End test** as the valve is turned back
+    - **Emergency stop** ends the test at once from anywhere in it
+    - with a valve driver on the board and **Switch the valve from the app** on (Settings > Alarms), the keys turn the valve, and the stop alarm, apnea and a low SpO2 turn it back to room air by themselves ([§5.9](#59-alarms-co2responsealarms))
     - watch the **Ventilatory response** tab for the slope, r and x-intercept. Click a point to take an erratic breath out of the fit.
     - press **Mark event** (or the `M` key) to timestamp anything else; markers appear on the trend and in the file. A marker you label **Rebreathing** yourself works like the key.
     - if an alarm sounds, **Silence** mutes it for 120 s; **Acknowledge** clears a resolved alarm
 11. **Stop rec.** The session is listed in **Settings > Data & recordings**.
-12. **Review and export.** **Open** the session to see its summary (with the CO2 response) and zoomable charts, then export:
+12. **Review and export.** **Open** the session to see its summary (with the CO2 response), its response plot and zoomable charts. Click a breath on the response plot to take it out of the fit after the fact; the file remembers it. Then export:
     - the **CO2 response report** as a PDF: results, plots, and a table of every breath
     - the whole file
     - the per-breath table
@@ -206,10 +211,11 @@ If the USB cable comes out, the device-disconnected alarm sounds. Plugging the s
 - **Enlarge a graph:** the **⤢** button beside each graph's name (or a double-click on a waveform in the desktop app) makes that graph fill the monitor. Press it again, or `Esc`, to go back. The waveform carries on without losing what is on screen.
 - **Numbers:**
   - EtCO2 with its limits beside it (warning / stop, and low), RR, FiCO2, live and peak flow, VT and MV
+  - SpO2 with its low limit, when an oximeter is connected ([§5.2](#52-hardware))
   - under VT, the expired volume of the same breath; MV is the average over the last 60 s
   - a channel with no valid data for 2 s shows `---`
   - when the last breath was left out as noisy, the EtCO2 tile says so
-- **Test keys** (under the trend tabs): **Start baseline**, **Start rebreathing** and **End test**, and beside them where the test stands: `BASELINE 0:45 · steady (EtCO2 ±0.4 mmHg, MV ±6 % in the last minute)`, `REBREATHING 2:31 of 5:00`, `TEST ENDED after 3:40 of rebreathing`. It adds `NOT RECORDING` if nothing is being recorded.
+- **Test keys** (under the trend tabs): **Start baseline**, **Start rebreathing**, **End test** and **Emergency stop**, and beside them where the test stands: `BASELINE 0:45 · steady (EtCO2 ±0.4 mmHg, MV ±6 % in the last minute)`, `REBREATHING 2:31 of 5:00`, `TEST ENDED after 3:40 of rebreathing`. It adds `NOT RECORDING` if nothing is being recorded, and where the valve is when the app switches it (`valve to the bag`, `VALVE ON ROOM AIR`).
 - **Trend tab:**
   - one point per clean breath over 5 min, 15 min, 30 min, 2 h or the whole session: EtCO2, MV or RR (the drop-down beside Window)
   - for EtCO2: the continuous CO2 trace behind the points, the warning limit (dashed) and stop limit (solid) with their bands
@@ -269,6 +275,9 @@ The same engine code runs in the desktop app, in the browser and in the tests.
 | CO2 (capnograph analog out) | A0 | 0–5 V = 0–10 % CO2 | CO2 waveform, EtCO2, FiCO2, CO2 alarms |
 | Flow sensor | A1 | 2.5 V = 0 L/min, 40 L/min per volt | Second flow waveform and live/peak flow |
 | Pneumotach transducer | A2 | 2.5 V = 0 Pa, 200 Pa per volt; flow = 0.2 L/min per Pa | Breath detection, tidal volume, minute ventilation |
+| Pulse oximeter analog out (optional) | A3 | 1 V = 100 % SpO2 | SpO2 tile, low-SpO2 alarm, a column in the recording |
+
+Two optional outputs on the Arduino: a **piezo buzzer** on pin 8 (sounds if the app stops, [§5.3](#53-firmware-firmwareco2response)) and a **valve driver** on pin 7 (HIGH = to the bag; it needs a transistor or relay stage for the solenoid or servo, [docs/wiring.md](docs/wiring.md)).
 
 The ADS1115 runs at ±6.144 V full scale from a 5 V supply, so a reading at 0 V or 5 V means a sensor is unplugged or saturated (the "rail" checks). The default scalings are placeholders; see [Assumptions](#9-assumptions-and-open-questions).
 
@@ -279,7 +288,9 @@ The sketch reads the three channels in single-shot mode on a fixed 10 ms schedul
 - **Sequence numbers:** each scheduled slot gets a sequence number. If the Arduino falls behind, it skips the slot, still advances the sequence number, and reports `E,OVERRUN`, so the app can count dropped samples exactly.
 - **ADC errors:** if the ADC does not answer on I2C, the firmware reports `E,ADC_NOT_FOUND` with an I2C scan, keeps retrying, and does not stream until the ADC answers.
 - **Host watchdog:** the monitor app sends `HB` once a second. If the heartbeats stop for 3 s (the app closed or crashed, the computer slept), the board sounds a piezo buzzer on pin 8 and blinks its LED until they return, because nothing on the computer is checking the CO2 alarms any more. It arms on the first heartbeat, so older software never triggers it.
-- **Configuration:** pins, address, gain, baud rate, the watchdog timeout and the buzzer pin are in `config.h`.
+- **Valve output:** `VALVE 1` sends the valve to the bag and `VALVE 0` back to room air. The board starts on room air and returns there by itself when the watchdog trips, so a crashed app never leaves the subject on the bag.
+- **SpO2 channel:** built with `SPO2_CHANNEL 1`, the board also reads A3 and sends a fourth value on every data line. It is off by default, so the three-channel stream is unchanged.
+- **Configuration:** pins, address, gain, baud rate, the watchdog timeout, the buzzer and valve pins and the SpO2 channel are in `config.h`.
 - **Builds:** the same code builds for Uno, Mega and Nano.
 
 ### 5.4 Serial protocol ([docs/protocol.md](docs/protocol.md))
@@ -287,7 +298,7 @@ The sketch reads the three channels in single-shot mode on a fixed 10 ms schedul
 The device sends plain ASCII lines at 115200 baud:
 
 ```
-I,FW,1.1.0,ADC,ADS1115,CH,3,RATE,100,BAUD,115200,ADDR,0x48,FSR,6.144,WD,3000   ← info
+I,FW,1.2.0,ADC,ADS1115,CH,3,RATE,100,BAUD,115200,ADDR,0x48,FSR,6.144,WD,3000,VALVE,1   ← info
 D,1042,10420,2.6316,2.5000,2.5000*5C                                     ← data: seq, device ms, volts…, checksum
 E,ADC_NOT_FOUND                                                          ← error
 A,START                                                                  ← acknowledgement
@@ -295,7 +306,7 @@ A,START                                                                  ← ack
 
 The checksum is the XOR of the bytes between `D` and `*`. A line with a bad checksum, or one that fails to parse, is dropped and counted. A gap in `seq` (16-bit, wraps) counts as dropped samples.
 
-The host sends `INFO`, `START`, `STOP`, `RATE <hz>` and, to firmware that says `WD` in its info line, the heartbeat `HB` (`HB OFF` before a deliberate disconnect). Opening the port resets an Uno, so the app repeats `INFO` and `START` if no info line arrives within 2.5 s. The firmware's line formatter and the app's parser are tested against the same example lines, so they stay byte-for-byte compatible.
+The host sends `INFO`, `START`, `STOP`, `RATE <hz>` and, to firmware that says `WD` in its info line, the heartbeat `HB` (`HB OFF` before a deliberate disconnect), and `VALVE 1` / `VALVE 0` to firmware that says `VALVE`. A disconnect always sends `VALVE 0` first. Opening the port resets an Uno, so the app repeats `INFO` and `START` if no info line arrives within 2.5 s. The firmware's line formatter and the app's parser are tested against the same example lines, so they stay byte-for-byte compatible.
 
 ### 5.5 The monitor engine (`co2response/engine/monitor.py`)
 
@@ -432,8 +443,18 @@ With several tests in one session, the latest is shown. With height and weight e
 - They clear only once EtCO2 is 2 mmHg back inside the limit (hysteresis).
 - **Apnea** (high): no breath for 20 s while the signal is present.
 - **Rebreathing time limit** (medium): 5 minutes (adjustable) since the Rebreathing marker without an end marker.
+- **Low SpO2** (high; default below 90 % for 10 s), when the SpO2 channel is on. An advisory says when the oximeter gives no reading.
 
-The defaults follow the team's design (warn near 60, stop at 65) and CHOP's practice of ending the test at 60 to 65 mmHg. Confirm them with the clinicians ([open question 9](docs/open-questions.md)). The software only alarms: the operator turns the valve.
+The defaults follow the team's design (warn near 60, stop at 65) and CHOP's practice of ending the test at 60 to 65 mmHg. Confirm them with the clinicians ([open question 9](docs/open-questions.md)).
+
+**The valve.** By default the software only alarms and the operator turns a manual valve. With a valve driver on the board and **Switch the valve from the app** on:
+
+- **Start rebreathing** sends the valve to the bag and **End test** back to room air
+- the **stop alarm**, **apnea** and **low SpO2** send it back to room air by themselves and end the test in the record ("automatic stop")
+- **Emergency stop** sends it to room air at once, whether or not the app normally switches it
+- disconnecting, and the board's own watchdog, return it to room air
+
+The automatic stop is a backstop, not a replacement for watching the subject: it has not been tested on hardware ([docs/safety.md](docs/safety.md)).
 
 **Technical alarms** (always on):
 
@@ -456,7 +477,7 @@ The defaults follow the team's design (warn near 60, stop at 65) and CHOP's prac
 - High and medium alarms **latch**: when the condition clears, they stay on screen marked resolved until acknowledged.
 - **Silence** mutes the sound for up to 120 s, then re-arms by itself. A new high-priority alarm cancels a silence, so silencing the warning never mutes the stop alarm.
 - The tones follow the IEC 60601-1-8 pattern: high is 10 pulses, medium is 3 pulses. The warning and the stop alarm therefore sound different.
-- With firmware 1.1 and a buzzer on the board, the Arduino itself sounds if the app's heartbeat stops ([§5.3](#53-firmware-firmwareco2response)).
+- With firmware 1.1 or later and a buzzer on the board, the Arduino itself sounds if the app's heartbeat stops ([§5.3](#53-firmware-firmwareco2response)).
 - On the desktop, the app keeps the computer from sleeping while a device is connected. In the browser it holds a screen wake lock.
 - Every alarm start, acknowledge, silence and resolve is written to the recording.
 
@@ -477,8 +498,11 @@ Every row has the same columns, so it opens directly in Excel, pandas, MATLAB or
 **Review** (Settings > Data & recordings > Open):
 
 - a summary: length, breaths and how many were left out, mean/min/max EtCO2, mean RR/VT/MV, alarms, markers, sample rate, dropped samples, and the CO2 response (slope, r, x-intercept, baseline)
+- the response plot, as on the monitor. Click a breath to take it out of the fit (or put it back): the slope, the summary and the report follow, and the choice is written into the file as an event, so it is still there next time and in every export.
 - zoomable EtCO2/RR, VT/MV and waveform charts (drag to zoom all three)
 - the event list; click an event to jump to it
+
+**Import.** Besides its own files, the app imports a **LabChart (PowerLab) text export** (`.txt`) that has a flow channel and a CO2 channel, such as CHOP's current recordings. It finds the channels by name and unit, converts the units (mL/s, L/s or L/min; mmHg, % or kPa), turns the flow the right way up, and keeps LabChart comments as markers. The breaths, the response and the report are then worked out by this app, so an old test can be compared with a new one. No real CHOP export was available to test against ([open question 34](docs/open-questions.md)): check the first imported file against LabChart's own numbers.
 
 A long recording is read in small steps, so the monitor keeps polling the device and checking alarms while it opens (an hour of recording, about 39 MB, takes about a second to read on a laptop).
 
@@ -526,9 +550,13 @@ While a real device is connected, a notice names any channel calibrated more tha
 
 The starting values come from `co2response/config/channels.json`, which can be edited without touching code.
 
+The rules of this screen (converting between calibration types, zeroing, fitting the captured points, integrating the syringe stroke, saving) are in `co2response/calibration_draft.py`, with no UI code. The desktop window and the browser page both draw that one model, so they cannot disagree, and it is tested directly.
+
 ### 5.12 Simulator (`co2response/sim/`)
 
 A physiological model (`physiology.py`) generates the CO2 and flow waveforms. Every value the monitor shows can be set: EtCO2 and FiCO2, RR, VT and the I:E ratio (and so peak inspiratory flow), the capnogram's shape, a CO2 rise with an adjustable breathing response, apnea, unplugged sensors, a stalled data stream, sensor noise, ADC spikes, partial breaths, serial line errors and a miscalibrated flow sensor. An emulated firmware (`core.py`) turns the waveforms into real protocol lines with real checksums and sequence numbers.
+
+A **whole simulated test** is a situation that also presses the test keys (`engine/monitor.py`, `_run_sim_test`): baseline, the "valve" (which decides whether the simulated CO2 rises), the end of the test when the stop alarm sounds or the CO2 stops rising, then recovery. It is timed on the simulated clock, so at 10× the whole test takes about 20 s, and the engine scales its own test timers, the skipped first seconds and the steadiness window by the same factor, so the fit is the same at any speed. The simulated board has a valve output and, with the SpO2 channel on, an oximeter.
 
 `controls.py` lists the panel's sliders, switches and situations ([§1](#simulation-panel)); the desktop window and the browser page both build their panel from it. The old single-choice scenarios (`normal`, `co2Ramp`, `apnea`, `co2Disconnect`, `noData`, `noisy`, `artifacts`) still work, and a test runs every situation through the real engine and checks the monitor reads what was set.
 
@@ -577,7 +605,9 @@ co2response/                    the monitor (python -m co2response)
   protocol.py                   line format, checksum, parser, line splitter, sequence/drop tracking
   channels.py, config/          per-channel calibration model; defaults in config/channels.json
   settings.py                   all settings (display, processing, alarms, test and subject), saved as JSON
-  forms.py                      the alarm, processing and test forms, described once for both front ends
+  forms.py                      the alarm, processing, test and SpO2 forms, described once for both front ends
+  calibration_draft.py          the Calibration screen's rules (drafts, fits, the syringe stroke), drawn by both front ends
+  connection_form.py            the Connection screen's choices, limits and wording, for both front ends
   paths.py                      where settings and sessions are stored (CO2R_HOME overrides)
   keep_awake.py                 keeps the computer awake while a device is connected
   jsfmt.py                      number/time formatting that keeps session files stable across versions
@@ -601,6 +631,7 @@ co2response/                    the monitor (python -m co2response)
     pdf.py                      a small PDF writer (text, lines, circles), so the report needs nothing installed
     recorder.py                 writes the session as it is recorded
     library.py                  the sessions folder: list, import, recover, delete
+    labchart.py                 reads a LabChart (PowerLab) text export and turns it into a session
   engine/
     monitor.py                  the engine: everything between the source and the screen
     link_test.py                the hardware check
@@ -636,6 +667,7 @@ Set `CO2R_HOME` to keep everything in one folder (for example on a USB stick).
 
 - **The device sends volts; the app does the rest.** Calibration and processing changes never need a firmware upload.
 - **The engine has no UI code.** Alarms are evaluated on every sample and breath, not in drawing code, and everything can be tested with a fake clock.
+- **Two front ends, one set of rules.** What a settings screen offers and does is described once, without UI code (`forms.py`, `calibration_draft.py`, `connection_form.py`, `sim/controls.py`); the desktop window and the browser page only draw it.
 - **Clean before interpreting; never throw data away.** Rejected breaths are marked, not deleted, and the raw volts are always recorded.
 - **One file per session**, with the same columns on every row, readable without this software.
 
@@ -781,7 +813,10 @@ These are placeholders until the [open questions](docs/open-questions.md) are an
 - **Volumes:** as measured (no BTPS correction, no bag-gas factor) unless switched on. Which convention to report is a clinical decision.
 - **Noise screen:** signal-to-noise ratio of 8, a plateau over 10 % of expiration, and outliers over 5 mmHg. These were tuned on simulated data. Check them against real recordings with `--all-breaths` and adjust them in `co2response/processing/denoise.py` if real breaths are being left out.
 - **Barometric pressure:** 760 mmHg default; Pittsburgh is usually near 735 mmHg. Set the lab's value in Display & units.
-- **Hardware:** the firmware (including the heartbeat watchdog and buzzer) and the hardware check have not yet been run on a real Arduino with the lab's sensors. The NI and LabJack drivers have been tested against stand-ins for their vendor libraries, not on real devices.
+- **Valve:** a manual valve turned by the operator (the app only alarms) unless **Switch the valve from the app** is on. The valve output's polarity (HIGH = bag) and which events stop the test automatically (stop alarm, apnea, low SpO2) are assumptions to confirm.
+- **SpO2:** off. When on: 1 V = 100 %, alarm below 90 % for 10 s. Use the oximeter's own scaling and the clinicians' limit.
+- **LabChart import:** written from LabChart's documented text-export layout; not yet tried on a real CHOP export.
+- **Hardware:** the firmware (including the heartbeat watchdog and buzzer, the valve output and the SpO2 channel) and the hardware check have not yet been run on a real Arduino with the lab's sensors. The NI and LabJack drivers have been tested against stand-ins for their vendor libraries, not on real devices.
 
 ## 10. Documentation
 

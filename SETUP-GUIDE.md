@@ -143,6 +143,8 @@ Use `-e mega` or `-e nano` for those boards. `pio device monitor -b 115200` show
 | `PNEUMO_DIFFERENTIAL` | 0 | Your transducer has two outputs on A2/A3. |
 | `WATCHDOG_TIMEOUT_MS` | 3000 | You want the board's buzzer to wait longer (or 0: no watchdog) when the app's heartbeat stops. |
 | `BUZZER_PIN` | 8 | The buzzer is on another pin (-1: no buzzer; the built-in LED still blinks). |
+| `VALVE_PIN` | 7 | The valve driver is on another pin (-1: no valve output; the app then never offers to switch the valve). |
+| `SPO2_CHANNEL` | 0 | A pulse oximeter's analog output is wired to A3: set it to 1 and the board sends a fourth value. Not together with `PNEUMO_DIFFERENTIAL`, which uses A3. |
 
 ---
 
@@ -289,6 +291,8 @@ You can type any calibration in by hand (gain/offset, polynomial, or a lookup ta
 - [ ] The study code is set in **Settings → Data & recordings**. **Never use a name, MRN or date of birth.** If the slope should be normalized for body size, enter the subject's height and weight there too (and age in years); they are cleared when the study code changes.
 - [ ] Alarm limits are set: **Alarm limits** soft key (default: warning at 60 mmHg after 2 breaths; stop at 65 mmHg at once).
 - [ ] If the board has a buzzer: close the app once with the Arduino connected, by ending its process (not with Disconnect), and check that the buzzer sounds within about 3 s. Start the app again.
+- [ ] If the app switches the valve (**Settings → Alarms → Switch the valve from the app**): with nobody on the mouthpiece, press **Start rebreathing** and check the valve goes to the bag, then **Emergency stop** and check it returns to room air. The setting's hint says if the connected board has no valve output.
+- [ ] If an oximeter is connected (**Settings → Display & units → SpO2 channel connected**): the SpO2 tile agrees with the oximeter's own display. If not, correct the scaling and offset there.
 - [ ] The **Audio armed** soft key is green (it arms by itself when the app finds a sound output), then **Alarm limits → Test alarm**: you see the red banner and hear the high-priority tone, then the medium tone.
 
 ### Recording
@@ -299,16 +303,20 @@ To start recording automatically whenever the Arduino connects, turn on **Settin
 
 ### Running a rebreathing test
 
-The three keys under the trend tabs run the test and place its markers. Record first: the keys remind you with **NOT RECORDING** if you have not.
+To see a whole test before running one, open the **Simulation** panel and choose **Whole rebreathing test** with Speed at 10×: the simulation presses these keys itself and every graph fills in, in about 20 s.
+
+The keys under the trend tabs run the test and place its markers. Record first: the keys remind you with **NOT RECORDING** if you have not.
 
 1. **Start baseline** once the subject is on the mouthpiece with the nose clip on, breathing room air. The line beside the keys shows the time and whether breathing is steady: at least 6 breaths in the last minute with EtCO2 within about ±1.5 mmHg and MV within about ±20 %.
 2. **Start rebreathing** as you turn the valve to the bag. Coach the three deep breaths. The line shows the time since the valve was turned, against the time limit (5 min by default).
 3. Watch EtCO2. At the **warning** (60 mmHg, amber, three pulses) the end is near. At **STOP TEST** (65 mmHg, red, ten pulses) turn the valve back to room air.
-4. **End test** as you turn the valve back. Breaths after this are not fitted.
+4. **End test** as you turn the valve back. Breaths after this are not fitted. **Emergency stop** does the same at once from any point, and with a valve output it sends the valve to room air even if the app does not normally switch it.
 5. Open the **Ventilatory response** tab: filled points are fitted, rings are the baseline, faint rings are outside the fit (the first 30 s of rebreathing, and after the end), crosses were taken out by hand. **Click a point** to take an erratic breath (a cough, a sigh) out of the fit; click its cross to put it back. The line under the tabs gives slope, r, x-intercept, n and the baseline means.
 6. **Stop rec**, then **Settings → Data & recordings → Export → CO2 response report (.pdf)** for the report.
 
-The keys only place markers labelled **Baseline**, **Rebreathing** and **End of test**. A marker you place with **M** and label yourself works the same way ("CO2 rebreathing started", "Test ended" …).
+**If the app switches the valve** (a valve driver on pin 7 and the setting on), Start rebreathing and End test turn it for you, and the stop alarm, apnea and a low SpO2 turn it back to room air by themselves and end the test. The line beside the keys says where the valve is. Stay ready to turn or remove it by hand: this has not been tested on hardware.
+
+Otherwise the keys only place markers labelled **Baseline**, **Rebreathing** and **End of test**. A marker you place with **M** and label yourself works the same way ("CO2 rebreathing started", "Test ended" …).
 
 ### Reading the screen
 
@@ -317,7 +325,7 @@ The keys only place markers labelled **Baseline**, **Rebreathing** and **End of 
 | Header | Study code, connection and sample rate, dropped samples, recording timer, alarm status (`ARMED`, `ALARM`, `SILENCED 1:42`, `AUDIO OFF`), clock |
 | Alarm strip | The most important alarm: red flashing = high priority, amber = medium (technical), blue = information. "+N more" lists the rest. |
 | CO2 row | Capnogram (yellow, with the warning limit dashed), **EtCO2** (large, with its limits beside it: warning / stop, and low), RR, FiCO2 |
-| Flow row | Flow-sensor waveform (cyan), live flow, peak inspiratory flow |
+| Flow row | Flow-sensor waveform (cyan), live flow, peak inspiratory flow, and SpO2 with its low limit when an oximeter is connected |
 | Pneumotach row | Pneumotach flow (green), VT (with the expired volume under it), MV (the 60 s average) |
 | Bottom chart | The trend: EtCO2, MV or RR per breath (the drop-down beside **Window**) over 5 min to the whole session, with the warning limit dashed, the stop limit solid, and alarm and event markers. The **Ventilatory response** tab plots each breath's own MV against its EtCO2 (see above). |
 
@@ -341,6 +349,8 @@ A number shows `---` when its sensor has sent no valid data for 2 s.
 | EtCO2 HIGH | medium (amber) with a stop limit set; high (red) without one | EtCO2 above the warning limit (60 mmHg) for the trigger delay | The end of the test is near: get ready to turn the valve |
 | REBREATHING TIME LIMIT | medium | The time limit has passed since the valve was turned | End the test |
 | APNEA | high | No breath detected for 20 s | Check the subject and the airway connection |
+| SpO2 LOW | high | SpO2 below its limit (90 %) for 10 s | Turn the valve to room air; check the subject, then the probe |
+| SpO2: no reading | info (blue) | The SpO2 channel is on but gives no valid value | Check the probe, the wiring to A3 and the scaling |
 | EtCO2 LOW (if set) | medium | EtCO2 below the low limit | Check for a leak, a disconnected sample line, or apnea |
 | DEVICE DISCONNECTED | medium (amber) | USB link lost | Reconnect the cable; the app reconnects on its own |
 | NO DATA FROM DEVICE | medium | Connected, but nothing received for 3 s | Check the Arduino; unplug and replug it |
@@ -364,10 +374,12 @@ Alarms **latch**: after the condition clears, the alarm stays as "resolved" unti
 
 1. Press **■ Stop rec**. The session is finished as **one CSV file**, `co2r_<study code>_<date>-<time>.csv`, in the sessions folder (**Documents/CO2-Response/sessions** by default; **Settings → Data & recordings → Open folder** shows it). It is also listed in **Settings → Data & recordings**.
 2. Copy the file to the lab's storage.
-3. To look at it again, go to **Settings → Data & recordings → Open**. You get the summary (with the CO2 response), zoomable charts and the event list. Export the whole session, the breath table or the events, for everything or a zoomed time range, or **Replay** it on the monitor.
+3. To look at it again, go to **Settings → Data & recordings → Open**. You get the summary (with the CO2 response), the response plot, zoomable charts and the event list. A breath that should not count (a cough you only noticed afterwards) can still be taken out: click it on the response plot. The file remembers it. Export the whole session, the breath table or the events, for everything or a zoomed time range, or **Replay** it on the monitor.
 4. For the test report, use **CO2 response report (.pdf)** there, or `python -m co2response --report file.csv`. It has the results, the response plot and a table of every breath saying how it was used.
 5. To analyse it further, open the file in Excel, MATLAB or R, or use `analysis/load_session.py` with Python. The columns and examples are in [docs/data-format.md](docs/data-format.md).
 6. In **Settings → Connection** press **Disconnect**, then unplug the Arduino. (Disconnect tells the board the app is leaving, so its buzzer stays quiet.)
+
+**Old LabChart recordings.** **Settings → Data & recordings → Import** also takes a LabChart (PowerLab) text export (`.txt`: in LabChart, File → Export → Text, with the time column and comments included). It needs a flow channel and a CO2 channel; the app works out the breaths, the response and the report from them. Check the first one against LabChart's own numbers.
 
 If the app closes or the computer crashes while recording, the file is kept up to the last second; the next time the app starts it lists it as **Recovered**.
 

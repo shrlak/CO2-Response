@@ -1,6 +1,6 @@
 # Project background: Ventilatory Response to CO2
 
-What the clinical test is, what the mentors and the capstone team have asked for, and how this repository measures up. It summarizes the team's working documents from September to November 2026 (listed at the end). Where a document and the code disagree, the gap is listed in [§6](#6-gaps-what-the-documents-ask-for-that-the-repo-does-not-do-yet), and decisions still open are in [open-questions.md](open-questions.md).
+What the clinical test is, what the mentors and the capstone team have asked for, and how this repository measures up. It summarizes the team's working documents from September to November 2026 (listed at the end). Where a document and the code disagree, the gap is listed in [§6](#6-gaps-what-the-documents-ask-for-and-what-is-still-unproven), and decisions still open are in [open-questions.md](open-questions.md).
 
 CMU 42-401 BME Capstone, Group 6: Alexis, Kavan, Sofya, Spencer, Kammiee and Kaitlyn. Mentors: Dr. Daniel Weiner and Dr. G. Kurland (pediatric pulmonology). Course: Dr. Katie Bieryla.
 
@@ -83,11 +83,11 @@ The mid-semester deck proposes two software solutions. **This repo already imple
 
 | Step | Repo |
 | --- | --- |
-| 1. Load the PowerLab export (flow, CO2, markers) | **Not yet.** It reads its own session CSVs, not LabChart files (§6) |
+| 1. Load the PowerLab export (flow, CO2, markers) | Yes, untested on a real file: a LabChart text export with a flow and a CO2 channel is imported as a session, with its comments as markers (§6) |
 | 2. Calibrate volts to L/s and mmHg; shift CO2 to cancel the sensor delay | Yes: calibration, and a CO2 delay setting that lines the flow up with the CO2 (the monitor shows the delay it measures) |
 | 3. Detect breaths | Yes (flow zero-crossings, or the CO2 edges if there is no flow) |
 | 4. VT, RR, MV, EtCO2 per breath | Yes |
-| 5. Flag coughs, sighs and leaks automatically | Partly: the noise screen rejects noisy, partial, impossible, clipped and isolated-jump breaths, and a notice reports a volume mismatch (leak). Coughs and sighs are not named as such; the operator takes them out by hand with a click |
+| 5. Flag coughs, sighs and leaks automatically | Partly: the noise screen rejects noisy, partial, impossible, clipped and isolated-jump breaths, and a notice reports a volume mismatch (leak). Coughs and sighs are not named as such; the operator takes them out by hand with a click, during the test or in the review afterwards |
 | 6. Label baseline vs rebreathing breaths | Yes: the Start baseline, Start rebreathing and End test keys (or markers with those labels) |
 | 7. Regression of MV against PETCO2: slope, r, x-intercept | Yes: each breath's own MV, on the rebreathing breaths only, without the first 30 s and the breaths after the end |
 | 8. Report: plot, per-breath accepted/rejected table, PDF | Yes: a PDF with the results, the plot and a table of every breath saying how it was used |
@@ -103,7 +103,7 @@ The mid-semester deck proposes two software solutions. **This repo already imple
 | 5. Safety: check every breath; warn near 60, stop alert at 65 | Yes: the warning after 2 breaths, the stop on every sample (0.5 s) and every breath. A new high alarm cancels a silence |
 | 6. Live dashboard: flow and CO2 waves, live MV-vs-EtCO2 plot, start/end buttons | Yes: waves, numbers, live response plot, EtCO2/MV/RR trends, and the three test keys with a timer |
 | 7. Final analysis when the operator ends the test: slope, r, plot, PDF | Yes: on screen, in the PDF report, and in `co2r.session.co2_response` |
-| Hardware | Arduino + ADS1115 firmware with a heartbeat watchdog and buzzer; NI-DAQmx and LabJack drivers (none yet tried on hardware) |
+| Hardware | Arduino + ADS1115 firmware with a heartbeat watchdog and buzzer, a valve output and an optional SpO2 input; NI-DAQmx and LabJack drivers (none yet tried on hardware) |
 
 ## 5. How to run a test with the software (Read's method)
 
@@ -111,29 +111,30 @@ The mid-semester deck proposes two software solutions. **This repo already imple
 2. Enter a study code (no identifiers), and the subject's height and weight if the slope should be normalized. Press **Record**.
 3. **Baseline:** the subject breathes room air through the mouthpiece (nose clip on). Press **Start baseline**. The line beside the keys says when breathing is steady.
 4. Turn the valve to the bag and press **Start rebreathing**. Coach three deep breaths. A timer runs.
-5. Watch EtCO2. At the warning (60 mmHg) the end is near; at **STOP TEST** (65 mmHg) turn the valve back to room air and press **End test**.
+5. Watch EtCO2. At the warning (60 mmHg) the end is near; at **STOP TEST** (65 mmHg) turn the valve back to room air and press **End test**. (If the app switches the valve, the keys and the stop alarm turn it; **Emergency stop** ends the test at once.)
 6. Read the **Ventilatory response** tab:
    - baseline mean EtCO2 and MV (hollow rings);
    - slope, r, x-intercept and n of the rebreathing breaths (filled);
-   - click an erratic breath to take it out of the fit.
+   - click an erratic breath to take it out of the fit (this also works later, in the review of the saved recording).
 7. Stop recording and export the **CO2 response report (.pdf)**.
 
    The same numbers come from `python -m co2response --report file.csv`, `python analysis/load_session.py file.csv`, or `co2_response(load_session(...))` in Python.
 
 The markers are what split the test. The keys place markers labelled **Baseline**, **Rebreathing** and **End of test**; a marker placed with **M** and labelled by hand works the same way. The match is case-insensitive: any label containing "rebreath" starts rebreathing (unless it also says end, stop or finish, which ends it), including one renamed after it was placed. A marker counts from when it was placed. The breaths in the first 30 s of rebreathing and after the end are not fitted ([README §5.8](../README.md#58-breath-detection-and-the-numbers) explains why).
 
-## 6. Gaps: what the documents ask for that the repo does not do yet
+## 6. Gaps: what the documents ask for, and what is still unproven
 
 | Gap | Asked for in | Notes |
 | --- | --- | --- |
-| Automatic CO2 stop (≤ 1 s) and emergency stop | Deck design inputs; brainstorm | Needs a controllable valve. What exists: the stop alarm fires within about 0.5 s of CO2 reaching the limit, and tells the operator to turn the valve. A digital output on the Arduino driven by that alarm would be the next step, once the valve is chosen (open question 33) |
-| PowerLab / LabChart file import | Deck Solution A | Needs a sample export from CHOP (text export with flow in mL/s and EtCO2 in mmHg). Not started, because the format cannot be checked without one (open question 32) |
-| SpO2 channel | Brainstorm safety; CHOP records SAT | CH3 is spare on the ADS1115. Not started: no oximeter with an analog output has been chosen, and a fourth channel changes the firmware line, the file format and the screen (open question 34) |
-| Excluding breaths of a recording opened later, on screen | CHOP practice | Breaths can be excluded by hand during the session, and afterwards in Python (`exclude=[…]`) or on the command line. The review screen does not have the click yet |
+| Automatic CO2 stop (≤ 1 s) and emergency stop | Deck design inputs; brainstorm | **Built, not tested on hardware, off by default.** The board has a valve output; with it switched on in the app, the stop alarm (about 0.5 s after CO2 reaches the limit), apnea and low SpO2 return the valve to room air, and so do the Emergency stop key, a disconnect and the board's own watchdog. Still needed: the valve and its driver, and a bench measurement of the time to room air (open question 33) |
+| PowerLab / LabChart file import | Deck Solution A | **Built from LabChart's documented text-export layout; not tried on a real export.** Needs a sample export from CHOP to confirm channel names, units and the flow's sign (open question 32) |
+| SpO2 channel | Brainstorm safety; CHOP records SAT | **Built, not tested on hardware, off by default.** An oximeter's analog output on A3 gives a tile, a low-SpO2 alarm and a column in the recording. Still needed: the oximeter and its output scaling (open question 34) |
 | Gas delivery / blending | Brainstorm | Read's method needs only the bag and valve. A blender is out of scope unless the design changes |
 | Validation on real hardware | Mid-semester review | Nothing has been run on the real sensors (§7) |
 
-Closed since the first version of this page: the two-tier EtCO2 limit, manual breath exclusion, CO2 delay alignment, the PDF report, MV and RR against time, per-breath MV in the fit, and body-size normalization of the slope.
+Closed since the first version of this page: the two-tier EtCO2 limit, manual breath exclusion (live and in the review), CO2 delay alignment, the PDF report, MV and RR against time, per-breath MV in the fit, and body-size normalization of the slope.
+
+To see the whole test without hardware, open the Simulation panel and choose **Whole rebreathing test**: the simulation runs baseline, rebreathing and the stop by itself and fills every graph.
 
 ## 7. Validation (asked at the mid-semester review: "how do we assess accuracy?")
 

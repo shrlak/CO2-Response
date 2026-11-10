@@ -66,6 +66,10 @@ These change how the pneumotach's flow becomes the reported volumes. All three a
 
 **Checking the pneumotach zero while it runs.** The VT tile shows the expired volume beside the inspired one ("exp 497 mL"). They should match. If they differ by more than 20 % over 5 breaths (**Volume mismatch notice** in Settings > Alarms), a blue notice says so: look for a leak at the mouthpiece or mask, or re-zero the pneumotach.
 
+## SpO2 (optional)
+
+The oximeter channel has no calibration card: it is a safety signal, not a measurement the test reports. **Settings > Display & units > SpO2** takes the analog output's scaling (SpO2 % = scaling × volts + offset, from the oximeter's manual; often 1 V = 100 %). Check it against the oximeter's own display before each session.
+
 ## Where calibrations are stored
 
 | Place | What |

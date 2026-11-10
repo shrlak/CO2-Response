@@ -14,6 +14,18 @@ The sessions folder holds the CSV files themselves plus a small `index.json` wit
 
 **Settings > Data & recordings > Import session files…** (or drag files onto the Import card). Each file is checked as it is read; a CSV that is not a session file is rejected and nothing is kept. Imported sessions can be opened, replayed on the monitor and exported like recorded ones. Files made by earlier versions of the app import too (formats v1 to v3) and are written as v4 when exported. A v1 to v3 file has no breath-length column, so each breath's length is taken from the time between breath rows. Breaths in a v1/v2 file have no quality yet, so they are screened as they are read (for isolated EtCO2 jumps and impossible values; noise and partial breaths can only be judged live, from the samples).
 
+### LabChart (PowerLab) text exports
+
+The same Import also takes a `.txt` exported from LabChart (File > Export > Text, with the time column, the header and the comments), so recordings made on the current CHOP setup can be analysed here and compared.
+
+- **Channels** are found by name and unit: a flow channel (L/s, mL/s or L/min) and an airway CO2 channel (mmHg, % or kPa; a transcutaneous CO2 channel is not taken for it). An SpO2 channel is kept if there is one. Other channels are ignored. A file without both a flow and a CO2 channel is rejected, with the channel names it does have.
+- **Flow direction:** inspiration is made positive, whichever way the export has it (decided from which half-cycle carries the low CO2).
+- **Comments** become markers at their times, so "Baseline", "Rebreathing" and "End" comments split the test the same way the test keys do.
+- **Blocks** (recording stopped and started) are joined on one time axis.
+- The result is an ordinary session file (v4) with the source noted in its header. The flow is stored as the pneumotach channel and the header holds the scaling that was used to store it, so the file replays and re-exports like any other. The breaths, EtCO2, volumes, the response and the report are then worked out by this app's own processing.
+
+This importer was written from LabChart's documented export layout and tested on exports built from the sample session, not on a real one. For the first real file, compare a few breaths' EtCO2 and tidal volume with LabChart's own.
+
 ## Reviewing
 
 **Open** a session to see:
