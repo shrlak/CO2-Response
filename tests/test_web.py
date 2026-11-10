@@ -442,6 +442,71 @@ def test_simulation_panel_and_enlarged_graphs(page, site_url):
     assert page.errors == []
 
 
+def test_a_whole_simulated_test_runs_by_itself_and_fills_every_graph(page, site_url):
+    boot(page, site_url)
+    page.locator('[data-act="sim-toggle"]').click()
+    page.eval_on_selector("#sp-speed", "el => { el.value = 10; el.dispatchEvent(new Event('input', { bubbles: true })); }")
+    sync_api.expect(page.locator("#spv-speed")).to_have_text("10 ×")
+    page.locator('[data-act="sim-situation"][data-arg="test_normal"]').click()
+    bar, prog = page.locator("#testbar"), page.locator("#sp-progress")
+    # the simulation presses the keys: baseline, then rebreathing until the stop alarm, then the end of the test
+    sync_api.expect(prog).to_contain_text("Whole test: baseline", timeout=60_000)
+    sync_api.expect(bar).to_contain_text("BASELINE")
+    sync_api.expect(prog).to_contain_text("Whole test: rebreathing", timeout=60_000)
+    sync_api.expect(bar).to_contain_text("REBREATHING")
+    sync_api.expect(bar).to_contain_text("TEST ENDED after", timeout=120_000)
+    # the stop alarm ended it, and the response plot has its line
+    page.locator("#tab-response").click()
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text(re.compile(r"slope .* n \d+ · baseline"), timeout=20_000)
+    assert page.errors == []
+
+
+def test_valve_from_the_app_emergency_stop_and_the_spo2_tile(page, site_url):
+    boot(page, site_url + "?sim")
+    numbers_ok(page)
+    # SpO2 is off until the channel is switched on; the simulator then has an oximeter
+    assert page.locator("[data-testid=tile-spo2]").count() == 0
+    page.locator('[data-act="open-settings"]').last.click()
+    page.locator("#nav-display").click()
+    page.locator("#spo2-spo2on").check()
+    sync_api.expect(page.locator("#spo2-spo2gain")).to_be_visible()
+    # the app switches the valve (the simulated board has a valve output)
+    page.locator("#nav-alarms").click()
+    page.locator("#settings-autovalve").check()
+    page.get_by_role("button", name="← Back to monitor").click()
+    sync_api.expect(tile(page, "spo2")).to_have_text(re.compile(r"^9[6-9]$"), timeout=20_000)
+    bar = page.locator("#testbar")
+    bar.get_by_role("button", name="Start rebreathing").click()
+    sync_api.expect(bar).to_contain_text("valve to the bag")
+    bar.get_by_role("button", name="Emergency stop").click()
+    sync_api.expect(page.locator(".toast")).to_contain_text("Emergency stop: the test is ended.")
+    sync_api.expect(bar).to_contain_text("TEST ENDED after")
+    sync_api.expect(bar).not_to_contain_text("valve to the bag")
+    assert page.errors == []
+
+
+def test_a_labchart_text_export_is_imported_as_a_session(page, site_url, tmp_path):
+    from test_labchart import export
+
+    from co2response.storage.session_file import read_session
+
+    chart = tmp_path / "patient-x.txt"
+    chart.write_text(export(read_session(ROOT / "sample-data" / "synthetic_session.csv")), encoding="utf-8")
+    boot(page, site_url)
+    page.locator('[data-act="open-settings"]').last.click()
+    page.locator("#nav-data").click()
+    page.set_input_files('input[data-change="import-files"]', str(chart))
+    table = page.locator("table.sessions")
+    sync_api.expect(table.locator("tbody tr")).to_have_count(1, timeout=60_000)
+    sync_api.expect(table).to_contain_text("patient-x")
+    table.locator("tbody tr").first.get_by_role("button", name="Open").click()
+    # its breaths and its CO2 response were worked out here, from the two waveforms
+    sync_api.expect(page.locator(".review .stats")).to_contain_text("Breaths", timeout=60_000)
+    sync_api.expect(page.locator(".review .stats")).to_contain_text("CO2 response")
+    sync_api.expect(page.locator(".review .loglist")).to_contain_text("MARK CO2 rebreathing started")
+    assert page.errors == []
+
+
 def test_site_starts_without_internet_after_one_visit(browser, site_url):
     """The service worker stores the site and the Python runtime on the first visit."""
     ctx = browser.new_context(viewport={"width": 1366, "height": 800})

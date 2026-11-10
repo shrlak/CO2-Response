@@ -3,22 +3,21 @@ Data & recordings, Diagnostics. Same screens and CSS as the original web app."""
 
 from __future__ import annotations
 
-import copy
 import dataclasses
 import json
 import math
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from .. import __version__
-from ..channels import CHANNEL_IDS, DEFAULT_CHANNELS, clone_channels, validate_channels
+from .. import calibration_draft as cd
+from .. import connection_form as cf
+from ..calibration_draft import CalDraft
+from ..channels import CHANNEL_IDS, validate_channels
 from ..engine.link_test import overall, report_text
 from ..engine.monitor import Snapshot
 from ..forms import PROCESSING_FIELDS, SPO2_FIELDS, TEST_FIELDS
-from ..jsfmt import precision
-from ..processing.calibration import apply_calibration, fit_polynomial, pneumo_flow, syringe_k1, two_point_linear
-from ..processing.co2 import pct_to_mmhg
-from ..sim.controls import SITUATION_BY_ID, SITUATIONS
+from ..sim.controls import SITUATION_BY_ID
 from ..storage.library import STATUS_LABELS
 from ..storage.report import build_report, report_pdf
 from ..storage.session_file import breaths_csv, events_csv, parse_session_text
@@ -37,48 +36,19 @@ TABS = [
     ("data", "Data & recordings"),
     ("diagnostics", "Diagnostics"),
 ]
-NAMES = {"co2": "CO2 (capnograph)", "flow": "Flow sensor", "pneumo": "Pneumotachograph"}
-ZERO_REF = {"co2": 0.04, "flow": 0.0, "pneumo": 0.0}
-SPAN_DEFAULT = {
-    "co2": ("Room air", 0.04, "Calibration gas", 5.0),
-    "flow": ("No flow", 0.0, "Reference flow", 30.0),
-    "pneumo": ("No flow (ΔP = 0)", 0.0, "Reference pressure", 200.0),
-}
 LABEL = {"pass": "PASS", "warn": "CHECK", "fail": "FAIL", "info": "NOTE"}
+#: the page ids of the simulator's quick values (see ``connection_form.SIM_FIELDS``)
+SIM_IDS = {"rr": "sim-rr", "etco2": "sim-et", "vt_ml": "sim-vt"}
 
 
-def digits_for(unit: str) -> int:
-    return 3 if unit == "%" else 1 if unit == "Pa" else 2
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-
-
-class CalCard:
-    """One channel's calibration editor state (the draft and the capture tools)."""
+class CalCard(CalDraft):
+    """One channel's calibration card. What it does is ``CalDraft`` (shared with the
+    desktop window); this adds what only the page needs to remember."""
 
     def __init__(self, cid: str, saved: dict) -> None:
-        self.cid = cid
-        self.saved_json = json.dumps(saved, sort_keys=True)
-        self.draft = copy.deepcopy(saved)
+        super().__init__(cid, saved)
         self.method = "manual"
-        a, ra, b, rb = SPAN_DEFAULT[cid]
-        nan = math.nan
-        self.pts = {
-            "zerospan": [{"label": a, "ref": ra, "volts": nan}, {"label": b, "ref": rb, "volts": nan}],
-            "fit": [{"label": "Point 1", "ref": ra, "volts": nan}, {"label": "Point 2", "ref": rb / 2, "volts": nan}, {"label": "Point 3", "ref": rb, "volts": nan}],
-        }
-        self.result = {"zerospan": "", "fit": ""}
         self.capturing: set[str] = set()
-        self.syr = {"volume": 3.0, "off": None, "acc": None, "res": None}
-
-    @property
-    def dirty(self) -> bool:
-        return json.dumps(self.draft, sort_keys=True) != self.saved_json
-
-    def flow_model(self) -> dict:
-        return self.draft.get("flowModel") or {"k1": 0.2, "k2": 0}
 
 
 class SettingsView:
@@ -136,19 +106,18 @@ class SettingsView:
         from .platform import web_serial_supported
 
         st = s.settings
-        sessions = [r for r in self.app.engine.library.list() if r.status != "recording"]
+        sessions = cf.replayable(self.app.engine.library)
         if key_only:
             return (s.status, s.status_detail, s.source_kind, json.dumps(s.info), self.app.known_label, json.dumps(dataclasses.asdict(st.sim)), st.baud_rate, st.auto_reconnect, st.bridge_url, s.recording.library_version)
-        conn = {"connected": f"connected to {esc(s.source_label)}", "connecting": "connecting…", "error": f"lost ({esc(s.status_detail)})"}.get(s.status, "not connected")
-        out = f'<div><h2>Connection</h2><p class="lead">Status: <b>{conn}</b></p>'
+        out = f'<div><h2>Connection</h2><p class="lead">Status: <b>{esc(cf.status_text(s))}</b></p>'
         if s.status == "connected":
-            stats = "".join(stat(k, v) for k, v in (s.info or {"INFO": "waiting for reply"}).items())
+            stats = "".join(stat(k, v) for k, v in cf.device_info(s))
             rate = ""
-            if s.source_kind in ("serial", "bridge", "simulator"):
+            if cf.takes_rate(s):
                 rate = field(
-                    "Sample rate per channel",
-                    num("rate", self.rate, "rate", 1, 1, 200) + '<span class="u">Hz</span>' + btn("Send", "rate-send", "btn small") + btn("Ask INFO", "ask-info", "btn small"),
-                    "Sends RATE to the device (1–200 Hz). 100 Hz is enough for breathing waveforms.",
+                    cf.RATE_LABEL,
+                    num("rate", self.rate, "rate", 1, cf.RATE_MIN, cf.RATE_MAX) + '<span class="u">Hz</span>' + btn("Send", "rate-send", "btn small") + btn("Ask INFO", "ask-info", "btn small"),
+                    cf.RATE_HINT,
                 )
             out += f'<section class="card" style="margin-bottom:12px"><div class="card-head"><h3>Connected device</h3>{btn("Disconnect", "disconnect", "btn danger")}</div><div class="stats">{stats}</div>{rate}</section>'
         ws = web_serial_supported()
@@ -160,13 +129,8 @@ class SettingsView:
         )
         usb = (
             f'<section class="card"><div class="card-head"><h3>Arduino over USB</h3></div>{usb_note}'
-            + field("Baud rate", select("baud", st.baud_rate, [(b, str(b)) for b in (9600, 57600, 115200, 230400, 250000, 500000)], "baud"), "Must match BAUD_RATE in firmware/CO2Response/config.h.", "baud")
-            + field(
-                "Reconnect when plugged back in",
-                toggle("autoreconnect", st.auto_reconnect, "autoreconnect"),
-                "If the USB cable comes out, the device-disconnected alarm sounds; plugging the same Arduino back in reconnects without a click, and recording continues.",
-                "autoreconnect",
-            )
+            + field("Baud rate", select("baud", st.baud_rate, [(b, str(b)) for b in cf.BAUDS], "baud"), cf.BAUD_HINT, "baud")
+            + field(cf.RECONNECT_LABEL, toggle("autoreconnect", st.auto_reconnect, "autoreconnect"), cf.RECONNECT_HINT, "autoreconnect")
             + '<div class="row-actions">'
             + (btn(f"Reconnect {esc(known)}", "reconnect", "btn primary") if known else "")
             + btn("Choose another port…" if known else "Connect Arduino", "connect-serial", "btn" if known else "btn primary", disabled=not ws)
@@ -175,18 +139,16 @@ class SettingsView:
         sim = st.sim
         simc = (
             '<section class="card"><div class="card-head"><h3>Simulator</h3><span class="meta">no hardware needed</span></div>'
-            '<p class="note">Generates realistic capnogram, flow and pneumotach signals through the same protocol, parser and processing as the Arduino. '
+            f'<p class="note">{esc(cf.SIM_NOTE)}'
             "The <b>Simulation</b> key on the monitor opens a panel that sets every value the monitor shows.</p>"
             + field(
                 "Situation",
-                select("sim-situation-pick", sim.preset if sim.preset in SITUATION_BY_ID else "normal", [(x.id, f"{x.group}: {x.label}") for x in SITUATIONS], "sim-situation-pick"),
-                esc(SITUATION_BY_ID[sim.preset].description) if sim.preset in SITUATION_BY_ID and not sim.adjusted else "Values changed by hand in the simulation panel.",
+                select("sim-situation-pick", sim.preset if sim.preset in SITUATION_BY_ID else "normal", cf.situation_options(), "sim-situation-pick"),
+                esc(cf.situation_hint(sim)),
                 "sim-situation-pick",
             )
-            + number_field("Respiratory rate", "sim", sim.rr, "/min", None, "sim-rr", 4, 60, 1, "rr")
-            + number_field("Baseline EtCO2", "sim", sim.etco2, "mmHg", None, "sim-et", 10, 80, 1, "etco2")
-            + number_field("Tidal volume", "sim", sim.vt_ml, "mL", None, "sim-vt", 100, 1500, 10, "vt_ml")
-            + f'<div class="row-actions">{btn("Restart simulator" if s.source_kind == "simulator" else "Start simulator", "start-sim", "btn primary")}'
+            + "".join(number_field(text, "sim", getattr(sim, key), unit, None, SIM_IDS[key], lo, hi, step, key) for key, text, unit, lo, hi, step in cf.SIM_FIELDS)
+            + f'<div class="row-actions">{btn(cf.sim_button(s), "start-sim", "btn primary")}'
             f'{btn("Open the simulation panel", "sim-open-panel")}</div></section>'
         )
         chosen = self.replay["id"] if any(r.id == self.replay["id"] for r in sessions) else (sessions[0].id if sessions else None)
@@ -196,13 +158,8 @@ class SettingsView:
             rep += field("Session", select("replay-pick", chosen, [(r.id, r.file_name) for r in sessions], "replay-pick"), None, "replay-pick")
         else:
             rep += '<p class="note">No saved sessions yet. Record one, import a file in Data & recordings, or replay a file directly.</p>'
-        rep += field("Speed", seg("replay-speed", self.replay["speed"], [(1, "1×"), (2, "2×"), (5, "5×"), (10, "10×")]))
-        rep += field(
-            "Use the calibration saved in the file",
-            toggle("replay-cal", self.replay["use_cal"], "replay-cal"),
-            "On: replays exactly as recorded. Off: re-processes the raw volts with the current calibration.",
-            "replay-cal",
-        )
+        rep += field("Speed", seg("replay-speed", self.replay["speed"], cf.REPLAY_SPEEDS))
+        rep += field(cf.FILE_CAL_LABEL, toggle("replay-cal", self.replay["use_cal"], "replay-cal"), cf.FILE_CAL_HINT, "replay-cal")
         rep += (
             f'<div class="row-actions">{btn("Start replay", "replay-start", "btn primary", disabled=not sessions)}'
             '<label class="btn" style="display:inline-flex;align-items:center">Replay a file…<input type="file" accept=".csv,text/csv" hidden data-change="replay-file"></label>'
@@ -214,7 +171,7 @@ class SettingsView:
             'Start it on this computer, for example <span class="mono">co2r-daq serve --driver nidaq --device Dev1</span> or '
             '<span class="mono">co2r-daq serve --driver arduino --port COM3</span>. See docs/python-daq.md. '
             'On an https:// page (GitHub Pages) the browser allows only a server on this computer; for one on another computer use the desktop app.</p>'
-            + field("Server address", f'<input id="bridge-url" type="url" class="wide" value="{esc(st.bridge_url)}" data-change="bridge-url">', "ws://localhost:8765 unless you changed --ws-port.", "bridge-url")
+            + field(cf.BRIDGE_LABEL, f'<input id="bridge-url" type="url" class="wide" value="{esc(st.bridge_url)}" data-change="bridge-url">', "ws://localhost:8765 unless you changed --ws-port.", "bridge-url")
             + f'<div class="row-actions">{btn("Connect to Python", "connect-bridge", "btn primary")}</div></section>'
         )
         return out + f'<div class="cards">{usb}{simc}{rep}{bridge}</div></div>'
@@ -223,20 +180,14 @@ class SettingsView:
 
     def _calibration(self, s: Snapshot, key_only: bool = False):
         for cid, c in self.cards.items():
-            sj = json.dumps(s.channels["channels"][cid], sort_keys=True)
-            if sj != c.saved_json:
-                c.saved_json = sj
-                c.draft = copy.deepcopy(s.channels["channels"][cid])
+            c.follow(s.channels["channels"][cid])
         if key_only:
             return (s.status == "connected", s.using_file_calibration, tuple(c.saved_json for c in self.cards.values()))
-        out = (
-            "<div><h2>Calibration</h2><p class=\"lead\">Each channel turns the ADC voltage into a reading. Type the numbers in by hand, or capture live readings against references "
-            "(room air and calibration gas, a reference flowmeter, a 3 L syringe). The preview updates as you edit; nothing changes on the monitor until you press Save.</p>"
-        )
+        out = f'<div><h2>Calibration</h2><p class="lead">{esc(cd.LEAD)}</p>'
         if s.status != "connected":
-            out += '<p class="warn">No live data. You can still enter calibrations by hand; capturing readings needs a connected device or the simulator.</p>'
+            out += f'<p class="warn">{esc(cd.NO_LIVE)}</p>'
         if s.using_file_calibration:
-            out += '<p class="warn">A replay is running with the calibration stored in its file. Changes saved here apply after the replay ends.</p>'
+            out += f'<p class="warn">{esc(cd.FILE_CAL)}</p>'
         out += (
             f'<div class="row-actions" style="margin-bottom:12px">{btn("Export calibration (JSON)", "cal-export")}'
             '<label class="btn" style="display:inline-flex;align-items:center">Import calibration…<input type="file" accept=".json,application/json" hidden data-change="cal-import"></label>'
@@ -245,92 +196,71 @@ class SettingsView:
         return out + '<div class="cards">' + "".join(self._card(c, s) for c in self.cards.values()) + "</div></div>"
 
     def _card(self, c: CalCard, s: Snapshot) -> str:
-        cid, d = c.cid, c.draft
-        saved = json.loads(c.saved_json)
-        when = saved.get("calibratedAt")
-        meta = f"CH{int(d['index'])} · " + (f"saved {stamp(_iso_ms(when))}" if when else "default (not yet calibrated)")
-        note = f'<p class="note">{esc(saved.get("note", ""))}</p>' if saved.get("note") and not when else ""
+        cid = c.cid
+        meta = c.meta(lambda when: stamp(_iso_ms(when)))
+        note = f'<p class="note">{esc(c.note())}</p>' if c.note() else ""
         live = f'<div class="live">{stat("Raw", "-- V", f"cal-raw-{cid}")}{stat("Preview (unsaved)" if c.dirty else "Calibrated", "--", f"cal-val-{cid}")}{stat("", "", f"cal-3-{cid}")}</div>'
-        methods = [("manual", "Enter values"), ("zerospan", "Zero & span" if cid == "co2" else "Two-point"), ("fit", "Multi-point fit")] + ([("syringe", "3 L syringe")] if cid == "pneumo" else [])
-        tabs = "".join(f'<button class="tab" role="tab" aria-selected="{"true" if c.method == m else "false"}" data-act="cal-method" data-arg="{cid}|{m}">{t}</button>' for m, t in methods)
+        tabs = "".join(f'<button class="tab" role="tab" aria-selected="{"true" if c.method == m else "false"}" data-act="cal-method" data-arg="{cid}|{m}">{esc(t)}</button>' for m, t in cd.methods(cid))
         body = {"manual": self._manual, "zerospan": self._points, "fit": self._points, "syringe": self._syringe}[c.method](c)
         foot = (
             '<div class="row-actions" style="border-top:1px solid var(--border);padding-top:10px">'
             f'{btn("Save calibration", "cal-save", "btn primary", arg=cid, disabled=not c.dirty)}{btn("Discard changes", "cal-discard", arg=cid, disabled=not c.dirty)}'
             f'{btn("Load defaults", "cal-defaults", arg=cid)}{"<span class=dirty>Unsaved changes</span>" if c.dirty else ""}</div>'
         )
-        return f'<section class="card {cid}"><div class="card-head"><h3>{NAMES[cid]}</h3><span class="meta">{esc(meta)}</span></div>{note}{live}<div class="subtabs" role="tablist">{tabs}</div>{body}{foot}</section>'
+        return f'<section class="card {cid}"><div class="card-head"><h3>{cd.NAMES[cid]}</h3><span class="meta">{esc(meta)}</span></div>{note}{live}<div class="subtabs" role="tablist">{tabs}</div>{body}{foot}</section>'
 
     def _capture_btn(self, c: CalCard, target: str, text: str = "Capture") -> str:
         busy = target in c.capturing
-        return btn("Capturing 2 s…" if busy else text, "cal-capture", "btn small", arg=f"{c.cid}|{target}", disabled=busy, title="Average the live voltage for 2 seconds")
+        return btn(cd.CAPTURING if busy else text, "cal-capture", "btn small", arg=f"{c.cid}|{target}", disabled=busy, title=cd.CAPTURE_TIP)
 
     def _manual(self, c: CalCard) -> str:
         cid, d = c.cid, c.draft
-        cal, u = d["calibration"], d.get("unit", "")
-        out = field("Calibration type", seg("cal-type", cal["type"], [("linear", "Linear"), ("polynomial", "Polynomial"), ("table", "Lookup table")], f"{cid}|"))
+        cal, u = d["calibration"], c.unit
+        out = field("Calibration type", seg("cal-type", cal["type"], cd.TYPES, f"{cid}|"))
         if cal["type"] == "linear":
             out += number_field("Gain", "cal-num", cal["gain"], f"{u}/V", None, f"{cid}-gain", arg=f"{cid}|gain")
-            out += number_field("Offset", "cal-num", cal["offset"], u, "value = gain × volts + offset", f"{cid}-offset", arg=f"{cid}|offset")
+            out += number_field("Offset", "cal-num", cal["offset"], u, cd.LINEAR_HINT, f"{cid}-offset", arg=f"{cid}|offset")
         elif cal["type"] == "polynomial":
             out += field(
-                "Coefficients c0, c1, c2, …",
-                f'<input id="{cid}-coeffs" type="text" class="wide" value="{esc(", ".join(f"{x:g}" for x in cal["coeffs"]))}" data-change="cal-coeffs" data-arg="{cid}">',
+                cd.COEFFS_LABEL,
+                f'<input id="{cid}-coeffs" type="text" class="wide" value="{esc(c.coeffs_text())}" data-change="cal-coeffs" data-arg="{cid}">',
                 f"value = c0 + c1·V + c2·V² + …  (in {esc(u)})",
                 f"{cid}-coeffs",
             )
         else:
             rows = "".join(
                 f'<tr><td>{num("cal-pt", p[0], None, 0.0001, arg=f"{cid}|{i}|0", aria=f"Point {i + 1} volts")}</td><td>{num("cal-pt", p[1], None, 0.001, arg=f"{cid}|{i}|1", aria=f"Point {i + 1} value")}</td>'
-                f'<td class="row-actions">{self._capture_btn(c, f"pt{i}", "Capture V")}{btn("Remove", "cal-pt-remove", "btn small", arg=f"{cid}|{i}", disabled=len(cal["points"]) <= 2)}</td></tr>'
+                f'<td class="row-actions">{self._capture_btn(c, f"pt{i}", "Capture V")}{btn("Remove", "cal-pt-remove", "btn small", arg=f"{cid}|{i}", disabled=not c.can_remove_point())}</td></tr>'
                 for i, p in enumerate(cal["points"])
             )
             out += (
                 f'<div style="padding:8px 0"><table class="pts"><thead><tr><th>Volts</th><th>Value ({esc(u)})</th><th></th></tr></thead><tbody>{rows}</tbody></table>'
-                f'<div class="row-actions" style="margin-top:8px">{btn("Add point", "cal-pt-add", "btn small", arg=cid)}<span class="note">Values between points are interpolated; outside the table the end segments are extended.</span></div></div>'
+                f'<div class="row-actions" style="margin-top:8px">{btn("Add point", "cal-pt-add", "btn small", arg=cid)}<span class="note">{esc(cd.TABLE_NOTE)}</span></div></div>'
             )
-        out += number_field("Zero offset", "cal-zero", d["zeroOffset"], u, "Subtracted after the calibration. Set it by hand or with the button below.", f"{cid}-zero", arg=cid)
-        out += f'<div class="row-actions" style="padding:8px 0">{self._capture_btn(c, "zero", "Zero now on room air (0.04 %)" if cid == "co2" else "Zero now (no flow)")}</div>'
+        out += number_field("Zero offset", "cal-zero", d["zeroOffset"], u, cd.ZERO_HINT, f"{cid}-zero", arg=cid)
+        out += f'<div class="row-actions" style="padding:8px 0">{self._capture_btn(c, "zero", cd.zero_button(cid))}</div>'
         if cid == "pneumo":
             fm = c.flow_model()
             out += number_field("Flow constant k1", "cal-fm", fm["k1"], "L/min per Pa", None, "pneumo-k1", arg="k1")
-            out += number_field("Quadratic term k2", "cal-fm", fm["k2"], "L/min per Pa²", "flow = k1·ΔP + k2·ΔP·|ΔP|. Leave k2 at 0 for a linear (Fleisch-type) pneumotach.", "pneumo-k2", arg="k2")
+            out += number_field("Quadratic term k2", "cal-fm", fm["k2"], "L/min per Pa²", cd.K2_HINT, "pneumo-k2", arg="k2")
         return f"<div>{out}</div>"
 
     def _points(self, c: CalCard) -> str:
-        cid, mode, u = c.cid, c.method, c.draft.get("unit", "")
+        cid, mode, u = c.cid, c.method, c.unit
         pts = c.pts[mode]
         if mode == "zerospan":
-            if cid == "co2":
-                steps = [
-                    "Flow room air through the sample line, wait for the reading to settle, then capture point A.",
-                    "Flow the calibration gas (e.g. 5 % CO2), wait for it to settle, then capture point B. Enter the gas's certified value.",
-                ]
-            else:
-                ref = "flow (reference flowmeter)" if cid == "flow" else "pressure (manometer)"
-                steps = ["With no flow through the sensor, capture point A.", f"Apply a known {ref} and capture point B. Enter the reference value."]
-            steps.append("Press Compute line, check the preview at the top of this card, then Save.")
-            intro = '<ol class="steps">' + "".join(f"<li>{x}</li>" for x in steps) + "</ol>"
+            intro = '<ol class="steps">' + "".join(f"<li>{esc(x)}</li>" for x in cd.zerospan_steps(cid)) + "</ol>"
         else:
-            intro = '<p class="note">Capture three or more readings across the range you will measure, then fit a line, a quadratic, or use the points as a lookup table. You can also type volts in by hand.</p>'
+            intro = f'<p class="note">{esc(cd.FIT_INTRO)}</p>'
         rows = ""
         for i, p in enumerate(pts):
-            name = f"{'AB'[i]} · {p['label']}" if mode == "zerospan" else p["label"]
-            rem = btn("Remove", "cal-ref-remove", "btn small", arg=f"{cid}|{i}") if mode == "fit" and len(pts) > 2 else ""
+            rem = btn("Remove", "cal-ref-remove", "btn small", arg=f"{cid}|{i}") if c.can_remove_ref(mode) else ""
             lab = p["label"]
             ref_in = num("cal-ref", p["ref"], None, 0.001, arg=f"{cid}|{i}|ref", aria=f"{lab} reference")
             volts_in = num("cal-ref", p["volts"], None, 0.0001, arg=f"{cid}|{i}|volts", aria=f"{lab} volts")
-            rows += f'<tr><td>{esc(name)}</td><td>{ref_in}</td><td>{volts_in}</td><td class="row-actions">{self._capture_btn(c, f"{mode}{i}")}{rem}</td></tr>'
-        ready = len([p for p in pts if math.isfinite(p["volts"]) and math.isfinite(p["ref"])])
-        if mode == "zerospan":
-            acts = btn("Compute line", "cal-fit", "btn primary", arg=f"{cid}|1", disabled=ready < 2)
-        else:
-            acts = (
-                btn("Add point", "cal-ref-add", "btn small", arg=cid)
-                + btn("Fit line", "cal-fit", "btn primary", arg=f"{cid}|1", disabled=ready < 2)
-                + btn("Fit quadratic", "cal-fit", arg=f"{cid}|2", disabled=ready < 3)
-                + btn("Use as lookup table", "cal-fit", arg=f"{cid}|table", disabled=ready < 2)
-            )
+            rows += f'<tr><td>{esc(c.point_name(mode, i))}</td><td>{ref_in}</td><td>{volts_in}</td><td class="row-actions">{self._capture_btn(c, f"{mode}{i}")}{rem}</td></tr>'
+        acts = btn("Add point", "cal-ref-add", "btn small", arg=cid) if mode == "fit" else ""
+        acts += "".join(btn(text, "cal-fit", "btn primary" if k == 0 else "btn", arg=f"{cid}|{deg}", disabled=not ok) for k, (deg, text, ok) in enumerate(c.fits(mode)))
         res = f'<p class="ok-text">{esc(c.result[mode])}</p>' if c.result[mode] else ""
         return (
             f'<div style="display:grid;gap:8px">{intro}<table class="pts"><thead><tr><th>Point</th><th>Reference ({esc(u)})</th><th>Volts</th><th></th></tr></thead><tbody>{rows}</tbody></table>'
@@ -338,58 +268,31 @@ class SettingsView:
         )
 
     def _syringe(self, c: CalCard) -> str:
-        sy = c.syr
-        steps = [
-            "Zero the pneumotach with no flow (Enter values → Zero now), and save.",
-            "Connect the calibration syringe with the plunger fully out.",
-            "Press Start stroke, push the plunger all the way in with one smooth stroke (1–2 s), then press Stop.",
-            "Check the measured volume. Apply the new k1, then push again to confirm it reads the syringe volume.",
-        ]
-        out = '<div style="display:grid;gap:8px"><ol class="steps">' + "".join(f"<li>{x}</li>" for x in steps) + "</ol>"
-        out += number_field("Syringe volume", "syr-vol", sy["volume"], "L", None, "syringe-vol", 0.1, 10, 0.1)
-        running = sy["off"] is not None
+        out = '<div style="display:grid;gap:8px"><ol class="steps">' + "".join(f"<li>{esc(x)}</li>" for x in cd.SYRINGE_STEPS) + "</ol>"
+        out += number_field("Syringe volume", "syr-vol", c.volume, "L", None, "syringe-vol", 0.1, 10, 0.1)
+        running = c.stroke_running
         out += '<div class="row-actions">' + (btn("Stop", "syr-stop", "btn danger") if running else btn("Start stroke", "syr-start", "btn primary"))
         out += '<span class="note" id="syr-live"></span></div>' if running else "</div>"
-        res = sy["res"]
-        if res:
-            a1, a2, secs = res
-            fm = c.flow_model()
-            vol = sy["volume"]
-            measured = abs(fm["k1"] * a1 + fm["k2"] * a2) / 60
-            try:
-                k1, err = syringe_k1(a1, a2, vol, fm["k2"]), ""
-            except ValueError as e:
-                k1, err = math.nan, str(e)
-            out += '<div class="stats">' + stat("∫ΔP dt", f"{a1:.1f} Pa·s") + stat("Stroke time", f"{secs:.2f} s")
-            out += stat("Volume with current k1", f"{fmt(measured, 3)} L ({fmt((measured - vol) / vol * 100, 1)} %)") + stat("New k1", f"{k1:.5g}" if math.isfinite(k1) else "--") + "</div>"
+        if c.stroke:
+            out += '<div class="stats">' + "".join(stat(k, v) for k, v in c.stroke_stats()) + "</div>"
+            _, err = c.new_k1()
             if err:
                 out += f'<p class="err">{esc(err)}</p>'
-            if math.isfinite(k1) and k1 > 0:
-                out += f'<div class="row-actions">{btn(f"Apply k1 = {k1:.5g}", "syr-apply", "btn primary", arg=f"{k1:.6g}")}<span class="note">Then Save calibration.</span></div>'
+            if c.can_apply_k1():
+                out += f'<div class="row-actions">{btn(c.apply_k1_text(), "syr-apply", "btn primary")}<span class="note">Then Save calibration.</span></div>'
         return out + "</div>"
 
     def _calibration_live(self, s: Snapshot) -> None:
         for cid, c in self.cards.items():
-            i = int(c.draft["index"])
-            v = s.numbers.volts[i] if i < len(s.numbers.volts) else math.nan
-            d = c.draft
-            u = d.get("unit", "")
-            value = apply_calibration(d["calibration"], v) - d["zeroOffset"] if math.isfinite(v) else math.nan
-            _set(f"cal-raw-{cid}", f"{v:.4f} V" if math.isfinite(v) else "-- V")
-            _set(f"cal-val-{cid}", f"{fmt(value, digits_for(u))} {u}")
+            raw, value, third = c.live(s)
+            _set(f"cal-raw-{cid}", raw[1])
+            _set(f"cal-val-{cid}", value[1])
             el = byid(f"cal-3-{cid}")
             if el is not None:
-                if cid == "co2":
-                    k, val = "As mmHg", f"{fmt(pct_to_mmhg(value, s.settings.processing.barometric_mm_hg, s.settings.processing.water_vapor), 1)} mmHg"
-                elif cid == "pneumo":
-                    k, val = "Flow", f"{fmt(pneumo_flow(c.flow_model(), value), 1)} L/min"
-                else:
-                    sv = json.loads(c.saved_json)
-                    k, val = "Saved calibration", f"{fmt(apply_calibration(sv['calibration'], v) - sv['zeroOffset'] if math.isfinite(v) else math.nan, digits_for(u))} {u}"
-                el.textContent = val
-                el.previousElementSibling.textContent = k
-            if c.syr["off"] is not None and c.syr["acc"]:
-                _set("syr-live", f"Integrating… ∫ΔP dt = {c.syr['acc']['a1']:.1f} Pa·s")
+                el.textContent = third[1]
+                el.previousElementSibling.textContent = third[0]
+            if c.stroke_running:
+                _set("syr-live", c.stroke_live())
 
     # ---------- alarms and display
 
@@ -600,20 +503,27 @@ def install_settings_actions(app: "WebApp") -> None:
     def parts(el):
         return data(el, "arg").split("|")
 
-    def redraft(c: CalCard, **patch):
-        c.draft = {**c.draft, **copy.deepcopy(patch)}
+    def edit(change, *args, quiet: bool = False):
+        """Make a change to a calibration card and redraw. What the change has to say
+        (a message it returns, or the reason it refuses) is shown to the operator."""
+        try:
+            said = change(*args)
+        except ValueError as ex:
+            said, quiet = str(ex), False
+        if isinstance(said, str) and said and not quiet:
+            toast(said, 5000)
         sv.bump()
 
     # --- connection
     def rate(el):
         v = as_float(el)
         if v is not None:
-            sv.rate = round(min(200, max(1, v)))
+            sv.rate = cf.clamp_rate(v)
 
     def sim(el):
         v = as_float(el)
         if v is not None:
-            e.set_sim(**{data(el, "arg"): min(float(el.max), max(float(el.min), v))})
+            e.set_sim(**{data(el, "arg"): cf.clamp_sim(data(el, "arg"), v)})
         sv.bump()
 
     def replay_start(el):
@@ -622,9 +532,7 @@ def install_settings_actions(app: "WebApp") -> None:
         if rec is None:
             return
         try:
-            s = e.library.parse(rid)
-            if not s.n:
-                raise ValueError("it has no samples")
+            s = cf.for_replay(e.library.parse(rid))
         except (OSError, ValueError) as ex:
             toast(f"Could not replay {rec.file_name}: {ex}", 6000)
             return
@@ -634,16 +542,14 @@ def install_settings_actions(app: "WebApp") -> None:
     async def replay_file(el):
         for name, text in await read_files(el):
             try:
-                s = parse_session_text(text)
-                if not s.n:
-                    raise ValueError("it has no samples")
+                s = cf.for_replay(parse_session_text(text))
             except ValueError as ex:
                 toast(f"Could not replay {name}: {ex}", 6000)
                 return
             e.connect("replay", session=s, file_name=name, speed=sv.replay["speed"], use_file_calibration=sv.replay["use_cal"])
             app.show("monitor")
 
-    # --- calibration
+    # --- calibration (what each key does is in ``calibration_draft.CalDraft``)
     def cal_method(el):
         cid, m = parts(el)
         sv.cards[cid].method = m
@@ -651,74 +557,41 @@ def install_settings_actions(app: "WebApp") -> None:
 
     def cal_type(el):
         cid, t = parts(el)
-        c = sv.cards[cid]
-        cal = c.draft["calibration"]
-        if t == cal["type"]:
-            return
-
-        def y(v):
-            return apply_calibration(cal, v)
-
-        if t == "linear":
-            new = {"type": "linear", "gain": precision(y(1) - y(0), 6), "offset": precision(y(0), 6)}
-        elif t == "polynomial":
-            new = {"type": "polynomial", "coeffs": [cal["offset"], cal["gain"]] if cal["type"] == "linear" else [precision(y(0), 6), precision(y(1) - y(0), 6)]}
-        else:
-            new = {"type": "table", "points": [[v, precision(y(v), 6)] for v in (0, 1.25, 2.5, 3.75, 5)]}
-        redraft(c, calibration=new)
+        edit(sv.cards[cid].switch_type, t)
 
     def cal_num(el):
         cid, key = parts(el)
         v = as_float(el)
-        c = sv.cards[cid]
         if v is None:
-            sv.bump()
+            sv.bump()  # not a number: put the saved value back
             return
-        redraft(c, calibration={**c.draft["calibration"], key: v})
+        edit(sv.cards[cid].set_number, key, v)
 
     def cal_coeffs(el):
-        c = card(el)
-        try:
-            co = [float(x) for x in el.value.replace(",", " ").split()]
-        except ValueError:
-            co = []
-        if co and all(math.isfinite(x) for x in co):
-            redraft(c, calibration={"type": "polynomial", "coeffs": co})
-        else:
-            toast("Enter numbers separated by commas, lowest order first.")
-            sv.bump()
+        edit(card(el).set_coeffs, str(el.value))
 
     def cal_pt(el):
         cid, i, j = parts(el)
-        c = sv.cards[cid]
         v = as_float(el)
-        pts = copy.deepcopy(c.draft["calibration"]["points"])
-        if v is not None and int(i) < len(pts):
-            pts[int(i)][int(j)] = v
-            redraft(c, calibration={"type": "table", "points": pts})
+        if v is not None:
+            edit(sv.cards[cid].set_point, int(i), int(j), v)
 
     def cal_pt_remove(el):
         cid, i = parts(el)
-        c = sv.cards[cid]
-        redraft(c, calibration={"type": "table", "points": [p for k, p in enumerate(c.draft["calibration"]["points"]) if k != int(i)]})
+        edit(sv.cards[cid].remove_point, int(i))
 
     def cal_pt_add(el):
-        c = card(el)
-        pts = copy.deepcopy(c.draft["calibration"]["points"])
-        pts.append([pts[-1][0] + 0.5, pts[-1][1]])
-        redraft(c, calibration={"type": "table", "points": pts})
+        edit(card(el).add_point)
 
     def cal_zero(el):
-        c = sv.cards[data(el, "arg")]
         v = as_float(el)
         if v is not None:
-            redraft(c, zeroOffset=v)
+            edit(sv.cards[data(el, "arg")].set_zero, v)
 
     def cal_fm(el):
-        c = sv.cards["pneumo"]
         v = as_float(el)
         if v is not None:
-            redraft(c, flowModel={**c.flow_model(), data(el, "arg"): v})
+            edit(sv.cards["pneumo"].set_flow, data(el, "arg"), v)
 
     def cal_capture(el):
         cid, target = parts(el)
@@ -730,151 +603,62 @@ def install_settings_actions(app: "WebApp") -> None:
             if err:
                 toast(err, 5000)
                 sv.bump()
-                return
-            volts = r.volts
-            if target == "zero":
-                d = c.draft
-                z = apply_calibration(d["calibration"], volts) - ZERO_REF[cid]
-                toast(f"Zero offset set to {z:.{digits_for(d.get('unit', ''))}f} {d.get('unit', '')}. Save to apply.")
-                redraft(c, zeroOffset=precision(z, 6))
+            elif target == "zero":
+                edit(c.zero_now, r.volts)
             elif target.startswith("pt"):
-                pts = copy.deepcopy(c.draft["calibration"]["points"])
-                i = int(target[2:])
-                if i < len(pts):
-                    pts[i][0] = round(volts, 4)
-                    redraft(c, calibration={"type": "table", "points": pts})
+                edit(c.capture_point, int(target[2:]), r.volts)
             else:
                 mode = "zerospan" if target.startswith("zerospan") else "fit"
-                i = int(target[len(mode) :])
-                if i < len(c.pts[mode]):
-                    c.pts[mode][i]["volts"] = round(volts, 4)
-                sv.bump()
+                edit(c.capture_ref, mode, int(target[len(mode) :]), r.volts, quiet=True)
 
-        e.capture_average(cid, 2, done)
+        e.capture_average(cid, cd.CAPTURE_SEC, done)
         sv.bump()
 
     def cal_ref(el):
         cid, i, k = parts(el)
-        v = as_float(el)
         c = sv.cards[cid]
-        c.pts[c.method][int(i)][k] = v if v is not None else math.nan
-        sv.bump()
+        edit(c.set_ref, c.method, int(i), k, as_float(el))
 
     def cal_ref_add(el):
-        c = card(el)
-        c.pts["fit"].append({"label": f"Point {len(c.pts['fit']) + 1}", "ref": math.nan, "volts": math.nan})
-        sv.bump()
+        edit(card(el).add_ref)
 
     def cal_ref_remove(el):
         cid, i = parts(el)
-        del sv.cards[cid].pts["fit"][int(i)]
-        sv.bump()
+        edit(sv.cards[cid].remove_ref, int(i))
 
     def cal_fit(el):
         cid, deg = parts(el)
         c = sv.cards[cid]
-        mode = c.method
-        ready = [p for p in c.pts[mode] if math.isfinite(p["volts"]) and math.isfinite(p["ref"])]
-        u = c.draft.get("unit", "")
-
-        def apply(cal, how):
-            c.draft = {**c.draft, "calibration": cal, "zeroOffset": 0}
-            err = max(abs(apply_calibration(cal, p["volts"]) - p["ref"]) for p in ready)
-            c.result[mode] = f"{how}. Largest error at the reference points: {err:.{digits_for(u)}f} {u}. Review the preview above, then Save."
-            sv.bump()
-
-        try:
-            if deg == "table":
-                apply({"type": "table", "points": sorted([[p["volts"], p["ref"]] for p in ready])}, f"Lookup table from {len(ready)} points")
-            elif deg == "1" and len(ready) == 2:
-                g, o = two_point_linear(ready[0]["volts"], ready[0]["ref"], ready[1]["volts"], ready[1]["ref"])
-                apply({"type": "linear", "gain": precision(g, 7), "offset": precision(o, 7)}, f"Line through 2 points: gain {g:.5g} {u}/V, offset {o:.5g} {u}")
-            else:
-                co = [precision(x, 7) for x in fit_polynomial([(p["volts"], p["ref"]) for p in ready], int(deg))]
-                if deg == "1":
-                    apply({"type": "linear", "gain": co[1], "offset": co[0]}, f"Least-squares line through {len(ready)} points")
-                else:
-                    apply({"type": "polynomial", "coeffs": co}, f"Quadratic fit through {len(ready)} points")
-        except ValueError as ex:
-            c.result[mode] = ""
-            toast(str(ex), 5000)
-            sv.bump()
+        edit(c.fit, c.method, deg, quiet=True)  # the result is written under the points
 
     def syr_start(el):
-        c = sv.cards["pneumo"]
-        idx = int(c.draft["index"])
-        acc = {"a1": 0.0, "a2": 0.0, "last_t": None, "last_p": 0.0, "t0": 0.0, "t_end": 0.0}
-        c.syr["acc"], c.syr["res"] = acc, None
-
-        def on(p):
-            d = c.draft
-            v = p.volts[idx] if idx < len(p.volts) else math.nan
-            if not math.isfinite(v):
-                return
-            pa = apply_calibration(d["calibration"], v) - d["zeroOffset"]
-            if acc["last_t"] is not None:
-                dt = p.t_sec - acc["last_t"]
-                acc["a1"] += (pa + acc["last_p"]) / 2 * dt
-                acc["a2"] += (pa * abs(pa) + acc["last_p"] * abs(acc["last_p"])) / 2 * dt
-            else:
-                acc["t0"] = p.t_sec
-            acc["last_t"] = acc["t_end"] = p.t_sec
-            acc["last_p"] = pa
-
-        c.syr["off"] = e.on_sample(on)
-        sv.bump()
+        edit(sv.cards["pneumo"].stroke_start, e.on_sample)
 
     def syr_stop(el):
-        c = sv.cards["pneumo"]
-        if c.syr["off"]:
-            c.syr["off"]()
-        c.syr["off"] = None
-        a = c.syr["acc"]
-        if not a or a["last_t"] is None:
-            toast("No pneumotach data arrived. Connect the device first.", 5000)
-        else:
-            c.syr["res"] = (a["a1"], a["a2"], a["t_end"] - a["t0"])
+        if not sv.cards["pneumo"].stroke_stop():
+            toast(cd.NO_STROKE, 5000)
         sv.bump()
 
     def syr_vol(el):
         v = as_float(el)
         if v is not None:
-            sv.cards["pneumo"].syr["volume"] = min(10, max(0.1, v))
+            sv.cards["pneumo"].set_volume(v)
         sv.bump()
 
     def syr_apply(el):
-        c = sv.cards["pneumo"]
-        redraft(c, flowModel={**c.flow_model(), "k1": float(data(el, "arg"))})
+        edit(sv.cards["pneumo"].apply_k1)
 
     def cal_save(el):
-        c = sv.cards[data(el, "arg")]
-        try:
-            nxt = clone_channels(e.channels)
-            nxt["channels"][c.cid] = {**c.draft, "calibratedAt": _utc_now()}
-            e.set_channels(nxt)
-            c.saved_json = json.dumps(e.channels["channels"][c.cid], sort_keys=True)
-            c.draft = copy.deepcopy(e.channels["channels"][c.cid])
-            toast(f"{NAMES[c.cid]} calibration saved.")
-        except ValueError as ex:
-            toast(str(ex), 5000)
-        sv.bump()
+        edit(sv.cards[data(el, "arg")].save, e)
 
     def cal_discard(el):
-        c = sv.cards[data(el, "arg")]
-        c.draft = json.loads(c.saved_json)
-        sv.bump()
+        edit(sv.cards[data(el, "arg")].discard)
 
     def cal_defaults(el):
-        c = sv.cards[data(el, "arg")]
-        d = copy.deepcopy(DEFAULT_CHANNELS["channels"][c.cid])
-        d["index"] = c.draft["index"]
-        c.draft = d
-        toast("Default values loaded. Save to apply.")
-        sv.bump()
+        edit(sv.cards[data(el, "arg")].defaults)
 
     def cal_export(el):
-        data = {**e.channels, "exportedAt": _utc_now()}
-        download(f"co2r-calibration-{datetime.now():%Y-%m-%d}.json", json.dumps(data, indent=2), "application/json")
+        download(cd.export_name(), cd.export_text(e.channels), "application/json")
 
     async def cal_import(el):
         for name, text in await read_files(el):
@@ -890,7 +674,7 @@ def install_settings_actions(app: "WebApp") -> None:
 
         if js.window.confirm("Replace every channel's calibration with the defaults?"):
             e.reset_channels()
-            toast("All channels reset to the defaults.")
+            toast(cd.RESET_DONE)
             sv.bump()
 
     # --- display
@@ -968,7 +752,7 @@ def install_settings_actions(app: "WebApp") -> None:
         persist=persist,
         **{
             "settings-tab": lambda el: (setattr(sv, "tab", data(el, "arg")), sv.bump()),
-            "rate-send": lambda el: (e.send(f"RATE {sv.rate}"), e.send("INFO")),
+            "rate-send": lambda el: [e.send(cmd) for cmd in cf.rate_commands(sv.rate)],
             "ask-info": lambda el: e.send("INFO"),
             "disconnect": lambda el: (e.disconnect(), sv.bump()),
             "baud": lambda el: (e.update_settings(baud_rate=int(el.value)), sv.bump()),

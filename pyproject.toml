@@ -59,6 +59,8 @@ files = [
     "co2response/sim",
     "co2response/protocol.py",
     "co2response/forms.py",
+    "co2response/calibration_draft.py",
+    "co2response/connection_form.py",
     "co2response/settings.py",
     "co2response/channels.py",
     "co2response/jsfmt.py",
