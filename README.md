@@ -465,10 +465,10 @@ The defaults follow the team's design (warn near 60, stop at 65) and CHOP's prac
 **Recording.** **Record** writes one CSV per session, `co2r_<study code>_<YYYYMMDD-HHMMSS>.csv`, every second, so a crash loses at most a second. An unfinished file is listed as **Recovered** next time. The file contains:
 
 - `#` metadata lines: the study code, start time, firmware, sample rate, the calibration, processing and alarm settings in use, and the test settings (seconds left out of the fit; the subject's height, weight and age if entered)
-- then one row per sample, with 23 columns:
+- then one row per sample, with 25 columns:
   - time on both clocks, device ms, sequence number
-  - raw volts `v0`–`v2`
-  - the cleaned, calibrated values
+  - raw volts `v0`–`v2` (and `v3`, the oximeter's, when an SpO2 channel is connected)
+  - the cleaned, calibrated values (and `spo2_pct`)
   - on the sample where a breath ended: that breath's EtCO2, FiCO2, RR, VT, MV (60 s average), peak flow, its own length (`period_s`), its expired volume (`vte_ml`) and `breath_quality`
   - any alarms, markers, breaths excluded by hand, connection changes and calibration changes, in the `event` column
 

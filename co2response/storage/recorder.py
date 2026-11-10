@@ -106,7 +106,7 @@ class SessionRecorder:
             self._pending_since = wall_ms
         self._pending_events.append(text)
 
-    def sample(self, wall_ms: float, t_ms: float, seq: int, volts, co2_mmhg: float, co2_pct: float, flow_lpm: float, pneumo_pa: float, pneumo_lpm: float) -> None:
+    def sample(self, wall_ms: float, t_ms: float, seq: int, volts, co2_mmhg: float, co2_pct: float, flow_lpm: float, pneumo_pa: float, pneumo_lpm: float, spo2: float = math.nan) -> None:
         if not self.active:
             return
         if self._anchor is None or t_ms < self._last_t:
@@ -127,6 +127,7 @@ class SessionRecorder:
                 pneumo_lpm,
                 self._pending_breath,
                 self._pending_events,
+                spo2,
             )
         )
         self.rows += 1

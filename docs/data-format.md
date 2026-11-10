@@ -53,31 +53,31 @@ A long recording (over about 4 MB, a few minutes) is opened in small steps, so t
 # processing,{...}
 # alarm_settings,{...}
 # test,{"responseSkipSec":30,"heightCm":null,"weightKg":null,"ageYears":null}
-time_s,wall_time_iso,t_ms,seq,v0,v1,v2,co2_mmHg,co2_pct,flow_lpm,pneumo_pa,pneumo_lpm,breath,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,period_s,vte_ml,breath_quality,event
-0.070,2026-11-05T05:00:00.070Z,20,1,1.6738,2.5315,2.5361,30.67,4.035,0.32,5.6,1.11,,,,,,,,,,,
+time_s,wall_time_iso,t_ms,seq,v0,v1,v2,v3,co2_mmHg,co2_pct,flow_lpm,pneumo_pa,pneumo_lpm,spo2_pct,breath,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,period_s,vte_ml,breath_quality,event
+0.070,2026-11-05T05:00:00.070Z,20,1,1.6738,2.5315,2.5361,,30.67,4.035,0.32,5.6,1.11,,,,,,,,,,,,
 ...
-4.120,2026-11-05T05:00:04.120Z,4070,406,0.6037,2.6499,2.6431,15.04,1.979,3.99,19.3,3.87,1,38.0,0.0,15.0,500,7.47,35.5,4.010,497,ok,
+4.120,2026-11-05T05:00:04.120Z,4070,406,0.6037,2.6499,2.6431,,15.04,1.979,3.99,19.3,3.87,,1,38.0,0.0,15.0,500,7.47,35.5,4.010,497,ok,
 ...
-12.180,2026-11-05T05:00:12.180Z,12130,1212,...,3,25.7,0.0,15.0,173,7.42,12.5,3.930,172,artifact,
+12.110,2026-11-05T05:00:12.110Z,12060,1205,0.7618,2.6258,2.6251,,19.15,2.519,2.98,15.4,3.07,,3,25.7,0.0,14.9,173,7.42,12.5,3.930,173,artifact,
 ```
 
 - Lines starting with `#` are metadata. Free text never contains `#`, so `comment='#'` readers are safe.
-- **Every row has the same 23 columns.** One row per sample. `period_s` and `vte_ml` are new in v4.
+- **Every row has the same 25 columns.** One row per sample. `v3`, `spo2_pct`, `period_s` and `vte_ml` are new in v4.
 - **Breath columns** (`breath` to `breath_quality`) are filled only on the sample where that breath ended; they are empty on other rows.
 - **`breath_quality`** is the result of the breath screen: `ok`, `noisy`, `artifact` or `outlier` (see [Noise removal](#noise-removal)). Only `ok` breaths count in the numbers, the trend, the response plot and the EtCO2 alarms. The others stay in the file so nothing is lost. A breath the operator took out of the response fit by hand reads back as `excluded` (see `BREATH_EXCLUDED` below).
 - **`period_s`** is the breath's own length (from the start of its inspiration to the start of the next). **`vte_ml`** is its expired volume, which should match `vt_ml` (the inspired volume); a difference means a leak or a drifted pneumotach zero.
 - **Two minute ventilations.** `mv_lpm` is the 60 s average the monitor shows. The breath's own minute ventilation is `vt_ml / 1000 × 60 / period_s`; the response slope is fitted to that, because an average over the last minute lags the EtCO2 it is paired with. The loaders and the breath export give it as `mv_breath_lpm`.
 - **`# test`** holds how the response is analysed (`responseSkipSec`: the seconds of rebreathing left out of the fit) and the subject's height, weight and age if they were entered (never a name, MRN or date of birth).
-- **`event`** holds alarms (`ALARM_START`, `ALARM_ACKNOWLEDGED`, `ALARM_SILENCED`, `ALARM_RESOLVED`, `ALARM_CLEARED`, `ALARM_REARMED`), markers (`MARK <label>`, and `MARK_RENAMED <id> <label>` when a marker placed with the M key is labelled), breaths found to be isolated jumps one breath later (`BREATH_REJECTED <n> outlier: <reason>`, which overrides that breath's `breath_quality`), breaths taken out of the response fit by hand or put back (`BREATH_EXCLUDED <n> manual`, `BREATH_INCLUDED <n>`), a stale calibration at the start (`CALIBRATION_STALE …`), connections, device errors and calibration changes and simulation speed changes (`SIM_SPEED 5`) on the row where they happened. Several on one row are joined with ` | `. An event while no data was flowing gets a row with only `time_s`, `wall_time_iso` and `event`.
+- **`event`** holds alarms (`ALARM_START`, `ALARM_ACKNOWLEDGED`, `ALARM_SILENCED`, `ALARM_RESOLVED`, `ALARM_CLEARED`, `ALARM_REARMED`), markers (`MARK <label>`, and `MARK_RENAMED <id> <label>` when a marker placed with the M key is labelled), breaths found to be isolated jumps one breath later (`BREATH_REJECTED <n> outlier: <reason>`, which overrides that breath's `breath_quality`), breaths taken out of the response fit by hand or put back (`BREATH_EXCLUDED <n> manual`, `BREATH_INCLUDED <n>`), a stale calibration at the start (`CALIBRATION_STALE …`), the valve output (`VALVE BAG`, `VALVE AIR (automatic stop: stop limit)`, `EMERGENCY_STOP`), connections, device errors and calibration changes and simulation speed changes (`SIM_SPEED 5`) on the row where they happened. Several on one row are joined with ` | `. An event while no data was flowing gets a row with only `time_s`, `wall_time_iso` and `event`.
 - **`time_s`** is seconds since the recording started, from the Arduino's clock, so samples are exactly 1/rate apart. `wall_time_iso` is the same instant on the computer's clock. `t_ms` and `seq` are the raw device clock and 16-bit sequence number (gaps in `seq` are dropped samples). A simulator recording made at a faster simulation speed (2×–10×) says so on its `source` line, e.g. `Simulator (5× speed)`; its `time_s` and `wall_time_iso` follow the simulated clock, so they run that much faster than the real time of day.
-- `v0`–`v2` are the raw ADC volts (CO2, flow, pneumotach), untouched by any noise removal, so the session can be re-processed later with a different calibration or different cleaning.
+- `v0`–`v2` are the raw ADC volts (CO2, flow, pneumotach), untouched by any noise removal, so the session can be re-processed later with a different calibration or different cleaning. `v3` is the fourth input's volts and `spo2_pct` the oxygen saturation from it; both are empty unless an oximeter is connected (**SpO2 channel connected** in Settings > Display & units), and the header then has a `# spo2,{…}` line with its scaling and alarm limit.
 - The calibrated columns (`co2_mmHg` … `pneumo_lpm`) are the cleaned signal: spikes removed and low-pass filtered, as shown on the monitor. Because the spike filter looks 3 samples ahead, they lag the raw volts by 30 ms at 100 Hz; `time_s` is the time of the raw sample.
 
 | Column | Unit |
 | --- | --- |
-| `v0`, `v1`, `v2` | V |
+| `v0`, `v1`, `v2`, `v3` | V |
 | `co2_mmHg`, `etco2_mmHg`, `fico2_mmHg` | mmHg |
-| `co2_pct` | % |
+| `co2_pct`, `spo2_pct` | % |
 | `flow_lpm`, `pneumo_lpm`, `peak_insp_lpm`, `mv_lpm` | L/min |
 | `pneumo_pa` | Pa |
 | `vt_ml`, `vte_ml` | mL |

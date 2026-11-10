@@ -22,6 +22,9 @@ class ReplaySource(Source):
         self._t = session.t_ms.tolist()
         self._seq = session.seq.tolist()
         self._v = list(zip(session.v0.tolist(), session.v1.tolist(), session.v2.tolist()))
+        if len(session.v3) == session.n and session.n and bool((session.v3 == session.v3).any()):
+            # a fourth input was recorded (the oximeter): replay it too
+            self._v = [(a, b, c, d if d == d else 0.0) for (a, b, c), d in zip(self._v, session.v3.tolist())]
         # the recording's own markers are replayed too, so a rebreathing test is
         # split and fitted the same way it was live
         self._time_s = session.time_s.tolist()
@@ -49,7 +52,7 @@ class ReplaySource(Source):
 
     def start(self) -> None:
         fw = self.session.meta.get("firmware") or "replay"
-        self._out = [f"I,FW,{fw},ADC,FILE,CH,3,RATE,{self.rate_hz}"]
+        self._out = [f"I,FW,{fw},ADC,FILE,CH,{len(self._v[0]) if self._v else 3},RATE,{self.rate_hz}"]
         self._i = 0
         self._mi = 0
         self._done = False

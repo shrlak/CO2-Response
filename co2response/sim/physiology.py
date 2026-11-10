@@ -83,6 +83,8 @@ class SimParams:
     #: every breath (the original, gradual approach over about five breaths); 1 reaches
     #: it on the next breath, or on the breath being drawn if that is still inspiring
     settle: float = 0.5
+    #: the subject's oxygen saturation while breathing, %
+    spo2: float = 98
     #: events, on top of the scenario
     ramp: bool = False
     apnea: bool = False
@@ -117,6 +119,8 @@ class PhysSample:
     flow_lpm: float
     #: pneumotach differential pressure, Pa
     pneumo_pa: float
+    #: oxygen saturation, % (what a pulse oximeter would read)
+    spo2_pct: float = 98.0
 
 
 class PhysioModel:
@@ -135,6 +139,8 @@ class PhysioModel:
         self._tau = 0.5
         self._apnea_co2 = 0.0
         self._shallow = False
+        self._sat = self.params.spo2
+        self._apnea_for = 0.0
         self._reset_breathing()
 
     def set_params(self, **patch) -> None:
@@ -253,4 +259,12 @@ class PhysioModel:
         pneumo_pa = (flow + self._noise(0.4 * noisy)) / p.k_pneumo
         co2_mm = max(0, co2 + self._noise(0.25 * noisy))
         co2_pct = None if p.co2_disconnected_on else (co2_mm / p.barometric_mm_hg) * 100
-        return PhysSample(co2_pct, flow_lpm, pneumo_pa)
+        # oxygen saturation: holds for about 20 s of apnea, then falls about 0.4 %/s
+        # (room air); it comes back within a few breaths. No random numbers are used,
+        # so the rest of the simulation is the same with or without an oximeter.
+        self._apnea_for = self._apnea_for + dt if p.apnea_on else 0.0
+        if self._apnea_for > 20:
+            self._sat = max(50.0, self._sat - 0.4 * dt)
+        else:
+            self._sat += (p.spo2 - self._sat) * min(1.0, dt / 4)
+        return PhysSample(co2_pct, flow_lpm, pneumo_pa, self._sat)

@@ -7,7 +7,7 @@ import dataclasses
 from PySide6.QtWidgets import QVBoxLayout
 
 from ...engine.monitor import MonitorEngine, Snapshot
-from ...forms import PROCESSING_FIELDS
+from ...forms import PROCESSING_FIELDS, SPO2_FIELDS
 from ..alarm_form import AlarmForm
 from ..spec_form import SpecForm
 from ..widgets import (
@@ -56,6 +56,11 @@ class DisplayPage(Page):
         g = SpecForm(PROCESSING_FIELDS, lambda: engine.settings.processing, self._p)
         lay.addWidget(g)
         self.proc_form = g
+
+        lay.addSpacing(10)
+        lay.addWidget(label("SPO2 (SAFETY CHANNEL)", "h3"))
+        self.spo2_form = SpecForm(SPO2_FIELDS, lambda: engine.settings.spo2, lambda patch: engine.update_settings(spo2=dataclasses.replace(engine.settings.spo2, **patch)))
+        lay.addWidget(self.spo2_form)
         lay.addStretch(1)
 
     def _p(self, patch: dict) -> None:
@@ -70,6 +75,7 @@ class DisplayPage(Page):
         set_combo(self.co2scale, st.co2_scale_max_mm_hg)
         set_combo(self.flowscale, st.flow_scale_lpm)
         self.proc_form.refresh(p, s)
+        self.spo2_form.refresh(st.spo2, s)
 
 
 class AlarmsPage(Page):

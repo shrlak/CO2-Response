@@ -699,3 +699,99 @@ def test_valve_commands_reach_the_board_and_a_board_without_a_valve_is_left_alon
         e_plain.shutdown()
         ard.unplug()
         plain.unplug()
+
+
+# ------------------------------------------------------------------ SpO2 (the safety channel)
+
+
+def with_oximeter(e, **kw):
+    e.update_settings(spo2=dataclasses.replace(e.settings.spo2, enabled=True, **kw))
+
+
+def test_spo2_channel_reads_the_oximeter_and_is_recorded_and_replayed(tmp_path):
+    e = make_engine(tmp_path)
+    e.connect("simulator")
+    run(e, 5)
+    assert math.isnan(e.snapshot().numbers.spo2) and len(e._last.volts) == 3  # no oximeter: three values per line
+    with_oximeter(e)  # switched on while running: the simulated oximeter appears on the fourth input
+    run(e, 5)
+    s = e.snapshot()
+    assert len(e._last.volts) == 4 and s.numbers.spo2 == pytest.approx(98, abs=0.5)
+    assert not e.alarms.is_active("spo2Low") and not e.alarms.is_active("spo2NoSignal")
+    e.set_sim(spo2=94)
+    e.start_recording()
+    run(e, 20)
+    assert e.snapshot().numbers.spo2 == pytest.approx(94, abs=0.5)
+    res = e.stop_recording()
+    parsed = e.library.parse(res.rec.id)
+    assert parsed.has_spo2 and float(parsed.spo2[-1]) == pytest.approx(94, abs=0.5)
+    assert float(parsed.v3[-1]) == pytest.approx(0.94, abs=0.01)  # 1 V = 100 % by default
+    import json
+
+    from co2response.storage.session_file import summarize
+
+    assert json.loads(parsed.meta["spo2"])["enabled"] is True and summarize(parsed).spo2_min == pytest.approx(94, abs=1.5)
+    from co2response.storage.report import build_report, result_lines
+
+    assert dict(result_lines(build_report(parsed)))["SpO2"] == "lowest 94 %"
+    # replay sends the fourth value again, so the replayed monitor shows SpO2 too
+    e.disconnect()
+    assert e.connect("replay", session=parsed, file_name="x.csv", speed=10)
+    run(e, 1)
+    assert len(e._last.volts) == 4 and e.snapshot().numbers.spo2 == pytest.approx(94, abs=1.5)
+    # a session with no oximeter has empty columns and replays three values
+    plain = make_engine(tmp_path / "plain")
+    plain.connect("simulator")
+    plain.start_recording()
+    run(plain, 3)
+    p2 = plain.library.parse(plain.stop_recording().rec.id)
+    assert not p2.has_spo2 and "spo2" not in p2.meta and math.isnan(summarize(p2).spo2_min)
+
+
+def test_low_spo2_alarm_after_apnea_and_it_returns_the_valve_to_room_air(tmp_path):
+    e = make_engine(tmp_path)
+    with_oximeter(e, low_pct=92, low_delay_sec=5)
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, auto_valve=True, apnea_sec=0))  # the apnea alarm off, to see SpO2 act alone
+    e.connect("simulator")
+    run(e, 10)
+    e.start_rebreathing()
+    run(e, 5)
+    e.set_sim_switch("apnea", True)
+    run(e, 30)
+    # the saturation holds for 20 s of apnea, then falls: 98 -> 92 takes 15 s more, and the alarm 5 s after that
+    assert e.snapshot().numbers.spo2 > 91 and not e.alarms.is_active("spo2Low")
+    run(e, 15)
+    a = e.alarms.get("spo2Low")
+    assert a is not None and a.priority == "high" and a.message.startswith("SpO2 LOW 8") and a.message.endswith("% < 92")
+    assert not e.source.core.valve_to_bag and e.markers[-1].label == "End of test (low SpO2)"
+    # breathing again: it recovers and the alarm resolves 1 % above the limit
+    e.set_sim_switch("apnea", False)
+    run(e, 20)
+    assert e.alarms.get("spo2Low").state == "resolved" and e.snapshot().numbers.spo2 > 96
+    # the limit can be switched off
+    with_oximeter(e, low_pct=0)
+    e.set_sim(spo2=75)
+    run(e, 20)
+    assert e.alarms.get("spo2Low").state == "resolved"
+
+
+def test_an_oximeter_that_gives_no_reading_is_reported_not_shown_as_a_number(tmp_path):
+    e = make_engine(tmp_path)
+    with_oximeter(e)
+    e.connect("simulator")
+    run(e, 3)
+    assert e.snapshot().numbers.spo2 == pytest.approx(98, abs=0.5)
+    # the probe comes off: the oximeter's output drops to 0 V, which is not a saturation
+    e.source.core.encoders = e.source.core.encoders._replace(spo2=lambda pct: 0.0)
+    run(e, 6)
+    assert math.isnan(e.snapshot().numbers.spo2) and not e.alarms.is_active("spo2Low")
+    run(e, 6)
+    assert e.alarms.get("spo2NoSignal").priority == "advisory"
+    # a wrong scaling shows the same way rather than as a wrong number, and the right one clears it
+    with_oximeter(e, gain_pct_per_v=20)
+    run(e, 3)
+    assert e.snapshot().numbers.spo2 == pytest.approx(98, abs=0.5) and not e.alarms.is_active("spo2NoSignal")
+    # switched off: no number, no notice
+    e.update_settings(spo2=dataclasses.replace(e.settings.spo2, enabled=False))
+    run(e, 12)
+    assert math.isnan(e.snapshot().numbers.spo2) and not e.alarms.is_active("spo2NoSignal") and len(e._last.volts) == 3

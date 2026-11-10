@@ -45,6 +45,11 @@ def session_response(s: ParsedSession, skip_sec: float | None = None) -> CO2Resp
     return co2_response(pts, test_window(session_markers(s.events)), skip_sec, lambda k: k in out)
 
 
+def spo2_stats(summary: SessionSummary) -> list[tuple[str, str]]:
+    """The lowest SpO2 for a review screen's summary (nothing without an oximeter)."""
+    return [("SpO2 lowest", f"{summary.spo2_min:.0f} %")] if math.isfinite(summary.spo2_min) else []
+
+
 def response_stats(res: CO2Response) -> list[tuple[str, str]]:
     """The response as (label, value) pairs for a review screen's summary."""
     if not res.split:
@@ -188,6 +193,8 @@ def result_lines(r: Report) -> list[tuple[str, str]]:
         left.append(f"{len(res.excluded)} excluded by hand")
     out.append(("Breaths", f"{sm.breaths} recorded; " + ", ".join(left)))
     out.append(("EtCO2", f"mean {_num(sm.etco2_mean)} mmHg (min {_num(sm.etco2_min)}, max {_num(sm.etco2_max)})"))
+    if math.isfinite(sm.spo2_min):
+        out.append(("SpO2", f"lowest {sm.spo2_min:.0f} %"))
     out.append(("Alarms", f"{sm.alarms} alarm{'s' if sm.alarms != 1 else ''}, {sm.dropped} dropped samples"))
     return out
 

@@ -218,6 +218,7 @@ class MonitorScreen(QWidget):
             "fico2": NumericTile("co2", "FiCO2", "mmHg"),
             "flow": NumericTile("flow", "Flow", "L/min"),
             "peak": NumericTile("flow", "Peak insp", "L/min"),
+            "spo2": NumericTile("flow", "SpO2", "%"),
             "vt": NumericTile("pneumo", "VT", "mL"),
             "mv": NumericTile("pneumo", "MV", "L/min"),
         }
@@ -228,7 +229,7 @@ class MonitorScreen(QWidget):
         co2nums.addWidget(self.tiles["fico2"], 1, 1)
         co2nums.setColumnStretch(0, 135)
         co2nums.setColumnStretch(1, 100)
-        rows = [("co2", co2nums), ("flow", hbox(self.tiles["flow"], self.tiles["peak"], spacing=6)), ("pneumo", hbox(self.tiles["vt"], self.tiles["mv"], spacing=6))]
+        rows = [("co2", co2nums), ("flow", hbox(self.tiles["flow"], self.tiles["peak"], self.tiles["spo2"], spacing=6)), ("pneumo", hbox(self.tiles["vt"], self.tiles["mv"], spacing=6))]
         self.holders: dict[str, QWidget] = {}
         for r, (cid, nums) in enumerate(rows):
             grid.addWidget(self.sweeps[cid], r, 0)
@@ -405,6 +406,19 @@ class MonitorScreen(QWidget):
         t["fico2"].set(stale_val(s.stale["co2"], disp(n.fico2), digits), unit, stale=s.stale["co2"])
         t["flow"].set(stale_val(s.stale["flow"], n.flow), stale=s.stale["flow"], raw=raw("flow"))
         t["peak"].set(stale_val(s.stale["flow"], n.peak_flow), stale=s.stale["flow"])
+        # the oximeter's tile is there only while the SpO2 channel is switched on
+        o = st.spo2
+        if t["spo2"].isVisibleTo(self) != o.enabled:
+            t["spo2"].setVisible(o.enabled)
+        low_sat = next((a for a in s.alarms if a.id == "spo2Low" and a.state == "active"), None)
+        t["spo2"].set(
+            "---" if n.spo2 != n.spo2 else fmt(n.spo2),
+            stale=n.spo2 != n.spo2,
+            alarm="high" if low_sat else None,
+            flash=bool(low_sat and not low_sat.acknowledged and blink_fast),
+            limits=("", fmt(o.low_pct) if o.low_pct > 0 else "off"),
+            qualifier="no reading" if n.spo2 != n.spo2 and s.status == "connected" else "",
+        )
         exp = f"exp {fmt(n.vte)} mL · " if n.vte == n.vte else ""
         t["vt"].set(stale_val(s.stale["pneumo"], n.vt), stale=s.stale["pneumo"], raw=raw("pneumo"), qualifier="" if s.stale["pneumo"] else f"{exp}flow {fmt(n.pneumo_flow)} L/min")
         t["mv"].set(stale_val(s.stale["pneumo"], n.mv, 1), stale=s.stale["pneumo"], qualifier="" if s.stale["pneumo"] else "60 s average")

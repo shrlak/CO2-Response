@@ -55,8 +55,10 @@ from ..settings import (
     ProcessingOptions,
     Settings,
     SettingsStore,
+    Spo2Settings,
     sanitize_alarms,
     sanitize_processing,
+    sanitize_spo2,
     sanitize_test,
     to_dict,
 )
@@ -84,9 +86,9 @@ NAN = float("nan")
 MAX_TREND = 20000
 MAX_TRACE = 4 * 3600 * 2  # 4 h at 2 Hz
 MAX_WAVE = 6000
-TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum", "noisyBreaths", "leak", "calibration", "testTime")
+TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum", "noisyBreaths", "leak", "calibration", "testTime", "spo2NoSignal")
 #: the alarms that turn the valve back to room air when the app switches the valve
-AUTO_STOP = {"co2Stop": "stop limit", "apnea": "apnea"}
+AUTO_STOP = {"co2Stop": "stop limit", "apnea": "apnea", "spo2Low": "low SpO2"}
 #: breaths compared for the inspired-against-expired volume check
 LEAK_BREATHS = 5
 #: how often the host tells the device it is alive (firmware with a watchdog), ms
@@ -107,14 +109,23 @@ def _age(ms: float) -> str:
     return f"{h:.0f} h" if h < 48 else f"{h / 24:.0f} days"
 
 
-def simulator_encoders() -> Encoders:
-    """The simulator's "true" sensors: the bundled default calibration, inverted."""
+def simulator_encoders(spo2: Spo2Settings | None = None) -> Encoders:
+    """The simulator's "true" sensors: the bundled default calibration, inverted. With
+    the SpO2 channel on, it also has an oximeter with that channel's scaling."""
     c = DEFAULT_CHANNELS["channels"]
     lo, hi = DEFAULT_CHANNELS["adc"]["railLowV"], DEFAULT_CHANNELS["adc"]["railHighV"]
+    oximeter = None
+    if spo2 is not None and spo2.enabled:
+        gain, offset = spo2.gain_pct_per_v or 100.0, spo2.offset_pct
+
+        def oximeter(pct: float) -> float:
+            return (pct - offset) / gain
+
     return Encoders(
         co2=lambda pct: invert_calibration(c["co2"]["calibration"], pct, lo, hi),
         flow=lambda lpm: invert_calibration(c["flow"]["calibration"], lpm, lo, hi),
         pneumo=lambda pa: invert_calibration(c["pneumo"]["calibration"], pa, lo, hi),
+        spo2=oximeter,
     )
 
 
@@ -157,6 +168,8 @@ class Numbers:
     volume_mismatch_pct: float = NAN
     #: how long after expiration begins the CO2 rises, s (median of recent breaths)
     co2_lag_sec: float = NAN
+    #: oxygen saturation, % (NaN without an oximeter, or with no reading for 5 s)
+    spo2: float = NAN
 
 
 @dataclass
@@ -418,6 +431,8 @@ class MonitorEngine:
         self._sim_test: dict | None = None
         #: the board's valve output as last commanded: True = to the bag
         self._valve = False
+        self._spo2_low_since: float | None = None
+        self._spo2_valid_wall = 0.0
         self._save_error_logged = False
 
         #: breaths on the device clock (cleared on every new connection), all of them
@@ -447,7 +462,7 @@ class MonitorEngine:
         self._timers: list[tuple[float, Callable[[], None]]] = []
         self._jobs: set[HardwareCheckJob] = set()
 
-        self.pipeline = Pipeline(self.effective_channels, self._processing_options())
+        self.pipeline = Pipeline(self.effective_channels, self._processing_options(), self.settings.spo2)
 
     # ---------- configuration ----------
 
@@ -490,6 +505,7 @@ class MonitorEngine:
         nxt.alarms = sanitize_alarms(nxt.alarms)
         nxt.processing = sanitize_processing(nxt.processing)
         nxt.test = sanitize_test(nxt.test)
+        nxt.spo2 = sanitize_spo2(nxt.spo2)
         self.settings = nxt
         self.store.save_settings(nxt)
         if self.store.save_error and not self._save_error_logged:
@@ -501,6 +517,15 @@ class MonitorEngine:
         self.audio.volume = nxt.alarms.volume
         if nxt.processing != prev.processing:
             self.pipeline.set_options(self._processing_options())
+        if nxt.spo2 != prev.spo2:
+            self.pipeline.spo2 = nxt.spo2
+            self._spo2_low_since = None
+            if isinstance(self._source, SimulatorSource):
+                self._source.core.encoders = simulator_encoders(nxt.spo2)  # the simulated oximeter follows
+            if not nxt.spo2.enabled or nxt.spo2.low_pct <= 0:
+                for aid in ("spo2Low", "spo2NoSignal"):
+                    if self.alarms.is_active(aid):
+                        self.alarms.set_condition(aid, False, self.clock(), "high", "")
         if nxt.sessions_dir != prev.sessions_dir and not self.recorder.active:
             self.library = self._library_factory(self.sessions_dir, self.clock)
             self.recorder.library = self.library
@@ -690,7 +715,7 @@ class MonitorEngine:
             sim = self.settings.sim
             a = DEFAULT_CHANNELS["adc"]
             src = SimulatorSource(
-                simulator_encoders(),
+                simulator_encoders(self.settings.spo2),
                 a["railLowV"],
                 a["railHighV"],
                 clock=self._seconds,
@@ -734,7 +759,9 @@ class MonitorEngine:
         self._file_channels = session.channels if kind == "replay" and use_file_calibration and session is not None and session.channels else None
         self._info = None
         self._valve = False  # a board starts (and restarts) on room air
-        self.pipeline = Pipeline(self.effective_channels, self._processing_options())
+        self.pipeline = Pipeline(self.effective_channels, self._processing_options(), self.settings.spo2)
+        self._spo2_low_since = None
+        self._spo2_valid_wall = self.clock()
         self._sync_phase()
         self._seq.reset()
         self._bad_lines = 0
@@ -1013,11 +1040,32 @@ class MonitorEngine:
         if pr.breath is not None:
             self._on_breath(pr.breath, now)
         self.alarms.on_live_co2(pr.co2_mmhg, now)
+        self._check_spo2(pr.spo2, now)
 
         # the raw volts are recorded as received, so a session can be re-analysed
-        self.recorder.sample(now, pr.t_ms, pr.seq, pr.volts, pr.co2_mmhg, pr.co2_pct, pr.flow_lpm, pr.pneumo_pa, pr.pneumo_lpm)
+        self.recorder.sample(now, pr.t_ms, pr.seq, pr.volts, pr.co2_mmhg, pr.co2_pct, pr.flow_lpm, pr.pneumo_pa, pr.pneumo_lpm, pr.spo2)
         for fn in list(self._sample_listeners):
             fn(pr)
+
+    def _check_spo2(self, spo2: float, now: float) -> None:
+        """The low-SpO2 alarm: below the limit for the delay; clears 1 % back above it."""
+        o = self.settings.spo2
+        if not o.enabled or not math.isfinite(spo2):
+            self._spo2_low_since = None
+            return
+        self._spo2_valid_wall = now
+        if o.low_pct <= 0:
+            return
+        active = self.alarms.is_active("spo2Low")
+        if spo2 < o.low_pct:
+            if self._spo2_low_since is None:
+                self._spo2_low_since = now
+            if active or now - self._spo2_low_since >= o.low_delay_sec * 1000:
+                self.alarms.set_condition("spo2Low", True, now, "high", f"SpO2 LOW {spo2:.0f} % < {o.low_pct:g}", spo2)
+        else:
+            self._spo2_low_since = None
+            if active and spo2 >= o.low_pct + 1:
+                self.alarms.set_condition("spo2Low", False, now, "high", "")
 
     def _on_breath(self, b: Breath, now: float) -> None:
         self.breaths.append(b)
@@ -1154,6 +1202,9 @@ class MonitorEngine:
         a.set_condition("calibration", bool(stale), now, "advisory", "CALIBRATION: " + "; ".join(stale) + ". See Settings > Calibration")
         err = self.store.save_error
         a.set_condition("settingsSave", bool(err), now, "advisory", f"SETTINGS NOT SAVED ({err}): changes last only until the app closes")
+        # the oximeter is switched on but gives no reading
+        lost = self.settings.spo2.enabled and connected and fresh and now - max(self._spo2_valid_wall, self._connected_at) > 10000
+        a.set_condition("spo2NoSignal", lost, now, "advisory", "SpO2: no reading from the oximeter. Check the probe, the wiring to input A3 and the channel's scaling")
 
         a.tick(now)
         self._run_sim_test()
@@ -1463,6 +1514,7 @@ class MonitorEngine:
                 processing=self._processing_options(),
                 alarm_settings=self.settings.alarms,
                 test=self.settings.test,
+                spo2=self.settings.spo2 if self.settings.spo2.enabled else None,
             )
         )
         where = "" if rec else f" (in memory: cannot write to {self.library.folder})"
@@ -1617,6 +1669,7 @@ class MonitorEngine:
             vte=NAN if breath_stale or stale["pneumo"] else last_b.vte_ml,
             volume_mismatch_pct=NAN if breath_stale or stale["pneumo"] else self.volume_mismatch_pct(),
             co2_lag_sec=NAN if breath_stale else self.co2_lag_sec(),
+            spo2=L.spo2 if connected and L is not None and now - self._spo2_valid_wall <= 5000 else NAN,
         )
         rec = self.recorder
         src = self._source

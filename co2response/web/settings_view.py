@@ -14,7 +14,7 @@ from .. import __version__
 from ..channels import CHANNEL_IDS, DEFAULT_CHANNELS, clone_channels, validate_channels
 from ..engine.link_test import overall, report_text
 from ..engine.monitor import Snapshot
-from ..forms import PROCESSING_FIELDS, TEST_FIELDS
+from ..forms import PROCESSING_FIELDS, SPO2_FIELDS, TEST_FIELDS
 from ..jsfmt import precision
 from ..processing.calibration import apply_calibration, fit_polynomial, pneumo_flow, syringe_k1, two_point_linear
 from ..processing.co2 import pct_to_mmhg
@@ -420,6 +420,8 @@ class SettingsView:
             + field("Show raw volts on the monitor", toggle("set-bool", st.show_raw_volts, "rawv", "show_raw_volts"), "Useful while calibrating; hide it for clinical use.", "rawv")
             + '<h3 style="margin-top:18px">Signal processing</h3>'
             + spec_form_html(PROCESSING_FIELDS, p, "proc", "proc", s)
+            + '<h3 style="margin-top:18px">SpO2 (safety channel)</h3>'
+            + spec_form_html(SPO2_FIELDS, st.spo2, "spo2", "spo2", s)
             + "</div>"
         )
 
@@ -898,6 +900,7 @@ def install_settings_actions(app: "WebApp") -> None:
 
     # the processing and test rows come from co2response.forms (shared with the desktop window)
     install_spec_actions("proc", PROCESSING_FIELDS, lambda: e.settings.processing, lambda patch: e.update_settings(processing=dataclasses.replace(e.settings.processing, **patch)), sv.bump)
+    install_spec_actions("spo2", SPO2_FIELDS, lambda: e.settings.spo2, lambda patch: e.update_settings(spo2=dataclasses.replace(e.settings.spo2, **patch)), sv.bump)
     install_spec_actions("test", TEST_FIELDS, lambda: e.settings.test, lambda patch: e.update_settings(test=dataclasses.replace(e.settings.test, **patch)), sv.bump)
 
     # --- data

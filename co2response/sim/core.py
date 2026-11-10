@@ -16,6 +16,8 @@ class Encoders(NamedTuple):
     co2: Callable[[float], float]
     flow: Callable[[float], float]
     pneumo: Callable[[float], float]
+    #: SpO2 % → volts; None = no oximeter, so data lines carry three values
+    spo2: Callable[[float], float] | None = None
 
 
 FIRMWARE_INFO = "I,FW,sim-1.2.0,ADC,SIMULATED,CH,3,VALVE,1,RATE,"
@@ -55,6 +57,8 @@ class SimulatorCore:
             self._rail_high_v if p.flow_disconnected else self._clamp(self.encoders.flow(s.flow_lpm)),
             self._rail_high_v if p.pneumo_disconnected else self._clamp(self.encoders.pneumo(s.pneumo_pa)),
         ]
+        if self.encoders.spo2 is not None:  # an oximeter on the fourth input
+            volts.append(self._clamp(self.encoders.spo2(s.spo2_pct)))
         spikes = max(0.01 if p.scenario == "artifacts" else 0, p.spike_pct / 100)
         if spikes > 0 and self._rand() < spikes:
             # a glitchy ADC conversion: one sample on one channel jumps by 1–2 V
@@ -89,7 +93,8 @@ class SimulatorCore:
             self.valve_to_bag = arg == "1"
             return [f"A,VALVE,{arg}"]
         if name == "INFO":
-            return [FIRMWARE_INFO + str(self.rate_hz)]
+            info = FIRMWARE_INFO.replace("CH,3", "CH,4") if self.encoders.spo2 is not None else FIRMWARE_INFO
+            return [info + str(self.rate_hz)]
         if name == "START":
             self.streaming = True
             return ["A,START"]

@@ -478,3 +478,60 @@ def test_a_whole_simulated_test_from_the_panel_fills_the_trends_and_the_response
     stats = {st.k.text(): st.v.text() for st in win.review.findChildren(Stat)}
     assert stats["CO2 RESPONSE"].startswith("slope 0.")
     win.grab()
+
+
+def test_spo2_tile_appears_with_the_channel_and_alarms_when_low(win):
+    from co2response.forms import SPO2_FIELDS
+
+    m, e = win.monitor, win.engine
+    e.connect("simulator")
+    advance(win, 3)
+    assert not m.tiles["spo2"].isVisible()
+    win.open_settings("display")
+    form = win.settings_screen.pages["display"].spo2_form
+    assert set(form.controls) == {f.name for f in SPO2_FIELDS}
+    assert not form.controls["spo2low"].isVisibleTo(form)  # the scaling and limits show once it is on
+    form.controls["spo2on"].setChecked(True)
+    assert e.settings.spo2.enabled and form.controls["spo2low"].isVisibleTo(form)
+    form.controls["spo2low"].setText("95")
+    form.controls["spo2low"]._commit()
+    form.controls["spo2delay"].setText("2")
+    form.controls["spo2delay"]._commit()
+    win.show_monitor()
+    advance(win, 4)
+    t = m.tiles["spo2"]
+    assert t.isVisible() and t.value == "98" and t.limits == ("", "95") and t.alarm is None
+    e.set_sim(spo2=91)
+    advance(win, 14)
+    assert t.value == "91" and t.alarm == "high" and "SpO2 LOW 9" in win.strip.msg.text()
+    win.grab()
+    e.update_settings(spo2=dataclasses.replace(e.settings.spo2, enabled=False))
+    advance(win, 1)
+    assert not t.isVisible()
+
+
+def test_emergency_stop_key_ends_the_test(win):
+    m, e = win.monitor, win.engine
+    e.connect("simulator")
+    advance(win, 5)
+    tr = m.trend
+    assert not tr.k_emergency.isEnabled()
+    tr.k_start.click()
+    advance(win, 2)
+    assert tr.k_emergency.isEnabled()
+    tr.k_emergency.click()
+    advance(win, 1)
+    assert not tr.k_emergency.isEnabled() and e.markers[-1].label == "End of test (emergency stop)"
+    assert tr.test_text.toolTip().startswith("TEST ENDED")
+    # the valve switch is one of the alarm settings, built from the shared field list
+    win.open_settings("alarms")
+    form = win.settings_screen.pages["alarms"].form
+    form.controls["autovalve"].setChecked(True)
+    assert e.settings.alarms.auto_valve
+    win.show_monitor()
+    tr.k_start.click()
+    advance(win, 1)
+    assert e.source.core.valve_to_bag and "valve to the bag" in tr.test_text.toolTip()
+    tr.k_end.click()
+    advance(win, 1)
+    assert not e.source.core.valve_to_bag

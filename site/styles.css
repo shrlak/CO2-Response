@@ -191,6 +191,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .nums { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-height: 0; }
 .row.co2 .nums { grid-template-columns: 1.35fr 1fr; grid-template-rows: 1fr 1fr; }
+/* a third tile (SpO2) appears in the flow row while the oximeter channel is on */
+.row.flow .nums:has(#t-spo2 > .tile) { grid-template-columns: 1fr 1fr 1fr; }
 .tile { background: var(--panel); border-radius: var(--radius); padding: 6px 12px; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
 .tile.big { grid-row: span 2; }
 .tlabel { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; font-size: 14px; }

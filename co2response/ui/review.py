@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..engine.monitor import MonitorEngine
 from ..processing.metrics import co2_response_summary
-from ..storage.report import response_stats, session_response
+from ..storage.report import response_stats, session_response, spo2_stats
 from ..storage.session_file import (
     ParsedSession,
     Range,
@@ -227,6 +227,7 @@ class ReviewScreen(QFrame):
                 ("Markers", str(summ.markers)),
                 ("Samples", f"{summ.samples:,} at {summ.rate_hz} Hz"),
                 ("Dropped samples", str(summ.dropped)),
+                *spo2_stats(summ),
                 *response_stats(session_response(s)),
             ]
         )

@@ -121,7 +121,9 @@ def load_session(path: str, clean: bool = True) -> Session:
         if col not in raw:
             raw[col] = np.nan
 
-    samples = raw.loc[raw["t_ms"].notna(), SAMPLE_COLS].reset_index(drop=True)
+    # v3 and spo2_pct are there when an oximeter was on the fourth input (format v4)
+    extra = [c for c in ("v3", "spo2_pct") if c in raw and raw[c].notna().any()]
+    samples = raw.loc[raw["t_ms"].notna(), SAMPLE_COLS + extra].reset_index(drop=True)
     breaths = raw.loc[raw["breath"].notna(), BREATH_COLS].reset_index(drop=True)
     breaths["breath"] = breaths["breath"].astype(int)
     # files before v4 have no period column: a breath runs from the end of the one

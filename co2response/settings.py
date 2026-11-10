@@ -137,6 +137,24 @@ class AlarmSettings:
 
 
 @dataclass
+class Spo2Settings:
+    """SpO2 as a safety channel: a pulse oximeter's analog output on the spare ADC
+    input. Off until an oximeter is connected.
+
+    TODO: the scaling is a placeholder (1 V = 100 %); set it from the oximeter's manual."""
+
+    enabled: bool = False
+    #: which value of each data line it is (the ADS1115's A3 is the fourth: 3)
+    index: int = 3
+    #: SpO2 % = gain x volts + offset
+    gain_pct_per_v: float = 100
+    offset_pct: float = 0
+    #: high-priority alarm when SpO2 stays below this for ``low_delay_sec``; 0 = off
+    low_pct: float = 90
+    low_delay_sec: float = 10
+
+
+@dataclass
 class TestSettings:
     """The rebreathing test: how the response is analysed, and the subject's size.
 
@@ -191,6 +209,9 @@ class SimSettings:
     #: share of the gap to a new EtCO2 closed each breath: 1 = the next breath is at the
     #: new value (the panel's default), 0.5 = halfway each breath (the original model)
     settle: float = 1
+    #: the subject's oxygen saturation, % (falls during apnea). Simulated only while
+    #: the SpO2 channel is switched on.
+    spo2: float = 98
     #: simulated seconds per real second (1 = real time). Not part of a situation.
     speed: float = 1
     #: record a whole simulated test as a session, so the review charts and the PDF
@@ -218,6 +239,7 @@ class Settings:
     processing: ProcessingOptions = field(default_factory=ProcessingOptions)
     alarms: AlarmSettings = field(default_factory=AlarmSettings)
     test: TestSettings = field(default_factory=TestSettings)
+    spo2: Spo2Settings = field(default_factory=Spo2Settings)
     study_code: str = "STUDY-01"
     baud_rate: int = 115200
     bridge_url: str = "ws://localhost:8765"
@@ -274,6 +296,17 @@ def sanitize_processing(p: ProcessingOptions) -> ProcessingOptions:
     )
 
 
+def sanitize_spo2(o: Spo2Settings) -> Spo2Settings:
+    return dataclasses.replace(
+        o,
+        index=int(_clamp(o.index, 0, 7, 3)),
+        gain_pct_per_v=_clamp(o.gain_pct_per_v, -1000, 1000, 100) or 100,
+        offset_pct=_clamp(o.offset_pct, -500, 500, 0),
+        low_pct=_clamp(o.low_pct, 0, 100, 90),
+        low_delay_sec=_clamp(o.low_delay_sec, 0, 120, 10),
+    )
+
+
 def sanitize_test(t: TestSettings) -> TestSettings:
     def opt(v, lo, hi):
         return v if isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi else None
@@ -322,6 +355,7 @@ class SettingsStore:
         s.alarms = sanitize_alarms(s.alarms)
         s.processing = sanitize_processing(s.processing)
         s.test = sanitize_test(s.test)
+        s.spo2 = sanitize_spo2(s.spo2)
         if s.trend_series not in ("etco2", "mv", "rr"):
             s.trend_series = "etco2"
         return s

@@ -9,7 +9,7 @@ import numpy as np
 
 from .. import __version__
 from ..processing.metrics import co2_response_summary
-from ..storage.report import response_stats, session_response
+from ..storage.report import response_stats, session_response, spo2_stats
 from ..storage.session_file import ParsedSession, Range, breaths_csv, clean_breaths, event_type, events_csv, exclude_breath, export_session_parts, summarize
 from .charts import ResponseChart, ReviewChart, elapsed
 from .dom import actions, btn, byid, css_var, data, download, esc, run, set_html, set_text, stat
@@ -93,6 +93,7 @@ class ReviewView:
                 ("Markers", str(summ.markers)),
                 ("Samples", f"{summ.samples:,} at {summ.rate_hz} Hz"),
                 ("Dropped samples", str(summ.dropped)),
+                *spo2_stats(summ),
             ]
         ) + "".join(stat(k, v, live="stat-" + k.lower().replace(" ", "-")) for k, v in response_stats(session_response(s)))
 

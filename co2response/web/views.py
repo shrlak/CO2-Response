@@ -167,7 +167,7 @@ def install_alarm_actions(app: "WebApp") -> None:
 # ------------------------------------------------------------------ the monitor screen
 
 
-TILE_IDS = ("etco2", "rr", "fico2", "flow", "peak", "vt", "mv")
+TILE_IDS = ("etco2", "rr", "fico2", "flow", "peak", "spo2", "vt", "mv")
 #: what the trend tab can plot against time: setting value → (tab text, caption)
 SERIES = {"etco2": ("EtCO2 trend", "EtCO2"), "mv": ("MV trend", "MV (L/min, 60 s average)"), "rr": ("RR trend", "RR (/min)")}
 
@@ -212,7 +212,7 @@ class MonitorView:
     def html(self) -> str:
         nums = {
             "co2": '<div class="nums"><div id="t-etco2" style="display:contents"></div><div id="t-rr" style="display:contents"></div><div id="t-fico2" style="display:contents"></div></div>',
-            "flow": '<div class="nums"><div id="t-flow" style="display:contents"></div><div id="t-peak" style="display:contents"></div></div>',
+            "flow": '<div class="nums"><div id="t-flow" style="display:contents"></div><div id="t-peak" style="display:contents"></div><div id="t-spo2" style="display:contents"></div></div>',
             "pneumo": '<div class="nums"><div id="t-vt" style="display:contents"></div><div id="t-mv" style="display:contents"></div></div>',
         }
         rows = "".join(
@@ -352,6 +352,19 @@ class MonitorView:
             ),  # fmt: skip
             "mv": tile_html("mv", "MV", "L/min", sv(sc["pneumo"], n.mv, 1), stale=sc["pneumo"], qualifier="" if sc["pneumo"] else "60 s average"),
         }
+        # the oximeter's tile is there only while the SpO2 channel is switched on
+        o = st.spo2
+        low_sat = next((a for a in s.alarms if a.id == "spo2Low" and a.state == "active"), None)
+        no_sat = not math.isfinite(n.spo2)
+        tiles["spo2"] = (
+            tile_html(
+                "spo2", "SpO2", "%", "---" if no_sat else fmt(n.spo2), stale=no_sat, alarm="high" if low_sat else None,
+                flash=bool(low_sat and not low_sat.acknowledged), limits=("", fmt(o.low_pct) if o.low_pct > 0 else "off"),
+                qualifier="no reading" if no_sat and s.status == "connected" else "",
+            )
+            if o.enabled
+            else ""
+        )  # fmt: skip
         for k, h in tiles.items():
             set_html(f"t-{k}", h)
 

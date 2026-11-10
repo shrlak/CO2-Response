@@ -59,11 +59,13 @@ COLUMNS = (
     "v0",
     "v1",
     "v2",
+    "v3",
     "co2_mmHg",
     "co2_pct",
     "flow_lpm",
     "pneumo_pa",
     "pneumo_lpm",
+    "spo2_pct",
     "breath",
     "etco2_mmHg",
     "fico2_mmHg",
@@ -92,6 +94,8 @@ class SessionMeta:
     alarm_settings: Any = None
     #: the test settings: how the response is analysed, and the subject's size
     test: Any = None
+    #: the SpO2 channel's settings, when an oximeter is connected
+    spo2: Any = None
 
 
 @dataclass
@@ -139,7 +143,7 @@ def format_header(m: SessionMeta) -> str:
         f"# firmware,{clean_text(m.firmware)}",
         f"# rate_hz,{js_num(m.rate_hz)}",
         "# time_base,time_s = seconds since start from the device clock; wall_time_iso = same instant on the computer clock",
-        "# units,volts V; co2 mmHg and %; flow L/min; pneumo_pa Pa; vt and vte mL; mv L/min; rr breaths/min; period s",
+        "# units,volts V; co2 mmHg and %; flow L/min; pneumo_pa Pa; spo2 %; vt and vte mL; mv L/min; rr breaths/min; period s",
         f"# channels,{js_json(m.channels).replace('#', 'no.')}",
         f"# processing,{js_json(to_dict(m.processing))}",
     ]
@@ -147,6 +151,8 @@ def format_header(m: SessionMeta) -> str:
         lines.append(f"# alarm_settings,{js_json(to_dict(m.alarm_settings))}")
     if m.test is not None:
         lines.append(f"# test,{js_json(to_dict(m.test))}")
+    if m.spo2 is not None:
+        lines.append(f"# spo2,{js_json(to_dict(m.spo2))}")
     lines.append(",".join(COLUMNS))
     return "\n".join(lines) + "\n"
 
@@ -164,6 +170,7 @@ def format_row(
     pneumo_lpm: float | None = None,
     breath: BreathCells | None = None,
     events: list[str] | None = None,
+    spo2: float | None = None,
 ) -> str:
     v = volts or ()
     b = breath
@@ -178,11 +185,13 @@ def format_row(
                 num(v[0] if len(v) > 0 else None, 4),
                 num(v[1] if len(v) > 1 else None, 4),
                 num(v[2] if len(v) > 2 else None, 4),
+                num(v[3] if len(v) > 3 else None, 4),
                 num(co2_mmhg, 2),
                 num(co2_pct, 3),
                 num(flow_lpm, 2),
                 num(pneumo_pa, 1),
                 num(pneumo_lpm, 2),
+                num(spo2, 1),
                 js_num(b.n) if b else "",
                 num(b.etco2, 1) if b else "",
                 num(b.fico2, 1) if b else "",
@@ -294,6 +303,13 @@ class ParsedSession:
     breaths: list[BreathRec] = field(default_factory=list)
     events: list[EventRec] = field(default_factory=list)
     duration_s: float = 0.0
+    #: the fourth input's raw volts and the SpO2 from it (NaN without an oximeter)
+    v3: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    spo2: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.float32))
+
+    @property
+    def has_spo2(self) -> bool:
+        return bool(len(self.spo2)) and bool(np.isfinite(self.spo2).any())
 
 
 def _f(s: str) -> float:
@@ -322,8 +338,8 @@ def _parse_v1_breath(text: str, time_s: float, n: int) -> BreathRec:
     return BreathRec(time_s, n, kv.get("etco2_mmHg", NAN), NAN, kv.get("rr", NAN), kv.get("vt_ml", NAN), kv.get("mv_lpm", NAN), NAN)
 
 
-_F64 = ("time_s", "t_ms", "v0", "v1", "v2")
-_F32 = ("co2_mmHg", "co2_pct", "flow_lpm", "pneumo_pa", "pneumo_lpm")
+_F64 = ("time_s", "t_ms", "v0", "v1", "v2", "v3")
+_F32 = ("co2_mmHg", "co2_pct", "flow_lpm", "pneumo_pa", "pneumo_lpm", "spo2_pct")
 
 
 class SessionParser:
@@ -399,7 +415,7 @@ class SessionParser:
             c["time_s"].append(t)
             c["t_ms"].append(_f(f[ix["t_ms"]]))
             self._seq.append(_i32(_f(f[ix["seq"]])))
-            for k in ("v0", "v1", "v2", "co2_mmHg", "co2_pct", "flow_lpm", "pneumo_pa", "pneumo_lpm"):
+            for k in ("v0", "v1", "v2", "v3", "co2_mmHg", "co2_pct", "flow_lpm", "pneumo_pa", "pneumo_lpm", "spo2_pct"):
                 c[k].append(_f(f[ix[k]]))
             if f[ix["breath"]] != "":
                 self._breaths.append(
@@ -506,6 +522,8 @@ class SessionParser:
             breaths=self._breaths,
             events=self._events,
             duration_s=max(float(time_s[-1]) if len(time_s) else 0.0, last_event),
+            v3=np.frombuffer(c["v3"], dtype=np.float64).copy(),
+            spo2=np.frombuffer(c["spo2_pct"], dtype=np.float32).copy(),
         )
 
 
@@ -564,6 +582,7 @@ def export_session_parts(s: ParsedSession, rng: Range | None = None, app_version
             processing=_safe_json(s.meta.get("processing")),
             alarm_settings=_safe_json(s.meta["alarm_settings"]) if s.meta.get("alarm_settings") else None,
             test=_safe_json(s.meta["test"]) if s.meta.get("test") else None,
+            spo2=_safe_json(s.meta["spo2"]) if s.meta.get("spo2") else None,
         )
     )
     if rng is not None:
@@ -585,8 +604,11 @@ def export_session_parts(s: ParsedSession, rng: Range | None = None, app_version
             if _in_range(e.time_s, rng):
                 buf.append(format_row(e.time_s, wall(e.time_s), events=[e.text]))
 
-    cols = [a.tolist() for a in (s.time_s, s.t_ms, s.seq, s.v0, s.v1, s.v2, s.co2_mmhg, s.co2_pct, s.flow_lpm, s.pneumo_pa, s.pneumo_lpm)]
-    for t, tm, sq, a0, a1, a2, cm, cp, fl, pp, pl in zip(*cols):
+    blank = np.full(s.n, np.nan)
+    v3 = s.v3 if len(s.v3) == s.n else blank
+    sat = s.spo2 if len(s.spo2) == s.n else blank
+    cols = [a.tolist() for a in (s.time_s, s.t_ms, s.seq, s.v0, s.v1, s.v2, v3, s.co2_mmhg, s.co2_pct, s.flow_lpm, s.pneumo_pa, s.pneumo_lpm, sat)]
+    for t, tm, sq, a0, a1, a2, a3, cm, cp, fl, pp, pl, o2 in zip(*cols):
         flush_events(t - 1e-9)
         evs = []
         while ei < len(events) and abs(events[ei].time_s - t) < 1e-9:
@@ -599,7 +621,7 @@ def export_session_parts(s: ParsedSession, rng: Range | None = None, app_version
             breath = BreathCells(b.n, b.etco2, b.fico2, b.rr, b.vt, b.mv, b.peak, b.quality or "ok", b.period, b.vte)
         if not _in_range(t, rng):
             continue
-        buf.append(format_row(t, wall(t), tm, sq, [a0, a1, a2], cm, cp, fl, pp, pl, breath, evs))
+        buf.append(format_row(t, wall(t), tm, sq, [a0, a1, a2, a3], cm, cp, fl, pp, pl, breath, evs, o2))
         if len(buf) >= 20000:
             yield "".join(buf)
             buf.clear()
@@ -722,6 +744,8 @@ class SessionSummary:
     vt: float
     mv: float
     rate_hz: int
+    #: lowest SpO2 recorded, % (NaN without an oximeter)
+    spo2_min: float = NAN
 
     def as_stats(self) -> dict:
         return dict(self.__dict__)
@@ -763,6 +787,7 @@ def summarize(s: ParsedSession) -> SessionSummary:
         vt=_mean(b.vt for b in good),
         mv=_mean(b.mv for b in good),
         rate_hz=js_round(((s.n - 1) * 1000) / span) if span > 0 else 0,
+        spo2_min=float(np.nanmin(s.spo2)) if s.has_spo2 else NAN,
     )
 
 

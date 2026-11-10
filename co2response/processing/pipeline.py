@@ -17,7 +17,7 @@ import math
 from dataclasses import dataclass, field
 
 from ..channels import CHANNEL_IDS, DEFAULT_FLOW_MODEL
-from ..settings import ProcessingOptions
+from ..settings import ProcessingOptions, Spo2Settings
 from .breath import Breath, BreathDetector, BreathOptions
 from .calibration import apply_calibration, pneumo_flow
 from .co2 import btps_factor, pct_to_mmhg
@@ -52,6 +52,8 @@ class Processed:
     seq: int = 0
     #: the volts after spike removal (what the numbers are computed from)
     clean: list[float] = field(default_factory=list)
+    #: oxygen saturation, % (NaN without an oximeter, or while it has no reading)
+    spo2: float = NAN
 
 
 class Pipeline:
@@ -65,9 +67,15 @@ class Pipeline:
 
     DESPIKE_HALF_WINDOW = 3
 
-    def __init__(self, channels: dict, opts: ProcessingOptions | None = None) -> None:
+    #: an oximeter reading outside this is "no reading" (probe off, searching), not a saturation
+    SPO2_RANGE = (30.0, 100.5)
+
+    def __init__(self, channels: dict, opts: ProcessingOptions | None = None, spo2: Spo2Settings | None = None) -> None:
         self.channels = channels
         self.opts = opts or ProcessingOptions()
+        #: the SpO2 safety channel (a pulse oximeter on the spare input), if there is one
+        self.spo2 = spo2
+        self._sat = NAN
         self.detector = BreathDetector(BreathOptions(self.opts.deadband_lpm, self.opts.min_breath_sec))
         self.screen = BreathScreen(self.opts.reject_bad_breaths)
         self.despiker: Despiker | None = None
@@ -193,4 +201,18 @@ class Pipeline:
             breath.noise_co2 = self.noise["co2"].take()
             breath.noise_flow = self.noise["flow"].take() if breath.detected_by == "flow" else NAN
             outlier = self.screen.screen(breath)
-        return Processed(t_sec, volts, co2_pct, co2_mmhg, val["flow"], val["pneumo"], pneumo_lpm, valid, stuck, breath, outlier, t_ms, seq, clean)
+        return Processed(t_sec, volts, co2_pct, co2_mmhg, val["flow"], val["pneumo"], pneumo_lpm, valid, stuck, breath, outlier, t_ms, seq, clean, self._saturation(clean))
+
+    def _saturation(self, clean: list[float]) -> float:
+        """SpO2 % from the oximeter's volts, smoothed over about a second."""
+        o = self.spo2
+        if o is None or not o.enabled or o.index >= len(clean) or not math.isfinite(clean[o.index]):
+            self._sat = NAN
+            return NAN
+        v = o.gain_pct_per_v * clean[o.index] + o.offset_pct
+        if not (self.SPO2_RANGE[0] <= v <= self.SPO2_RANGE[1]):
+            self._sat = NAN
+            return NAN
+        v = min(100.0, v)
+        self._sat = v if math.isnan(self._sat) else self._sat + (v - self._sat) / max(1.0, self.opts.sample_rate_hz)
+        return self._sat

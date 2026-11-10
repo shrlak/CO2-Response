@@ -269,6 +269,31 @@ TEST_FIELDS: tuple[Field, ...] = (
 )
 
 
+SPO2_FIELDS: tuple[Field, ...] = (
+    Field(
+        "enabled",
+        "SpO2 channel connected",
+        "toggle",
+        hint="A pulse oximeter's analog output on the spare ADC input (A3), as a safety channel: a tile on the monitor, a low-SpO2 alarm, and a column in the recording. "
+        "The firmware must be built with SPO2_CHANNEL 1 so the board sends the fourth value.",
+        id="spo2on",
+    ),
+    Field("gain_pct_per_v", "SpO2 scaling", unit="% per V", lo=-1000, hi=1000, step=1, hint="SpO2 % = scaling × volts + offset. From the oximeter's manual (often 1 V = 100 %).", when=lambda o: o.enabled, id="spo2gain"),
+    Field("offset_pct", "SpO2 offset", unit="%", lo=-500, hi=500, step=1, when=lambda o: o.enabled, id="spo2offset"),
+    Field(
+        "low_pct",
+        "Low SpO2 alarm below",
+        unit="%",
+        lo=0,
+        hi=100,
+        hint="High-priority alarm when SpO2 stays below this. 0 turns it off. With the valve switched from the app, it also returns the valve to room air.",
+        when=lambda o: o.enabled,
+        id="spo2low",
+    ),
+    Field("low_delay_sec", "Low SpO2 alarm after", unit="s", lo=0, hi=120, when=lambda o: o.enabled, id="spo2delay"),
+)
+
+
 def patch_for(f: Field, obj: Any, shown: float | None = None, on: bool | None = None, choice: Any = None) -> dict:
     """The settings change for an edit of field ``f``: a typed number (``shown``), a
     switch (``on``) or a choice. Empty when nothing would change."""

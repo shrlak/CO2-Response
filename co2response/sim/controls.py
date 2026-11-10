@@ -53,6 +53,7 @@ GROUPS: tuple[Group, ...] = (
             Slider("etco2", "End-tidal CO2", "mmHg", 0, 100, 1, "Sets EtCO2. Changes take a few breaths to settle, as in a patient."),
             Slider("fico2", "Inspired CO2", "mmHg", 0, 30, 1, "Sets FiCO2: the capnogram baseline between breaths."),
             Slider("obstruction_pct", "Airway obstruction", "%", 0, 100, 5, "Capnogram shape: 0 % square, 100 % slow-rising “shark fin”."),
+            Slider("spo2", "Oxygen saturation", "%", 70, 100, 1, "Sets SpO2 (shown when the SpO2 channel is on in Settings > Display & units). It also falls by itself after 20 s of apnea."),
         ),
     ),
     Group(
