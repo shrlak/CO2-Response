@@ -26,6 +26,15 @@ Default hardware: Arduino Uno + ADS1115 16-bit ADC breakout over I2C. Change `fi
 | A2 | Pneumotach pressure transducer output | Single-ended by default. |
 | A3 | Spare, or the transducer's second output | Set `PNEUMO_DIFFERENTIAL 1` to read A2–A3 differentially. |
 
+## Buzzer (host watchdog)
+
+| Arduino pin | Part | Notes |
+| --- | --- | --- |
+| D8 | Piezo buzzer, other leg to GND | A passive piezo (the firmware drives it at 2.7 kHz). `BUZZER_PIN` in `config.h`; set it to -1 for no buzzer. |
+| D13 (built-in LED) | nothing to wire | Blinks with the buzzer. |
+
+The monitor app sends a heartbeat to the board once a second. If the heartbeats stop for 3 s (the app closed or crashed, the computer went to sleep, the browser tab was put in the background), the board sounds the buzzer and blinks the LED until they come back, because nothing on the computer is checking the CO2 alarms any more. The buzzer is not in the wiring diagram above. See [protocol.md](protocol.md#host-watchdog-heartbeat).
+
 ## Rules
 
 - **Common ground.** Sensor grounds, ADC ground and Arduino ground must be joined. Most noise and offset problems are a missing ground.

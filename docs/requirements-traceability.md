@@ -1,0 +1,69 @@
+# Requirements traceability
+
+Each design input, where it is implemented, and what checks it. The design inputs come from the team's mid-semester presentation and brainstorming summary and from the mentors' description of the test ([project-background.md](project-background.md)); the rest are requirements this repository set for itself.
+
+**Read this first:** every check below is an automated test on simulated signals or recorded files. None is a bench test. A row is only *verified in simulation* until the last column's bench test has been done on the real sensors. Nothing has been run on real hardware yet.
+
+Tests are in `tests/` unless a path says otherwise. Run one with, for example, `pytest tests/test_alarms.py -k stop_limit`.
+
+## Patient safety
+
+| # | Requirement | Source | Implemented in | Automated check | Bench test still needed |
+| --- | --- | --- | --- | --- | --- |
+| S1 | Warn near 60 mmHg | Deck: design inputs | `alarms/engine.py` `on_breath` (warning limit, default 60) | `test_alarms.py::test_defaults_are_a_warning_at_60_and_a_stop_at_65`, `::test_warning_is_medium_priority_while_a_stop_limit_stands_behind_it`, `::test_waits_for_the_trigger_delay_before_alarming` | Certified gas near 8 % CO2 (about 60 mmHg): the warning sounds |
+| S2 | Stop alert at 65 mmHg, within ≤ 1 s | Deck: design inputs | `alarms/engine.py` `_check_stop_sample` (0.5 s on the live CO2), `_check_stop_breath` | `test_alarms.py::test_stop_limit_alarms_on_the_live_co2_within_a_second_not_after_two_breaths`, `::test_stop_alarm_fires_on_a_single_breath_and_resolves_on_a_breath_back_under_the_limit`, `::test_stop_limit_ignores_a_blip_shorter_than_its_delay`; end to end: `test_engine.py::test_co2_ramp_raises_the_warning_then_the_stop_alarm_which_breaks_the_silence`; browser: `test_web.py::test_simulator_alarms_and_themes` | Step the CO2 at the sample port and time the alarm |
+| S3 | A silenced warning never mutes the stop alarm | This repo | `alarms/engine.py` `set_condition` | `test_alarms.py::test_a_new_high_alarm_cancels_the_silence_of_the_warning` | Silence at 60, raise to 65, listen |
+| S4 | Automatic stop of CO2 delivery; emergency stop | Deck: design inputs | **Not implemented.** The valve is manual; the alarm tells the operator to turn it ([open question 33](open-questions.md)) | none | n/a until a valve is chosen |
+| S5 | Apnea is detected | This repo | `engine/monitor.py` `tick` | `test_engine.py::test_apnea_and_no_data_alarms` | Stop breathing through the circuit for 20 s |
+| S6 | Loss of the device, the data or a sensor is alarmed | This repo | `engine/monitor.py` `tick`, `processing/quality.py` | `test_engine.py::test_apnea_and_no_data_alarms`, `::test_unplugged_co2_sensor_raises_a_rail_alarm`, `::test_arduino_over_serial_connect_check_unplug_auto_reconnect` | Unplug each sensor and the USB cable |
+| S7 | The operator is told if the monitor app itself stops | This repo | `firmware/CO2Response/CO2Response.ino` `serviceWatchdog`; `engine/monitor.py` heartbeat | `test_engine.py::test_heartbeat_is_sent_to_firmware_with_a_watchdog_and_switched_off_on_disconnect` (the host side only) | **The firmware side is untested:** end the app's process and time the buzzer (target 3 s) |
+| S8 | Alarms keep running while a long recording is opened | This repo | `storage/library.py` `parse_steps`; `ui/settings/common.py` `parse_then` | `test_recording.py::test_a_long_recording_parses_in_steps_to_the_same_result`, `test_ui.py::test_a_long_recording_opens_in_steps_while_the_monitor_keeps_running` | Open an overnight file during a live session |
+| S9 | A noisy or clipped signal cannot raise or hide a CO2 alarm silently | This repo | `processing/denoise.py`; `engine/monitor.py` (`noisyBreaths`); the stop limit reads the CO2 signal directly | `test_denoise.py` (whole file), `test_engine.py::test_co2_ramp_raises_the_warning_then_the_stop_alarm_which_breaks_the_silence` | Kink the sample line; breathe hard enough to clip the pneumotach |
+| S10 | Rebreathing does not run on unnoticed | This repo ([open question 40](open-questions.md)) | `engine/monitor.py` `tick` (`testTime`) | `test_engine.py::test_guided_test_baseline_rebreathing_end_and_the_time_limit` | n/a |
+
+## Reliable measurements
+
+| # | Requirement | Source | Implemented in | Automated check | Bench test still needed |
+| --- | --- | --- | --- | --- | --- |
+| M1 | Minute-ventilation accuracy ±10 % | Deck: design inputs | `processing/breath.py` (VT, period), `processing/metrics.py`, syringe calibration in `processing/calibration.py` | `test_processing.py::test_pipeline_recovers_the_simulated_etco2_rr_and_vt`, `::test_measures_expired_volume_and_each_breaths_own_minute_ventilation`, `test_simulation_controls.py` (every situation: the monitor reads what the simulator set) | **3 L syringe at several stroke speeds and rates; a breathing simulator for MV.** This is the requirement's real test |
+| M2 | Gas conditions do not bias volumes unnoticed | This repo ([open questions 35, 37](open-questions.md)) | `processing/co2.py` `btps_factor`, `gas_factor`; `processing/pipeline.py` `flow_factor` | `test_processing.py::test_gas_condition_helpers`, `::test_btps_and_the_bag_gas_factor_scale_the_pneumotach_volumes` | Syringe strokes of the bag gas against strokes of air |
+| M3 | A leak or a drifted flow zero is noticed | Mentors: mask leaks are a concern | `processing/breath.py` (expired volume); `engine/monitor.py` (`leak`) | `test_engine.py::test_volume_mismatch_advisory_when_expired_volume_falls_short` | Open a leak at the mouthpiece |
+| M4 | Continuous EtCO2 recording | Deck: design inputs | `storage/recorder.py`, `storage/session_file.py` | `test_recording.py` (whole file); `::test_sample_script_reproduces_the_committed_sample_file` | A 10-minute recording on the real device with under 0.1 % dropped samples |
+| M5 | CO2 lines up with flow | Deck: software step 2 | `processing/pipeline.py` (CO2 delay); `processing/breath.py` (`co2_lag_sec`) | `test_processing.py::test_co2_delay_setting_lines_a_late_capnogram_up_with_the_flow` | Step the gas at the sample port and compare with the measured lag |
+| M6 | CO2 reading is correct in mmHg | This repo | `processing/calibration.py`, `processing/co2.py` | `test_processing.py` (calibration and unit tests) | Certified gases at 0 %, 5 % and about 8 % |
+| M7 | Erratic breaths do not distort the result | CHOP practice | `processing/denoise.py` (automatic); `engine/monitor.py` `set_breath_excluded` (by hand) | `test_denoise.py`; `test_engine.py::test_a_breath_can_be_taken_out_of_the_fit_by_hand_and_put_back`; `test_ui.py::test_test_keys_run_a_rebreathing_test_and_a_click_takes_a_breath_out`; `test_web.py::test_test_keys_trends_and_taking_a_breath_out_by_hand` | Compare with CHOP's hand selection on the same recording |
+| M8 | The calibration in use is recent and known | This repo | `engine/monitor.py` `stale_calibrations`; session header | `test_ui.py::test_manual_calibration_edit_preview_save`; the report lists calibration times (`test_report.py::test_report_lines_and_text`) | n/a |
+| M9 | The device and the app agree on every line | This repo | `protocol.py`, `firmware/CO2Response/line_format.h` | `test_protocol.py`, `firmware/test/test_line_format.cpp`, `python/tests/test_protocol.py` against `docs/protocol-fixtures.json` | n/a |
+
+## Clinically useful results
+
+| # | Requirement | Source | Implemented in | Automated check | Bench test still needed |
+| --- | --- | --- | --- | --- | --- |
+| R1 | Display ventilation against EtCO2 | Deck: design inputs | `ui/trend.py`, `web/charts.py` | `test_ui.py::test_test_keys_run_a_rebreathing_test_and_a_click_takes_a_breath_out`, `test_web.py::test_rebreathing_marker_splits_the_response_plot` | Clinician review of the screen ([open question 27](open-questions.md)) |
+| R2 | Calculate the CO2 response slope as CHOP reports it: baseline averaged, line fitted to rebreathing only, with r | Mentors (CHOP report) | `processing/metrics.py` `co2_response`, `test_window` | `test_processing.py::test_co2_response_fits_rebreathing_breaths_only_and_averages_the_baseline`, `::test_response_leaves_out_the_first_seconds_and_everything_after_the_end`, `::test_finds_the_latest_test_among_the_markers`; `test_engine.py::test_rebreathing_marker_sets_the_baseline_apart` | **Analyse a CHOP recording and compare with their slope** (needs a PowerLab export, [open question 32](open-questions.md)) |
+| R3 | The app and the offline analysis give the same answer | This repo | `storage/report.py`, `python/co2r/session.py` | `test_report.py::test_report_matches_the_analysis_loader`; `python/tests/test_cli_and_session.py::test_co2_response_splits_baseline_from_rebreathing` | n/a |
+| R4 | A report: plot, per-breath accepted/rejected table, PDF | Deck: software step 8 | `storage/report.py`, `storage/pdf.py` | `test_report.py` (whole file); `test_web.py::test_record_import_review_and_persistence` | Mentor review of the report's content |
+| R5 | EtCO2, MV and RR against time | Brainstorm: displays | `ui/trend.py`, `web/views.py` | `test_ui.py::test_trend_tab_plots_mv_and_rr_and_shows_both_co2_limits`, `test_web.py::test_test_keys_trends_and_taking_a_breath_out_by_hand` | n/a |
+| R6 | One system instead of several programs | Brainstorm | Acquisition, analysis, plot and report in one app | `test_engine.py::test_record_stop_import_review_export` | n/a |
+| R7 | The slope can be normalized for body size | Mentors: first meeting | `processing/metrics.py` `normalized_slopes`; subject size in the session header | `test_processing.py::test_slope_normalized_for_body_size`, `test_engine.py::test_subject_size_is_recorded_and_cleared_with_a_new_study_code`, `test_report.py::test_report_with_subject_size_and_breaths_excluded_by_hand` | Decide which normalization to report ([open question 29](open-questions.md)) |
+| R8 | The test is run the same way each time | This repo | `engine/monitor.py` `test_state`, `start_baseline`, `start_rebreathing`, `end_test` | `test_engine.py::test_guided_test_baseline_rebreathing_end_and_the_time_limit`, `test_processing.py::test_baseline_stability` | Run the protocol with a volunteer once approved |
+| R9 | SpO2 as a safety variable | Brainstorm; CHOP records SAT | **Not implemented** ([open question 34](open-questions.md)) | none | n/a |
+
+## Data handling and operation
+
+| # | Requirement | Source | Implemented in | Automated check | Bench test still needed |
+| --- | --- | --- | --- | --- | --- |
+| D1 | A crash loses at most a second of recording | This repo | `storage/recorder.py`, `storage/library.py` | `test_recording.py` (recovery tests) | End the app's process during a recording |
+| D2 | No patient identifiers | Lab policy | Study code only; subject size is cleared with a new study code | `test_engine.py::test_subject_size_is_recorded_and_cleared_with_a_new_study_code`; `test_recording.py::test_names_files_by_study_code_and_time_only` | n/a |
+| D3 | A setting that was not saved is never a silent surprise | This repo | `settings.py` `SettingsStore.save_error`; `engine/monitor.py` (`settingsSave`) | `test_engine.py::test_a_save_that_fails_is_shown_not_swallowed` | n/a |
+| D4 | Works on a network with no internet | This repo | `site/sw.js`; `scripts/build_site.py --vendor-pyodide`; the desktop app | `test_web.py::test_site_starts_without_internet_after_one_visit`, `::test_vendored_build_fetches_nothing_from_the_cdn` | Open the site on the lab's network |
+| D5 | Runs on a computer with no Python | This repo | `packaging/CO2-Response.spec`, `.github/workflows/release.yml` | The release workflow runs each built app (a report, then the simulator for 12 s) | Install on a lab computer |
+| D6 | Old recordings stay readable | This repo | `storage/session_file.py` (v1 to v4) | `test_recording.py::test_reads_v1_files_and_converts_them_to_v2`, `::test_re_exports_losslessly_and_a_range_as_a_subset` | n/a |
+| D7 | The two front ends behave the same | This repo | Shared engine; `forms.py` for the alarm, processing and test forms | `test_ui.py::test_settings_forms_come_from_the_shared_field_lists`; the same behaviours are tested in `test_ui.py` and `test_web.py` | n/a |
+
+## What the automated tests cannot show
+
+- That the sensors, the ADC and the firmware measure what the simulator pretends they do. Every "verified" above assumes the signal chain is right.
+- That the thresholds tuned on simulated breathing (the noise screen, the steadiness indicator, the 30 s left out, the 20 % volume mismatch) suit real subjects, children in particular.
+- That the alarm tones are audible in the room where the test is run.
+- Anything about the firmware's timing, its watchdog or its buzzer on a real board: the firmware is only compiled and its line format tested.

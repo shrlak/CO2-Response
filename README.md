@@ -14,15 +14,16 @@ CO2-Response is a research capnography and airflow monitor. An Arduino with a 16
 The monitor app turns those voltages into a bedside-style display:
 
 - sweeping waveforms and large numbers (EtCO2, FiCO2, respiratory rate, tidal volume, minute ventilation)
-- an EtCO2 trend and a ventilatory-response plot (minute ventilation against EtCO2)
-- visual and audible CO2 alarms
+- trends of EtCO2, MV and RR, and a ventilatory-response plot (each breath's minute ventilation against its EtCO2)
+- keys that run a rebreathing test (baseline, rebreathing, end) and a PDF report of the result
+- visual and audible CO2 alarms, with a warning limit and a stop limit
 
 It records everything to one CSV file per session for analysis afterwards. Noisy samples and noisy breaths are removed before any number, plot or alarm uses them.
 
 The app is written in Python. It runs in two places, from the same code:
 
-- **Desktop app** on Windows, macOS and Linux (`python -m co2response`)
-- **In the browser** from GitHub Pages: **<https://shrlak.github.io/CO2-Response/>**. Nothing to install; reading the Arduino needs desktop Chrome or Edge.
+- **Desktop app** on Windows, macOS and Linux (`python -m co2response`, or a standalone build that needs no Python)
+- **In the browser** from GitHub Pages: **<https://shrlak.github.io/CO2-Response/>**. Nothing to install; reading the Arduino needs desktop Chrome or Edge. After one visit it also works with no internet.
 
 > [!WARNING]
 > **Research use only.** This is not a medical device. It must never be the only CO2 monitor on a person or animal; keep a certified monitor as the primary alarm. The alarm here works only while the app is running, the computer is awake and a sound output is armed. See [docs/safety.md](docs/safety.md).
@@ -82,6 +83,8 @@ python -m co2response --sim
 | `python -m co2response --port COM3` | Connects to the Arduino on that port (`/dev/ttyACM0` on Linux, `/dev/cu.usbmodem…` on macOS). |
 | `python -m co2response --replay sample-data/synthetic_session.csv` | Replays a recorded session through the monitor. |
 | `python -m co2response --list-ports` | Lists serial ports and exits. |
+| `python -m co2response --report session.csv` | Writes the CO2 response report (`session.pdf`) and exits. `--out` names the file; `--skip 20` changes the seconds of rebreathing left out. |
+| `python -m co2response --sim --exit-after 12` | Runs for 12 s, prints what the monitor measured and closes: a check that an installation works. |
 | `python -m co2response --version` | Prints the version. |
 
 `pip install -e .` also adds a `co2response` command.
@@ -96,7 +99,7 @@ Press **Simulation** (the soft key next to Settings) to open the simulation pane
 
   | Group | Situations |
   | --- | --- |
-  | Breathing patterns | Normal at rest, hyperventilation, hypoventilation (crosses the 50 mmHg high alarm), rapid shallow, slow deep, light exercise, child (~6 years) |
+  | Breathing patterns | Normal at rest, hyperventilation, hypoventilation (crosses the 60 mmHg warning limit), rapid shallow, slow deep, light exercise, child (~6 years) |
   | Clinical | Bronchospasm / COPD ("shark fin" capnogram), raised inspired CO2, low cardiac output, apnea |
   | CO2 challenge | Rebreathing test, blunted response, brisk response. Each places a **Rebreathing** marker, so the ventilatory-response plot fits its line. |
   | Equipment problems | CO2 sensor, flow sensor or pneumotach unplugged; device stops sending; noisy signal; spikes + partial breaths; flow sensor drift |
@@ -127,6 +130,7 @@ Press **Simulation** (the soft key next to Settings) to open the simulation pane
 | Pneumotachograph and differential-pressure transducer | Analog output; used for breath detection, tidal volume and minute ventilation |
 | ADS1115 16-bit ADC breakout | I2C address 0x48 |
 | Arduino Uno (or Mega / Nano) | Plus a USB cable straight to the computer, not through a hub |
+| Piezo buzzer (optional) | On pin 8: the board sounds it if the monitor app stops running |
 | A computer | Windows, macOS or Linux with Python 3.10+, or desktop Chrome/Edge for the browser version |
 | Calibration gas and/or a 3 L syringe | For calibrating CO2 and the pneumotach |
 
@@ -159,21 +163,25 @@ Wiring, firmware upload and first checks are covered in detail, with a wiring di
    Each channel's card previews the new values live; nothing changes on the monitor until you press **Save**. Saved calibrations are written into every recording.
 7. **Set the barometric pressure** in **Settings > Display & units**. Pittsburgh is usually about 735 mmHg; use the lab's reading. It converts % CO2 to mmHg.
 8. **Check the alarms.** In **Settings > Alarms**:
-   - set the high (and optional low) EtCO2 limits
+   - set the warning limit (default 60 mmHg), the stop limit (default 65 mmHg) and the optional low limit
    - press **Arm audio** until the key turns green
    - press **Test alarm** to confirm you can see and hear both tones
-9. **Enter a study code** (never a name or other identifier) and press **Record**. The file is saved every second while recording.
-10. **During the session:**
-    - press **Mark event** (or the `M` key) to timestamp events; markers appear on the trend and in the file
-    - when the valve is turned to the rebreathing bag, press `M` and label the marker **Rebreathing**. Breaths before it are the baseline; the response line is fitted to the breaths after it (Read's method, as CHOP runs the test)
-    - watch the **Ventilatory response** tab for the slope, r and x-intercept
+9. **Enter a study code** (never a name or other identifier), and the subject's height and weight if the slope should be normalized for body size. Press **Record**. The file is saved every second while recording.
+10. **Run the test** with the three keys under the trend tabs (Read's method, as CHOP runs it):
+    - **Start baseline** once the subject is breathing room air through the mouthpiece. The line beside the keys says when breathing is steady.
+    - **Start rebreathing** as the valve is turned to the bag. A timer runs against the time limit.
+    - at the **warning** (amber) the end is near; at **STOP TEST** (red) turn the valve back to room air
+    - **End test** as the valve is turned back
+    - watch the **Ventilatory response** tab for the slope, r and x-intercept. Click a point to take an erratic breath out of the fit.
+    - press **Mark event** (or the `M` key) to timestamp anything else; markers appear on the trend and in the file. A marker you label **Rebreathing** yourself works like the key.
     - if an alarm sounds, **Silence** mutes it for 120 s; **Acknowledge** clears a resolved alarm
 11. **Stop rec.** The session is listed in **Settings > Data & recordings**.
-12. **Review and export.** **Open** the session to see its summary and zoomable charts, then export:
+12. **Review and export.** **Open** the session to see its summary (with the CO2 response) and zoomable charts, then export:
+    - the **CO2 response report** as a PDF: results, plots, and a table of every breath
     - the whole file
     - the per-breath table
     - the alarms/events table
-    - any of these for a zoomed time range
+    - any of the CSVs for a zoomed time range
 
     Analyse it with `analysis/load_session.py` ([§5.10](#510-review-export-and-analysis)).
 
@@ -193,17 +201,27 @@ If the USB cable comes out, the device-disconnected alarm sounds. Plugging the s
   - blue: advisories
 
   Alarms latch until you press **Acknowledge** or **Clear**. A high alarm also flashes the window title and taskbar entry.
-- **Waveforms** sweep left to right like a bedside monitor: CO2 (yellow, with the high limit dashed), flow sensor (cyan) and pneumotach flow (green). The graphs take all the space the numbers and keys do not, with thick traces and large scale labels.
+- **Waveforms** sweep left to right like a bedside monitor: CO2 (yellow, with the warning limit dashed), flow sensor (cyan) and pneumotach flow (green). The graphs take all the space the numbers and keys do not, with thick traces and large scale labels.
 - **Enlarge a graph:** the **⤢** button beside each graph's name (or a double-click on a waveform in the desktop app) makes that graph fill the monitor. Press it again, or `Esc`, to go back. The waveform carries on without losing what is on screen.
 - **Numbers:**
-  - EtCO2 with its limits beside it, RR, FiCO2, live and peak flow, VT and MV
+  - EtCO2 with its limits beside it (warning / stop, and low), RR, FiCO2, live and peak flow, VT and MV
+  - under VT, the expired volume of the same breath; MV is the average over the last 60 s
   - a channel with no valid data for 2 s shows `---`
   - when the last breath was left out as noisy, the EtCO2 tile says so
+- **Test keys** (under the trend tabs): **Start baseline**, **Start rebreathing** and **End test**, and beside them where the test stands: `BASELINE 0:45 · steady (EtCO2 ±0.4 mmHg, MV ±6 % in the last minute)`, `REBREATHING 2:31 of 5:00`, `TEST ENDED after 3:40 of rebreathing`. It adds `NOT RECORDING` if nothing is being recorded.
 - **Trend tab:**
-  - one EtCO2 point per clean breath over 15 min, 30 min, 2 h or the whole session
-  - the continuous CO2 trace behind the points, the alarm-limit bands, alarm marks and your event markers
+  - one point per clean breath over 15 min, 30 min, 2 h or the whole session: EtCO2, MV or RR (the drop-down beside Window)
+  - for EtCO2: the continuous CO2 trace behind the points, the warning limit (dashed) and stop limit (solid) with their bands
+  - alarm marks and your event markers
   - the caption counts breaths left out as noisy
-- **Ventilatory response tab:** MV against EtCO2 for clean breaths. Once a marker labelled **Rebreathing** is placed, breaths before it are drawn as hollow rings and summarized as the baseline (mean EtCO2 and MV), and the least-squares line is fitted to the rebreathing breaths only, the way CHOP reports the test. It shows the slope (L/min per mmHg), r, the x-intercept ("x-int", the EtCO2 where the line reaches MV = 0) and n, then the baseline mean EtCO2 and MV. Without the marker, every breath is fitted.
+- **Ventilatory response tab:** each clean breath's own minute ventilation (VT × 60 / its length) against its EtCO2. Once rebreathing is marked:
+  - baseline breaths are hollow rings, summarized as the baseline (mean EtCO2 and MV)
+  - the least-squares line is fitted to the rebreathing breaths only, the way CHOP reports the test
+  - breaths in the first 30 s of rebreathing and after the end of the test are faint rings and are not fitted
+  - **click a point** to take a breath out of the fit by hand (a cross); click the cross to put it back
+  - the caption shows the slope (L/min per mmHg), r, the x-intercept ("x-int", the EtCO2 where the line reaches MV = 0), n, the baseline means, and how many breaths are outside the fit or excluded
+
+  Without a marker, every breath is fitted.
 - **Soft keys:** Silence (120 s), Arm audio, Mark event (`M`), Record, Freeze, Alarm limits, Simulation ([the simulation panel](#simulation-panel)), Settings.
 - **Settings** has these tabs: Connection, Calibration, Alarms, Display & units, Data & recordings, Diagnostics. Alarms keep running while you are in Settings.
 
@@ -259,7 +277,8 @@ The sketch reads the three channels in single-shot mode on a fixed 10 ms schedul
 
 - **Sequence numbers:** each scheduled slot gets a sequence number. If the Arduino falls behind, it skips the slot, still advances the sequence number, and reports `E,OVERRUN`, so the app can count dropped samples exactly.
 - **ADC errors:** if the ADC does not answer on I2C, the firmware reports `E,ADC_NOT_FOUND` with an I2C scan, keeps retrying, and does not stream until the ADC answers.
-- **Configuration:** pins, address, gain and baud rate are in `config.h`.
+- **Host watchdog:** the monitor app sends `HB` once a second. If the heartbeats stop for 3 s (the app closed or crashed, the computer slept), the board sounds a piezo buzzer on pin 8 and blinks its LED until they return, because nothing on the computer is checking the CO2 alarms any more. It arms on the first heartbeat, so older software never triggers it.
+- **Configuration:** pins, address, gain, baud rate, the watchdog timeout and the buzzer pin are in `config.h`.
 - **Builds:** the same code builds for Uno, Mega and Nano.
 
 ### 5.4 Serial protocol ([docs/protocol.md](docs/protocol.md))
@@ -267,7 +286,7 @@ The sketch reads the three channels in single-shot mode on a fixed 10 ms schedul
 The device sends plain ASCII lines at 115200 baud:
 
 ```
-I,FW,1.0.0,ADC,ADS1115,CH,3,RATE,100,BAUD,115200,ADDR,0x48,FSR,6.144    ← info
+I,FW,1.1.0,ADC,ADS1115,CH,3,RATE,100,BAUD,115200,ADDR,0x48,FSR,6.144,WD,3000   ← info
 D,1042,10420,2.6316,2.5000,2.5000*5C                                     ← data: seq, device ms, volts…, checksum
 E,ADC_NOT_FOUND                                                          ← error
 A,START                                                                  ← acknowledgement
@@ -275,7 +294,7 @@ A,START                                                                  ← ack
 
 The checksum is the XOR of the bytes between `D` and `*`. A line with a bad checksum, or one that fails to parse, is dropped and counted. A gap in `seq` (16-bit, wraps) counts as dropped samples.
 
-The host sends `INFO`, `START`, `STOP` and `RATE <hz>`. Opening the port resets an Uno, so the app repeats `INFO` and `START` if no info line arrives within 2.5 s. The firmware's line formatter and the app's parser are tested against the same example lines, so they stay byte-for-byte compatible.
+The host sends `INFO`, `START`, `STOP`, `RATE <hz>` and, to firmware that says `WD` in its info line, the heartbeat `HB` (`HB OFF` before a deliberate disconnect). Opening the port resets an Uno, so the app repeats `INFO` and `START` if no info line arrives within 2.5 s. The firmware's line formatter and the app's parser are tested against the same example lines, so they stay byte-for-byte compatible.
 
 ### 5.5 The monitor engine (`co2response/engine/monitor.py`)
 
@@ -290,7 +309,7 @@ source → line parser → sequence tracker → processing pipeline → breaths 
 The window (or browser page) drives it on two timers:
 
 - `poll()` every 20 ms reads whatever the source has, and processes every sample and every finished breath.
-- `tick()` every 250 ms runs the time-based checks: no data, apnea, rails, dropped samples, checksum errors, noisy signal, audio. It also updates the alarm sounds and saves the recording.
+- `tick()` every 250 ms runs the time-based checks: no data, apnea, rails, dropped samples, checksum errors, noisy signal, the rebreathing time limit, volume mismatch, calibration age, audio. It also updates the alarm sounds, sends the device its heartbeat and saves the recording.
 
 The screen reads a `snapshot()` and draws it. Alarms never depend on drawing. The engine takes its clock as a parameter, so tests run hours of simulated data in seconds.
 
@@ -300,7 +319,7 @@ The screen reads a `snapshot()` and draws it. Alarms never depend on drawing. Th
 | --- | --- |
 | Serial | pyserial on the desktop; Web Serial in the browser |
 | Simulator | A software Arduino that emits real protocol lines from a physiological model |
-| Replay | Plays a recorded session's raw volts back through the live processing and alarms |
+| Replay | Plays a recorded session's raw volts back through the live processing and alarms, with its markers, so a test is split and fitted as it was live |
 | Bridge | A WebSocket client for `bridge/serial_ws_bridge.py` running on another computer |
 
 When a serial device disappears, the engine raises **DEVICE DISCONNECTED** and keeps scanning for the same USB device. When it returns, the engine reconnects and resumes into the same recording.
@@ -316,6 +335,8 @@ Every sample goes through these steps, in order:
 5. **Unit conversion:**
    - CO2 % to mmHg: P<sub>CO2</sub> = F<sub>CO2</sub>/100 · (P<sub>B</sub> − P<sub>H2O</sub>), where P<sub>B</sub> is the barometric pressure set in Display & units. The optional BTPS water-vapor correction subtracts 47 mmHg.
    - Pneumotach pressure to flow: flow = k1·ΔP + k2·ΔP·|ΔP| (k1 from the syringe calibration).
+   - Optional gas conditions for the pneumotach flow, both off by default ([docs/calibration.md](docs/calibration.md#gas-conditions-and-timing-settings--display--units)): volumes at body conditions (BTPS, about ×1.09 at 22 °C), and a bag-gas factor between the Rebreathing and End-of-test markers (a pneumotach calibrated in air over-reads in an oxygen-rich bag).
+   - **CO2 delay:** if a CO2 delay is set (a sidestream analyser's sample line), the flow signals are held back by that much, so each breath's CO2 lines up with its flow.
 6. **Breath detection** ([§5.8](#58-breath-detection-and-the-numbers)) and the **breath screen** ([§5.7](#57-noise-removal)).
 
 ### 5.7 Noise removal
@@ -338,7 +359,7 @@ The breath screen gives each breath a quality:
 | --- | --- |
 | `ok` | Used everywhere |
 | `noisy` | Signal-to-noise ratio below 8. The noise is measured during that breath, before filtering, from sample-to-sample second differences (median \|Δ²\|/1.65, which ignores the slow breathing itself). It is compared with the breath's CO2 amplitude, or with its peak flow. |
-| `artifact` | A partial breath with no alveolar plateau (less than 10 % of expiration within 90 % of EtCO2: a shallow breath, cough or kinked sample line); an impossible EtCO2 (outside −2 to 120 mmHg); or no inspiration (VT under 1 mL) |
+| `artifact` | A partial breath with no alveolar plateau (less than 10 % of expiration within 90 % of EtCO2: a shallow breath, cough or kinked sample line); an impossible EtCO2 (outside −2 to 120 mmHg); no inspiration (VT under 1 mL); or inspiratory flow beyond the sensor's range for more than 20 ms (the volume under-reads) |
 | `outlier` | An isolated EtCO2 jump. It is more than 5 mmHg, and 3 robust SDs of the recent breath-to-breath change, away from both the breath before and the breath after, in the same direction. A real step change (the start of rebreathing) is kept, because the next breath stays at the new level. Outliers are known one breath later, so they are recorded as a `BREATH_REJECTED` event. |
 
 Breaths that are not `ok`:
@@ -361,6 +382,8 @@ Both layers can be switched off in **Settings > Display & units** (**Remove spik
 
 If there is no valid flow signal, detection falls back to the capnogram: a breath ends when CO2 drops from above half the last EtCO2 to below 30 % of it.
 
+A flow dropout shorter than 0.5 s is bridged with the last valid value instead of restarting detection. The usual cause is a hard breath taking the sensor past its range (the sample sits at the ADC rail). Without the bridge every such breath would be lost, and the monitor would call it apnea. A breath whose inspiration was bridged is then left out as an artifact, because its volume under-reads.
+
 **Per-breath values:**
 
 | Value | How it is computed |
@@ -368,8 +391,11 @@ If there is no valid flow signal, detection falls back to the capnogram: a breat
 | EtCO2 | Peak CO2 during expiration |
 | FiCO2 | Minimum CO2 during inspiration |
 | VT | Inspiratory flow integrated over the inspiration (trapezoidal rule, device clock) |
+| Expired volume (VTe) | Outward flow integrated over the breath. It should match VT; a difference means a leak or a drifted flow zero |
+| Period, and the breath's own MV | The breath's length, and VT × 60 / period |
 | Peak inspiratory flow | Maximum flow during inspiration |
-| Plateau, level, noise | Used by the breath screen |
+| CO2 lag | Time from the start of expiration to the capnogram's upstroke. Beyond 0.1 to 0.3 s of dead-space washout, it is the CO2 sensor's delay |
+| Plateau, level, noise, clipped time | Used by the breath screen |
 
 **Numbers shown large** (from clean breaths only):
 
@@ -378,16 +404,35 @@ If there is no valid flow signal, detection falls back to the capnogram: a breat
 | EtCO2 | Median of the last 3 breaths |
 | RR | 60 / mean breath period of the last 4 breaths |
 | MV | ΣVT / Σbreath period over the last 60 s, in L/min. This is correct from the first minute, rather than under-reading until 60 s have passed. |
-| Ventilatory response | Ordinary least-squares fit of MV against EtCO2 over the trend window, on the breaths after the **Rebreathing** marker (all breaths if there is none); slope in L/min per mmHg, r, x-intercept and n, plus the baseline mean EtCO2 and MV before the marker (`processing/metrics.py` → `co2_response`) |
+| Ventilatory response | Ordinary least-squares fit of each breath's own MV against its EtCO2 over the trend window (`processing/metrics.py` → `co2_response`); slope in L/min per mmHg, r, x-intercept and n, plus the baseline means |
+
+**Which breaths the response uses.** The 60 s average MV shown on the monitor lags the EtCO2 it would be paired with, and for the first minute of rebreathing it still contains baseline breaths. So the fit uses each breath's own MV, as CHOP's breath-by-breath analysis does. From the markers (`test_window`):
+
+| Breaths | What happens to them |
+| --- | --- |
+| Before the **Baseline** marker (or the end of an earlier test) | Not used |
+| From there to the **Rebreathing** marker | The baseline: averaged, not fitted |
+| The first 30 s of rebreathing (**Leave out the start of rebreathing** in Data & recordings) | Drawn faintly, not fitted: the coached deep breaths, and the bag, lungs and blood coming to equilibrium |
+| The rest of rebreathing | Fitted |
+| From the **End of test** marker on | Drawn faintly, not fitted: recovery |
+| Rejected by the noise screen | Not drawn, not fitted |
+| Excluded by hand (a click on the plot) | Drawn as crosses, not fitted; written to the recording as `BREATH_EXCLUDED` |
+
+With several tests in one session, the latest is shown. With height and weight entered, the report also gives the slope per kg and per m² of body surface (Mosteller).
 
 ### 5.9 Alarms (`co2response/alarms/`)
 
 **Physiological alarms:**
 
-- **High EtCO2** (high priority) and **low EtCO2** (medium; off by default). Both use clean breaths only.
-- They trigger after 2 consecutive breaths beyond the limit. With the alarm source set to live CO2 instead, they trigger after 5 continuous seconds.
+- **Warning limit: high EtCO2** (default 60 mmHg) and **low EtCO2** (off by default). Both use clean breaths only.
+  - They trigger after 2 consecutive breaths beyond the limit. With the alarm source set to live CO2 instead, they trigger after 5 continuous seconds.
+  - The warning is medium priority while a stop limit is set, and high priority on its own. Low EtCO2 is medium.
+- **Stop limit** (default 65 mmHg; high priority, "STOP TEST: … turn the valve to room air"). It triggers when CO2 stays at or above it for half a second, checked on every sample, or when a single breath ends above it. It does not wait for a second breath, and it does not depend on the breath screen.
 - They clear only once EtCO2 is 2 mmHg back inside the limit (hysteresis).
 - **Apnea** (high): no breath for 20 s while the signal is present.
+- **Rebreathing time limit** (medium): 5 minutes (adjustable) since the Rebreathing marker without an end marker.
+
+The defaults follow the team's design (warn near 60, stop at 65) and CHOP's practice of ending the test at 60 to 65 mmHg. Confirm them with the clinicians ([open question 9](docs/open-questions.md)). The software only alarms: the operator turns the valve.
 
 **Technical alarms** (always on):
 
@@ -401,12 +446,16 @@ If there is no valid flow signal, detection falls back to the capnogram: a breat
 | Dropped samples above 0.1 % | advisory |
 | Corrupt lines in the last minute | advisory |
 | Audible alarm not armed | advisory |
+| Volume mismatch: expired volume more than 20 % from inspired over 5 breaths (a leak, or a drifted pneumotach zero) | advisory |
+| Calibration older than 24 h, or never done, on a real device | advisory |
+| Settings or calibration could not be saved | advisory |
 
 **Behaviour:**
 
 - High and medium alarms **latch**: when the condition clears, they stay on screen marked resolved until acknowledged.
-- **Silence** mutes the sound for up to 120 s, then re-arms by itself.
-- The tones follow the IEC 60601-1-8 pattern: high is 10 pulses, medium is 3 pulses.
+- **Silence** mutes the sound for up to 120 s, then re-arms by itself. A new high-priority alarm cancels a silence, so silencing the warning never mutes the stop alarm.
+- The tones follow the IEC 60601-1-8 pattern: high is 10 pulses, medium is 3 pulses. The warning and the stop alarm therefore sound different.
+- With firmware 1.1 and a buzzer on the board, the Arduino itself sounds if the app's heartbeat stops ([§5.3](#53-firmware-firmwareco2response)).
 - On the desktop, the app keeps the computer from sleeping while a device is connected. In the browser it holds a screen wake lock.
 - Every alarm start, acknowledge, silence and resolve is written to the recording.
 
@@ -414,26 +463,29 @@ If there is no valid flow signal, detection falls back to the capnogram: a breat
 
 **Recording.** **Record** writes one CSV per session, `co2r_<study code>_<YYYYMMDD-HHMMSS>.csv`, every second, so a crash loses at most a second. An unfinished file is listed as **Recovered** next time. The file contains:
 
-- `#` metadata lines: the study code, start time, firmware, sample rate, and the calibration, processing and alarm settings in use
-- then one row per sample, with 21 columns:
+- `#` metadata lines: the study code, start time, firmware, sample rate, the calibration, processing and alarm settings in use, and the test settings (seconds left out of the fit; the subject's height, weight and age if entered)
+- then one row per sample, with 23 columns:
   - time on both clocks, device ms, sequence number
   - raw volts `v0`–`v2`
   - the cleaned, calibrated values
-  - on the sample where a breath ended: that breath's EtCO2, FiCO2, RR, VT, MV, peak flow and `breath_quality`
-  - any alarms, markers, connection changes and calibration changes, in the `event` column
+  - on the sample where a breath ended: that breath's EtCO2, FiCO2, RR, VT, MV (60 s average), peak flow, its own length (`period_s`), its expired volume (`vte_ml`) and `breath_quality`
+  - any alarms, markers, breaths excluded by hand, connection changes and calibration changes, in the `event` column
 
-Every row has the same columns, so it opens directly in Excel, pandas, MATLAB or R. The full format (v3) is in [docs/data-format.md](docs/data-format.md).
+Every row has the same columns, so it opens directly in Excel, pandas, MATLAB or R. The full format (v4) is in [docs/data-format.md](docs/data-format.md). Files from earlier versions still open.
 
 **Review** (Settings > Data & recordings > Open):
 
-- a summary: length, breaths and how many were left out, mean/min/max EtCO2, mean RR/VT/MV, alarms, markers, sample rate, dropped samples
+- a summary: length, breaths and how many were left out, mean/min/max EtCO2, mean RR/VT/MV, alarms, markers, sample rate, dropped samples, and the CO2 response (slope, r, x-intercept, baseline)
 - zoomable EtCO2/RR, VT/MV and waveform charts (drag to zoom all three)
 - the event list; click an event to jump to it
+
+A long recording is read in small steps, so the monitor keeps polling the device and checking alarms while it opens (an hour of recording, about 39 MB, takes about a second to read on a laptop).
 
 **Export:**
 
 - the whole session, the per-breath table (with a `quality` column) or the alarms/events table
 - any of these for the whole session or just the zoomed range
+- the **CO2 response report** as a PDF: the results, the response plot, EtCO2 and MV against time, how it was measured, and a table of every breath saying how it was used. The desktop app, the browser and `python -m co2response --report file.csv` make the same report, with a small PDF writer inside the app (nothing to install).
 
 **Analysis in Python:**
 
@@ -443,15 +495,16 @@ from load_session import load_session
 
 s = load_session("co2r_STUDY-01_20261105-010203.csv")
 s.samples       # one row per sample: cleaned values (blanked inside noisy breaths) + raw volts + breath_quality
-s.breaths       # one row per CLEAN breath: etco2_mmHg, rr_bpm, vt_ml, mv_lpm, ...
+s.breaths       # one row per CLEAN breath: etco2_mmHg, rr_bpm, vt_ml, mv_lpm, mv_breath_lpm, period_s, vte_ml, ...
 s.breaths_all   # every breath, with breath_quality
 s.events        # alarms, markers, connections
 
 from co2r.session import co2_response
-co2_response(s)   # baseline before the "Rebreathing" marker, then slope, r, x-intercept of the rebreathing breaths
+co2_response(s)   # baseline, then slope, r, x-intercept of the rebreathing breaths: the same rules as the live monitor
+co2_response(s, skip_s=20, exclude=[41, 42])   # another skip; leave breaths 41 and 42 out
 ```
 
-From the command line, `python analysis/load_session.py session.csv --breaths breaths.csv` prints a summary (including the CO2 response) and writes the clean breath table. `--all-breaths` keeps the rejected breaths, marked.
+From the command line, `python analysis/load_session.py session.csv --breaths breaths.csv` prints a summary (including the CO2 response) and writes the clean breath table. `--all-breaths` keeps the rejected breaths, marked; `--skip` and `--exclude` change the fit. A test checks that this loader and the app's report give the same slope for the sample session.
 
 ### 5.11 Calibration ([docs/calibration.md](docs/calibration.md))
 
@@ -468,6 +521,8 @@ From the command line, `python analysis/load_session.py session.csv --breaths br
 
 Each channel's card previews the new calibration live; nothing changes on the monitor until you press **Save**. Saved calibrations persist between runs, are written into every recording, and can be exported and imported as JSON.
 
+While a real device is connected, a notice names any channel calibrated more than 24 hours ago, or never. Gas conditions (BTPS volumes, the bag-gas factor) and the CO2 delay are in **Settings > Display & units**; the CO2 delay field shows the lag the monitor measures, to help set it.
+
 The starting values come from `co2response/config/channels.json`, which can be edited without touching code.
 
 ### 5.12 Simulator (`co2response/sim/`)
@@ -476,7 +531,7 @@ A physiological model (`physiology.py`) generates the CO2 and flow waveforms. Ev
 
 `controls.py` lists the panel's sliders, switches and situations ([§1](#simulation-panel)); the desktop window and the browser page both build their panel from it. The old single-choice scenarios (`normal`, `co2Ramp`, `apnea`, `co2Disconnect`, `noData`, `noisy`, `artifacts`) still work, and a test runs every situation through the real engine and checks the monitor reads what was set.
 
-It is seeded, so the tests and the sample session are reproducible. `sample-data/synthetic_session.csv` is made by `scripts/make_sample_session.py`, which drives the real engine on a fake clock: 60 s of spikes and partial breaths, then a 12 mmHg/min CO2 ramp with a "CO2 rebreathing started" marker. A test checks the script still reproduces the file byte for byte.
+It is seeded, so the tests and the sample session are reproducible. `sample-data/synthetic_session.csv` is made by `scripts/make_sample_session.py`, which drives the real engine on a fake clock through a whole rebreathing test (180 s): 60 s of quiet breathing with spikes and partial breaths and a **Baseline** marker at 20 s, then a "CO2 rebreathing started" marker and an 18 mmHg/min CO2 rise through the 60 mmHg warning to the 65 mmHg stop limit, then **End of test** and 10 s of recovery. A test checks the script still reproduces the file byte for byte.
 
 ---
 
@@ -492,13 +547,18 @@ It is seeded, so the tests and the sample session are reproducible. `sample-data
 | Alarm sound | sounddevice (PortAudio) | Web Audio | n/a |
 | Sessions stored in | `Documents/CO2-Response/sessions` | the browser's storage (IndexedDB); export to keep a copy | n/a |
 | Works in | Windows, macOS, Linux | Chrome/Edge for hardware; any modern browser for the simulator, replay and review | any OS |
+| Without internet | yes | yes, after one visit online (or from a build with the runtime bundled) | yes |
+| In the background | keeps running | a background tab is slowed by the browser; keep the tab in front | n/a |
 
-Both front ends use the same `co2response` engine, processing, alarms and session-file code; only the drawing and the platform adapters differ.
+Both front ends use the same `co2response` engine, processing, alarms, session-file and report code; only the drawing and the platform adapters differ. The alarm, signal-processing and test/subject forms are described once, in `co2response/forms.py`, and each front end builds its form from that list (`ui/spec_form.py`, `web/spec_form.py`), so a setting is added, worded and limited in one place. The calibration and connection screens are still written separately for each front end.
 
-**How the browser version works.** `site/index.html` is the only JavaScript:
+**The standalone desktop app.** `.github/workflows/release.yml` builds the desktop app with PyInstaller for Windows, macOS and Linux (`packaging/CO2-Response.spec`) and checks that each built program writes a report and runs the simulator. Pushing a tag like `v0.4.0` attaches the three apps to a GitHub Release; a lab computer then needs no Python. To build one locally: `pip install pyinstaller` and `pyinstaller --noconfirm packaging/CO2-Response.spec`.
 
-1. It loads Pyodide (CPython compiled to WebAssembly) and numpy from the jsDelivr CDN.
+**How the browser version works.** `site/index.html` and the small service worker `site/sw.js` are the only JavaScript:
+
+1. `index.html` loads Pyodide (CPython compiled to WebAssembly) and numpy from the jsDelivr CDN.
 2. It unpacks `co2response.zip` (this package without the Qt window) and runs `co2response.web.app.main()`.
+3. `sw.js` stores the site and the Python runtime in the browser on the first visit. After that the monitor starts with no internet at all, for example on a lab or hospital network that blocks it. The site's own files are still fetched fresh whenever there is a network, so a new deploy arrives at once.
 
 From there everything is Python: the page's HTML is built in `co2response/web/`, and browser APIs are called through Pyodide's `js` module.
 
@@ -515,7 +575,8 @@ co2response/                    the monitor (python -m co2response)
   __main__.py                   command-line options
   protocol.py                   line format, checksum, parser, line splitter, sequence/drop tracking
   channels.py, config/          per-channel calibration model; defaults in config/channels.json
-  settings.py                   all settings (display, processing, alarms), saved as JSON
+  settings.py                   all settings (display, processing, alarms, test and subject), saved as JSON
+  forms.py                      the alarm, processing and test forms, described once for both front ends
   paths.py                      where settings and sessions are stored (CO2R_HOME overrides)
   keep_awake.py                 keeps the computer awake while a device is connected
   jsfmt.py                      number/time formatting that keeps session files stable across versions
@@ -525,9 +586,9 @@ co2response/                    the monitor (python -m co2response)
     denoise.py                  Hampel spike filter, noise meter, breath screen (noise removal)
     filter.py                   2nd-order Butterworth low-pass
     calibration.py              apply/invert calibrations, fits, syringe integration, pneumotach flow model
-    co2.py                      % ↔ mmHg (barometric pressure, water vapor)
-    breath.py                   breath detector and per-breath values
-    metrics.py                  EtCO2 median, RR, MV, least-squares fit
+    co2.py                      % ↔ mmHg (barometric pressure, water vapor); BTPS and gas-viscosity factors
+    breath.py                   breath detector and per-breath values (VT, expired volume, period, CO2 lag)
+    metrics.py                  EtCO2 median, RR, MV, least-squares fit; the test's phases and the CO2 response
     quality.py                  ADC rail detection
   alarms/
     engine.py                   alarm state machine: limits, delays, hysteresis, latching, silence
@@ -535,6 +596,8 @@ co2response/                    the monitor (python -m co2response)
   sources/                      serial (pyserial), simulator, CSV replay, WebSocket bridge client
   storage/
     session_file.py             session CSV format: writer cells, parser, summaries, exports
+    report.py                   the test report: the response of a recorded session, its numbers and its PDF
+    pdf.py                      a small PDF writer (text, lines, circles), so the report needs nothing installed
     recorder.py                 writes the session as it is recorded
     library.py                  the sessions folder: list, import, recover, delete
   engine/
@@ -543,9 +606,10 @@ co2response/                    the monitor (python -m co2response)
   ui/                           desktop window (PySide6): monitor, settings pages, session review
   web/                          browser front end (Pyodide): DOM helpers, views, Web Serial/Audio, storage
   fonts/                        Barlow Semi Condensed (SIL OFL)
-site/                           index.html (Pyodide loader) and styles.css for the Pages build
+site/                           index.html (Pyodide loader), sw.js (offline copy) and styles.css for the Pages build
+packaging/                      PyInstaller recipe for the standalone desktop app
 scripts/
-  build_site.py                 builds the Pages site into dist/site
+  build_site.py                 builds the Pages site into dist/site (--vendor-pyodide bundles the Python runtime)
   make_sample_session.py        regenerates sample-data/synthetic_session.csv
 firmware/                       PlatformIO project; the sketch in CO2Response/ also opens in Arduino IDE
 bridge/                         serial → WebSocket relay
@@ -553,10 +617,10 @@ analysis/                       pandas loader for session files
 sample-data/                    a synthetic recorded session
 tests/                          pytest suites (see Development)
 docs/                           protocol, wiring, calibration, safety, data format, UI mockup
-.github/workflows/              ci.yml (tests on every PR), deploy.yml (GitHub Pages)
+.github/workflows/              ci.yml (tests on every PR), deploy.yml (GitHub Pages), release.yml (standalone apps)
 ```
 
-Everything apart from `firmware/` (C++) and the small Pyodide loader in `site/index.html` is Python.
+Everything apart from `firmware/` (C++), the small Pyodide loader in `site/index.html` and the service worker `site/sw.js` is Python.
 
 ### 6.3 Where things are stored
 
@@ -606,7 +670,9 @@ python -m http.server 8000 --directory dist/site
 
 Then open <http://localhost:8000>. Web Serial works on `localhost` as it does on the https site.
 
-The built site is about 2 MB: the page, the fonts, the sample session and `co2response.zip`. Pyodide itself comes from the jsDelivr CDN.
+The built site is about 2 MB: the page, the fonts, the sample session and `co2response.zip`. Pyodide itself comes from the jsDelivr CDN, and the service worker keeps a copy in the browser after the first visit.
+
+**A site for a network with no internet.** `python scripts/build_site.py dist/site --vendor-pyodide` downloads the Python runtime into the site (about 19 MB in all). Nothing is then fetched from outside the site, even on the first visit, so it can be served from a computer on an isolated network (for example `python -m http.server 8000 --directory dist/site`).
 
 ---
 
@@ -624,6 +690,12 @@ pytest
 ruff check .
 ```
 
+```bash
+mypy
+```
+
+`mypy` type-checks the code with no user interface in it: signal processing, alarm rules, file format and report, protocol, settings and forms, simulator (`[tool.mypy]` in `pyproject.toml`). `pytest --cov` adds a coverage table; CI fails under 80 % (it is about 89 % now, not counting the browser front end, which is tested in Chromium instead).
+
 `pytest` runs the whole suite:
 
 | Tests | What they cover |
@@ -636,6 +708,7 @@ ruff check .
 | `test_alarms.py` | alarm state machine |
 | `test_engine.py` | the full data path on a fake clock, including a pseudo-terminal posing as the Arduino (Linux/macOS) |
 | `test_recording.py` | session file, recovery, import/export; the sample file reproduces byte for byte |
+| `test_report.py` | the test report: the response of a recorded session, agreement with the pandas loader, the PDF, the `--report` command |
 | `test_link_test.py` | hardware check |
 | `test_python_daq.py` | the monitor fed by a real `co2r-daq serve` process (simulated DAQ), and a DAQ that cannot be opened |
 | `test_ui.py` | the desktop window, headless (`QT_QPA_PLATFORM=offscreen` if there is no display) |
@@ -655,7 +728,9 @@ It needs internet access to download Pyodide. It covers:
 
 - boot, the simulator and alarms
 - a fake Arduino over Web Serial, including unplug and reconnect
-- recording, import, review and storage that survives a reload
+- recording, import, review, the PDF report and storage that survives a reload
+- the test keys, the MV and RR trends, and taking a breath out of the fit with a click
+- starting with no internet after one visit; the build with the runtime bundled
 - calibration edits
 - the browser build fed by a `co2r-daq serve` process (needs `pip install -e python`; skipped otherwise)
 
@@ -679,11 +754,15 @@ python -m pytest python/tests
 
 | Job | What it runs |
 | --- | --- |
-| app | lint and the full suite on Linux, Windows and macOS |
+| app | lint, type check and the full suite with coverage on Linux, Windows and macOS |
 | web | the browser tests in Chromium |
 | python, python-oldest | the `co2r` acquisition package on Python 3.9–3.13 (Linux, Windows, macOS) and with its oldest supported dependencies; its command line and the analysis loader |
 | bridge | a smoke test of `bridge/serial_ws_bridge.py` |
 | firmware | builds for Uno, Mega and Nano, plus the line-format test |
+
+`release.yml` (the standalone apps) also runs on pull requests that touch `packaging/`, as a check that the apps still build and run.
+
+Which test covers which design input is in [docs/requirements-traceability.md](docs/requirements-traceability.md).
 
 ---
 
@@ -696,10 +775,12 @@ These are placeholders until the [open questions](docs/open-questions.md) are an
 - **Pneumotach transducer:** 2.5 V = 0 Pa, 200 Pa per volt; flow = k1·ΔP with k1 = 0.2 L/min/Pa until a syringe calibration is done.
 - **ADC:** ADS1115 at I2C address 0x48, PGA ±6.144 V, 5 V supply (rails at 0 and 5 V).
 - **Arduino:** Uno by default (Mega and Nano also build). **Sample rate:** 100 Hz per channel.
-- **Alarm defaults:** high EtCO2 50 mmHg, low off, 2-breath delay, 2 mmHg hysteresis, 120 s silence, apnea after 20 s, keyed on EtCO2 per breath.
+- **Alarm defaults:** warning at 60 mmHg and stop at 65 mmHg (the team's design; CHOP ends the test at 60 to 65), low off, 2-breath delay for the warning, 0.5 s for the stop, 2 mmHg hysteresis, 120 s silence, apnea after 20 s, keyed on EtCO2 per breath, rebreathing time limit 5 min.
+- **Response analysis:** the first 30 s of rebreathing are left out of the fit; the baseline is "steady" at 6 or more breaths in a minute with EtCO2 SD ≤ 1.5 mmHg and MV variation ≤ 20 %. Both are assumptions to confirm with CHOP and the mentors.
+- **Volumes:** as measured (no BTPS correction, no bag-gas factor) unless switched on. Which convention to report is a clinical decision.
 - **Noise screen:** signal-to-noise ratio of 8, a plateau over 10 % of expiration, and outliers over 5 mmHg. These were tuned on simulated data. Check them against real recordings with `--all-breaths` and adjust them in `co2response/processing/denoise.py` if real breaths are being left out.
 - **Barometric pressure:** 760 mmHg default; Pittsburgh is usually near 735 mmHg. Set the lab's value in Display & units.
-- **Hardware:** the firmware and the hardware check have not yet been run on a real Arduino with the lab's sensors. The NI and LabJack drivers have been tested against stand-ins for their vendor libraries, not on real devices.
+- **Hardware:** the firmware (including the heartbeat watchdog and buzzer) and the hardware check have not yet been run on a real Arduino with the lab's sensors. The NI and LabJack drivers have been tested against stand-ins for their vendor libraries, not on real devices.
 
 ## 10. Documentation
 
@@ -710,8 +791,9 @@ These are placeholders until the [open questions](docs/open-questions.md) are an
 | [docs/protocol.md](docs/protocol.md) | Serial protocol (test vectors in `docs/protocol-fixtures.json`) |
 | [docs/python-daq.md](docs/python-daq.md) | Python acquisition: NI, LabJack and other DAQs, `co2r-daq` |
 | [docs/calibration.md](docs/calibration.md) | Calibration procedures |
-| [docs/data-format.md](docs/data-format.md) | Session file format (v3), noise-removal details, import/export, analysis in Python/MATLAB/Excel |
+| [docs/data-format.md](docs/data-format.md) | Session file format (v4), noise-removal details, import/export, the test report, analysis in Python/MATLAB/Excel |
 | [docs/safety.md](docs/safety.md) | Safety and limitations |
+| [docs/requirements-traceability.md](docs/requirements-traceability.md) | Each design input, where it is implemented, and the test that checks it |
 | [docs/project-background.md](docs/project-background.md) | The clinical test (Read's rebreathing method at CHOP), what the mentors and the capstone team's documents ask for, and how the repo measures up |
 | [docs/open-questions.md](docs/open-questions.md) | Open questions for the lab ([issue #4](https://github.com/shrlak/CO2-Response/issues/4)) |
 | [PLAN.md](PLAN.md) | Build plan and requirements |
