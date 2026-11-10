@@ -78,6 +78,9 @@ class SimulatorCore:
         parts = cmd.strip().upper().split()
         name = parts[0] if parts else ""
         arg = parts[1] if len(parts) > 1 else ""
+        if name == "HB":
+            # the host's heartbeat (firmware with a watchdog): no reply unless it is switched off
+            return ["A,HB,OFF"] if arg == "OFF" else []
         if name == "INFO":
             return [FIRMWARE_INFO + str(self.rate_hz)]
         if name == "START":

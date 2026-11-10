@@ -418,10 +418,12 @@ class FakeArduino(threading.Thread):
     """A pseudo-terminal that behaves like the firmware: boot banner, commands, and
     data lines (``speed`` times faster than real time)."""
 
-    def __init__(self, speed: float = 10) -> None:
+    def __init__(self, speed: float = 10, info: bytes = INFO) -> None:
         super().__init__(daemon=True)
         import pty
         import tty
+
+        self.info = info
 
         self.master, self.slave = pty.openpty()
         tty.setraw(self.slave)
@@ -456,7 +458,7 @@ class FakeArduino(threading.Thread):
                 select.select([], [self.master], [], 0.01)
 
     def run(self) -> None:
-        self._write(INFO)
+        self._write(self.info)
         t0 = time.monotonic()
         sent = 0
         buf = b""
@@ -471,7 +473,7 @@ class FakeArduino(threading.Thread):
                 for raw in lines:
                     cmd = raw.decode().strip()
                     self.commands.append(cmd)
-                    replies = [INFO.decode().strip()] if cmd == "INFO" else self.core.command(cmd)
+                    replies = [self.info.decode().strip()] if cmd == "INFO" else self.core.command(cmd)
                     self._write("".join(x + "\n" for x in replies).encode())
             due = int((time.monotonic() - t0) * 100 * self.speed)
             while sent < due:
@@ -544,3 +546,35 @@ def test_arduino_over_serial_connect_check_unplug_auto_reconnect(tmp_path):
     finally:
         e.shutdown()
         ard.unplug()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="needs a pseudo-terminal")
+def test_heartbeat_is_sent_to_firmware_with_a_watchdog_and_switched_off_on_disconnect(tmp_path):
+    """Firmware 1.1 sounds its own buzzer when the host's heartbeat stops; older firmware
+    (no WD in its info line) is never sent one."""
+    ard = FakeArduino(info=INFO.rstrip() + b",WD,3000\n")
+    old = FakeArduino()
+
+    def engine(dev, folder):
+        ports = [PortInfo(dev.device, "Arduino Uno", 0x2341, 0x0043, "A1")]
+        return MonitorEngine(store=SettingsStore(tmp_path / folder), audio=SilentAudio(), port_lister=lambda: ports, sessions_dir=tmp_path / "s", prevent_sleep=False)
+
+    e, e_old = engine(ard, "a"), engine(old, "b")
+    try:
+        assert e.connect("serial", port=ard.device) and e_old.connect("serial", port=old.device)
+        assert run_real(e, 8, lambda: ard.commands.count("HB") >= 3)
+        assert e.info["WD"] == "3000"
+        run_real(e_old, 2.5)
+        assert "HB" not in old.commands and old.commands[:2] == ["INFO", "START"]
+        # about one a second, not one per tick
+        n0, t0 = ard.commands.count("HB"), time.monotonic()
+        run_real(e, 2.2)
+        assert 1 <= ard.commands.count("HB") - n0 <= 3, (ard.commands, time.monotonic() - t0)
+        e.disconnect()
+        time.sleep(0.3)
+        assert ard.commands[-2:] == ["HB OFF", "STOP"]
+    finally:
+        e.shutdown()
+        e_old.shutdown()
+        ard.unplug()
+        old.unplug()

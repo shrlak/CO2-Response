@@ -7,6 +7,9 @@
 //
 //   D,<seq>,<t_ms>,<v0>,<v1>,<v2>*<checksum>
 //
+// It also watches for the host's heartbeat ("HB"): if the monitor app stops sending
+// it, the board sounds its own buzzer, because the CO2 alarms are no longer checked.
+//
 // RESEARCH USE ONLY. Not a medical device.
 
 #include <Arduino.h>
@@ -33,6 +36,46 @@ static uint8_t scanCountdown = 0;
 static char cmd[32];
 static uint8_t cmdLen = 0;
 
+// host watchdog (see config.h)
+static bool wdArmed = false;
+static bool hostLost = false;
+static bool buzzing = false;
+static uint32_t lastHbMs = 0;
+static uint32_t lastLostMs = 0;
+
+static void alarmOutput(bool on) {
+  if (on == buzzing) return;
+  buzzing = on;
+  digitalWrite(ALARM_LED_PIN, on ? HIGH : LOW);
+#if BUZZER_PIN >= 0
+  if (on) tone(BUZZER_PIN, BUZZER_HZ);
+  else noTone(BUZZER_PIN);
+#endif
+}
+
+// Sound the buzzer in 250 ms pulses while the host's heartbeat is missing.
+static void serviceWatchdog() {
+#if WATCHDOG_TIMEOUT_MS > 0
+  uint32_t now = millis();
+  if (wdArmed && !hostLost && now - lastHbMs > WATCHDOG_TIMEOUT_MS) hostLost = true;
+  if (!hostLost) return;
+  alarmOutput(((now / 250) & 1) == 0);
+  if (now - lastLostMs >= 1000) {
+    lastLostMs = now;
+    Serial.println(F("E,HOST_LOST"));
+  }
+#endif
+}
+
+static void heartbeat(bool on) {
+  wdArmed = on;
+  lastHbMs = millis();
+  if (hostLost || !on) {
+    hostLost = false;
+    alarmOutput(false);
+  }
+}
+
 static void sendSample(uint16_t s, uint32_t tMs, const float* v) {
   char line[96];
   int len = formatDataLine(line, s, tMs, v, NUM_CHANNELS);
@@ -50,6 +93,10 @@ static void sendInfo() {
   Serial.print(F(",BAUD,"));
   Serial.print(BAUD_RATE);
   adc->printInfo(Serial);
+#if WATCHDOG_TIMEOUT_MS > 0
+  Serial.print(F(",WD,"));  // tells the host to send heartbeats
+  Serial.print(WATCHDOG_TIMEOUT_MS);
+#endif
   Serial.println();
 }
 
@@ -80,7 +127,12 @@ static void setRate(uint16_t hz) {
 
 static void handleCommand(char* c) {
   for (char* p = c; *p; p++) *p = toupper(*p);
-  if (strcmp(c, "INFO") == 0) {
+  if (strcmp(c, "HB") == 0) {
+    heartbeat(true);  // no reply: it arrives once a second
+  } else if (strcmp(c, "HB OFF") == 0) {
+    heartbeat(false);  // the host is disconnecting on purpose
+    Serial.println(F("A,HB,OFF"));
+  } else if (strcmp(c, "INFO") == 0) {
     sendInfo();
   } else if (strcmp(c, "START") == 0) {
     streaming = true;
@@ -117,6 +169,10 @@ static void pollSerial() {
 }
 
 void setup() {
+  pinMode(ALARM_LED_PIN, OUTPUT);
+#if BUZZER_PIN >= 0
+  pinMode(BUZZER_PIN, OUTPUT);
+#endif
   Serial.begin(BAUD_RATE);
   adcOk = adc->begin();
   if (adcOk) {
@@ -130,6 +186,7 @@ void setup() {
 
 void loop() {
   pollSerial();
+  serviceWatchdog();
 
   if (!adcOk) {
     // Never stream zeros from a missing ADC: report and keep retrying.

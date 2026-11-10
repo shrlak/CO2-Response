@@ -423,3 +423,45 @@ def test_simulation_panel_and_enlarged_graphs(page, site_url):
     page.locator('[data-act="sim-close"]').click()
     sync_api.expect(page.locator("#simpanel")).to_be_hidden()
     assert page.errors == []
+
+
+def test_site_starts_without_internet_after_one_visit(browser, site_url):
+    """The service worker stores the site and the Python runtime on the first visit."""
+    ctx = browser.new_context(viewport={"width": 1366, "height": 800})
+    page = ctx.new_page()
+    try:
+        boot(page, site_url + "?sim")
+        sync_api.expect(page.locator("html")).to_have_attribute("data-offline", "ready", timeout=60_000)
+        ctx.set_offline(True)
+        page.reload()
+        page.wait_for_selector(".monitor-screen", timeout=BOOT_MS)
+        numbers_ok(page)  # the simulator runs: Python, numpy and the package all came from the stored copy
+    finally:
+        ctx.close()
+
+
+def test_vendored_build_fetches_nothing_from_the_cdn(tmp_path):
+    """--vendor-pyodide copies the runtime into the site for a network with no internet."""
+    import importlib.util
+    import json
+
+    spec = importlib.util.spec_from_file_location("build_site", ROOT / "scripts" / "build_site.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    out = mod.build(tmp_path / "site")
+    assert (out / "sw.js").exists() and "cdn.jsdelivr.net/pyodide" in (out / "index.html").read_text()
+    asked = []
+
+    def fetch(url: str) -> bytes:
+        if url.endswith("pyodide.asm.js"):
+            raise OSError("404")  # this version ships pyodide.asm.mjs
+        asked.append(url.rsplit("/", 1)[1])
+        if url.endswith("pyodide-lock.json"):
+            return json.dumps({"packages": {"numpy": {"file_name": "numpy-2.whl", "depends": ["dep"]}, "dep": {"file_name": "dep-1.whl", "depends": []}}}).encode()
+        return b"x"
+
+    names = mod.vendor(out, fetch)
+    assert sorted(names) == sorted(asked) and {"pyodide.js", "pyodide.asm.mjs", "pyodide.asm.wasm", "numpy-2.whl", "dep-1.whl"} <= set(names)
+    assert all((out / "pyodide" / n).exists() for n in names)
+    html = (out / "index.html").read_text()
+    assert "cdn.jsdelivr.net" not in html and 'src="pyodide/pyodide.js"' in html
