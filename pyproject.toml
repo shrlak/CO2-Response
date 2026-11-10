@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-qt>=4.4", "ruff>=0.5", "pypdf>=4"]
+dev = ["pytest>=8", "pytest-qt>=4.4", "pytest-cov>=5", "ruff>=0.5", "mypy>=1.10", "pypdf>=4"]
 analysis = ["pandas>=2.0"]
 
 [project.scripts]
@@ -45,3 +45,29 @@ extend-exclude = ["firmware"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "B", "I"]
 ignore = ["E501", "E731", "B905"]
+
+# Type checking covers the code with no user interface in it: the signal processing,
+# the alarm rules, the file format and report, the protocol, the settings and forms,
+# and the simulator. Run it with:  mypy
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+files = [
+    "co2response/processing",
+    "co2response/alarms",
+    "co2response/storage",
+    "co2response/sim",
+    "co2response/protocol.py",
+    "co2response/forms.py",
+    "co2response/settings.py",
+    "co2response/channels.py",
+    "co2response/jsfmt.py",
+]
+
+[tool.coverage.run]
+source = ["co2response"]
+# the browser front end runs only inside Pyodide; tests/test_web.py drives it in Chromium
+omit = ["co2response/web/*"]
+
+[tool.coverage.report]
+skip_empty = true

@@ -398,3 +398,24 @@ def test_review_shows_the_response_and_saves_the_report(win, tmp_path, monkeypat
     pdf = pypdf.PdfReader(str(out))
     text = pdf.pages[0].extract_text()
     assert len(pdf.pages) == 2 and "Response slope" in text and "RESEARCH USE ONLY" in text
+
+
+def test_a_long_recording_opens_in_steps_while_the_monitor_keeps_running(win, qtbot, monkeypatch):
+    e = win.engine
+    rec, _ = e.library.import_file(ROOT / "sample-data" / "synthetic_session.csv")
+    monkeypatch.setattr(type(e.library), "BIG_SESSION_BYTES", 100_000)  # treat the sample as a long recording
+    polls = []
+    win.poll_timer.timeout.connect(lambda: polls.append(1))
+    win.poll_timer.start()  # the monitor's own 20 ms timer
+    win.open_review(rec.id)
+    rv = win.review
+    assert rv.parsed is None and polls == []  # not parsed in one go
+    qtbot.waitUntil(lambda: rv.parsed is not None, timeout=30_000)
+    win.poll_timer.stop()
+    assert rv.parsed.n > 17900 and len(rv.plots) == 3 and not rv.opening.isVisible()
+    assert len(polls) >= 1  # the monitor was polled while the file was being read
+    # a file that has gone shows why instead of a blank screen
+    e.library.path(rec).unlink()
+    win.open_review(rec.id)
+    qtbot.wait(300)
+    assert win.review.parsed is None and not hasattr(win.review, "plots")

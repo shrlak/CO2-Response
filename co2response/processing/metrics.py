@@ -125,8 +125,6 @@ def is_rebreathing_marker(label: str) -> bool:
 class TestWindow(NamedTuple):
     """The latest test's times, on the markers' clock; None where a marker is missing."""
 
-    __test__ = False  # not a pytest class
-
     #: start of the baseline: its marker, or the end of the previous test
     baseline: float | None
     #: start of rebreathing
@@ -154,7 +152,9 @@ def test_window(markers: Iterable[tuple[float, str]]) -> TestWindow:
     return TestWindow(max(before) if before else None, start, end)
 
 
-test_window.__test__ = False  # type: ignore[attr-defined]  # not a pytest function
+# these two are imported by the tests, where their names look like tests to pytest
+test_window.__test__ = False  # type: ignore[attr-defined]
+TestWindow.__test__ = False  # type: ignore[attr-defined]
 
 
 class RespPoint(NamedTuple):

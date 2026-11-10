@@ -46,7 +46,6 @@ import numpy as np
 
 from ..channels import validate_channels
 from ..jsfmt import iso_ms, js_json, js_num, js_round, naive_sum, parse_iso_ms, to_fixed
-from ..protocol import SeqTracker
 from ..settings import to_dict
 
 NAN = float("nan")
@@ -97,7 +96,7 @@ class SessionMeta:
 
 @dataclass
 class BreathCells:
-    n: int
+    n: float
     etco2: float
     fico2: float
     rr: float
@@ -717,10 +716,19 @@ def _mean(xs: Iterable[float]) -> float:
     return naive_sum(v) / len(v) if v else NAN
 
 
+def dropped_samples(seq: np.ndarray, t_ms: np.ndarray) -> int:
+    """Samples missing from a recording, from gaps in the 16-bit sequence number: what
+    ``SeqTracker`` counts one sample at a time, for a whole file at once. A device
+    clock that goes backwards, or a jump of more than half the range, is a device
+    reset rather than a loss; a repeated number is a duplicate."""
+    if len(seq) < 2:
+        return 0
+    gap = np.bitwise_and(np.diff(seq.astype(np.int64)) - 1, 0xFFFF)
+    gap[(np.diff(t_ms) < 0) | (gap > 0x8000)] = 0
+    return int(gap.sum())
+
+
 def summarize(s: ParsedSession) -> SessionSummary:
-    seq = SeqTracker()
-    for q, t in zip(s.seq.tolist(), s.t_ms.tolist()):
-        seq.push(q, t)
     good = clean_breaths(s)  # statistics only from breaths that passed the noise screen
     et = [b.etco2 for b in good if math.isfinite(b.etco2)]
     span = float(s.t_ms[-1] - s.t_ms[0]) if s.n > 1 else 0.0
@@ -731,7 +739,7 @@ def summarize(s: ParsedSession) -> SessionSummary:
         rejected=len(s.breaths) - len(good),
         alarms=sum(1 for e in s.events if e.text.startswith("ALARM_START") and " test " not in e.text),
         markers=sum(1 for e in s.events if e.text.startswith("MARK ")),
-        dropped=seq.dropped,
+        dropped=dropped_samples(s.seq, s.t_ms),
         etco2_mean=_mean(et),
         etco2_min=min(et) if et else NAN,
         etco2_max=max(et) if et else NAN,

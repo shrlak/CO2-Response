@@ -24,7 +24,7 @@ def load_fonts() -> None:
             QFontDatabase.addApplicationFont(str(f))
 
 
-def run(sim: bool = False, port: str | None = None, replay: str | None = None, argv: list[str] | None = None) -> int:
+def run(sim: bool = False, port: str | None = None, replay: str | None = None, argv: list[str] | None = None, exit_after: float | None = None) -> int:
     app = QApplication.instance() or QApplication(argv or sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("CMU BME")
@@ -52,4 +52,13 @@ def run(sim: bool = False, port: str | None = None, replay: str | None = None, a
                 win.toast(f"Could not replay {replay}: {e}", 8000)
 
     QTimer.singleShot(0, start)
+    if exit_after is not None:
+        # an installation check: run for a moment, say what the monitor measured, and close
+        def finish() -> None:
+            n = engine.snapshot().numbers
+            print(f"{APP_NAME}: ran {exit_after:g} s; {len(engine.breaths)} breaths, EtCO2 {n.etco2:.0f} mmHg, RR {n.rr:.0f} /min", flush=True)
+            win.close()
+            app.quit()
+
+        QTimer.singleShot(int(exit_after * 1000), finish)
     return app.exec()

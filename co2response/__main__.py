@@ -25,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--report", metavar="CSV", help="write the CO2 response report of a recorded session as a PDF and exit")
     ap.add_argument("--out", metavar="PDF", help="where --report writes (default: next to the session file)")
     ap.add_argument("--skip", type=float, default=None, metavar="SEC", help="with --report: seconds of rebreathing left out of the fit (default: what the file's header says)")
+    ap.add_argument("--exit-after", type=float, default=None, metavar="SEC", help="close the window by itself after this many seconds (for checking an installation)")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     args = ap.parse_args(argv)
 
@@ -43,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from .ui.app import run
 
-    return run(sim=args.sim, port=args.port, replay=args.replay)
+    return run(sim=args.sim, port=args.port, replay=args.replay, exit_after=args.exit_after)
 
 
 def report(csv_path: str, out: str | None = None, skip_sec: float | None = None) -> int:

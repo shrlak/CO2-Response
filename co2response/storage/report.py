@@ -162,8 +162,9 @@ def result_lines(r: Report) -> list[tuple[str, str]]:
             phases.append(f"baseline from {_clock(w.baseline)}")
         if w.start is not None:
             phases.append(f"rebreathing from {_clock(w.start)}")
-        if w.end is not None and w.start is not None:
-            phases.append(f"ended at {_clock(w.end)} ({_clock(w.end - w.start)} of rebreathing)")
+        start, end = w.start, w.end
+        if end is not None and start is not None:
+            phases.append(f"ended at {_clock(end)} ({_clock(end - start)} of rebreathing)")
         out.append(("Test phases", "; ".join(phases) or "--"))
         out.append(("Baseline", f"EtCO2 {_num(res.baseline_etco2)} mmHg, MV {_num(res.baseline_mv, 2)} L/min (mean of {len(res.baseline)} breaths)"))
     if res.fit:
@@ -248,7 +249,7 @@ class _Axes:
         return self.x + (v - self.x0) / (self.x1 - self.x0) * self.w
 
     def py(self, v: float, y0: float | None = None, y1: float | None = None) -> float:
-        a, b = (self.y0, self.y1) if y0 is None else (y0, y1)
+        a, b = (self.y0, self.y1) if y0 is None or y1 is None else (y0, y1)
         return self.y + self.h - (v - a) / (b - a) * self.h
 
     def frame(self, xlabel: str, ylabel: str, xfmt=lambda v: f"{v:g}", yfmt=lambda v: f"{v:g}", xticks: list[float] | None = None) -> None:
@@ -341,7 +342,7 @@ def report_pdf(r: Report) -> bytes:
     w, h = LETTER
     pdf = Pdf(LETTER, f"CO2 response report {r.study_code}", f"CO2-Response {r.app_version}".strip())
     pdf.page()
-    y = M + 6
+    y: float = M + 6
     pdf.text(M, y, "Ventilatory response to CO2", 17, "bold")
     pdf.text(w - M, y, "RESEARCH USE ONLY", 9, "bold", _RED, "right")
     y += 14

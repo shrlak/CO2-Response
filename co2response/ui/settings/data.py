@@ -40,7 +40,7 @@ from ..widgets import (
     stamp,
     toggle,
 )
-from .common import FlowGrid, Page, downloads_dir, save_bytes, save_text
+from .common import FlowGrid, Page, downloads_dir, parse_then, save_bytes, save_text
 
 
 def export_report(window, file_name: str, parsed: ParsedSession) -> None:
@@ -61,17 +61,27 @@ def export_session(window, engine: MonitorEngine, rec: SessionRecord, what: str)
                 shutil.copyfile(engine.library.path(rec), path)
                 window.toast(f"Saved {Path(path).name}.")
             return
-        parsed = engine.library.parse(rec.id)
-        if what == "report":
-            export_report(window, rec.file_name, parsed)
-            return
-        base = rec.file_name[:-4] if rec.file_name.lower().endswith(".csv") else rec.file_name
-        name = f"{base}_{'breaths' if what == 'breaths' else 'events'}.csv"
-        p = save_text(window, name, breaths_csv(parsed) if what == "breaths" else events_csv(parsed))
-        if p:
-            window.toast(f"Saved {p.name}.")
-    except (OSError, ValueError) as e:
+    except OSError as e:
         window.toast(f"Export failed: {e}", 6000)
+        return
+
+    def ready(parsed: ParsedSession) -> None:
+        try:
+            if what == "report":
+                export_report(window, rec.file_name, parsed)
+                return
+            base = rec.file_name[:-4] if rec.file_name.lower().endswith(".csv") else rec.file_name
+            name = f"{base}_{'breaths' if what == 'breaths' else 'events'}.csv"
+            p = save_text(window, name, breaths_csv(parsed) if what == "breaths" else events_csv(parsed))
+            if p:
+                window.toast(f"Saved {p.name}.")
+        except (OSError, ValueError) as e:
+            window.toast(f"Export failed: {e}", 6000)
+
+    if rec.bytes > engine.library.BIG_SESSION_BYTES:
+        window.toast(f"Reading {rec.file_name}…", 2500)
+    # a long recording is read in steps, so the monitor keeps running meanwhile
+    parse_then(window, engine.library, rec.id, ready, lambda e: window.toast(f"Export failed: {e}", 6000))
 
 
 class DataPage(Page):

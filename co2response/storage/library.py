@@ -44,6 +44,10 @@ class SessionRecord:
     stats: dict = field(default_factory=dict)
 
 
+#: (the library has a method called ``list``, so the annotations below use this name)
+Records = list[SessionRecord]
+
+
 class SessionLibrary:
     INDEX = "index.json"
 
@@ -140,6 +144,27 @@ class SessionLibrary:
             p.push(chunk)
         return p.finish()
 
+    #: sessions larger than this are parsed in steps by the screens (see ``parse_steps``)
+    BIG_SESSION_BYTES = 4_000_000
+
+    def parse_steps(self, sid: str, size: int = 1 << 18):
+        """Parse a stored session a piece at a time: yields the fraction done after
+        each piece (about 6 ms of work), then the ``ParsedSession``.
+
+        An hour of recording takes about a second to parse. Doing it in steps lets the
+        caller run the monitor in between, so opening a long recording never holds up
+        the alarm checks (or the device's heartbeat)."""
+        rec = self.get(sid)
+        total = max(1, rec.bytes if rec else 1)
+        done = 0
+        p = SessionParser()
+        for chunk in self.read_chunks(sid, size):
+            for i in range(0, len(chunk), size):  # a stored part can be larger than a step
+                p.push(chunk[i : i + size])
+                done += min(size, len(chunk) - i)
+                yield min(0.99, done / total)
+        yield p.finish()
+
     def delete(self, sid: str) -> None:
         rec = self._load().pop(sid, None)
         if rec is not None:
@@ -189,7 +214,7 @@ class SessionLibrary:
         self.put(rec)
         return rec, parsed
 
-    def recover_interrupted(self, now: float | None = None) -> list[SessionRecord]:
+    def recover_interrupted(self, now: float | None = None) -> Records:
         """Recordings left in 'recording' state by an app that closed or crashed.
         Anything not written to for 15 s is marked interrupted; its data is kept."""
         now = self.clock() if now is None else now

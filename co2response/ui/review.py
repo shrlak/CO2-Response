@@ -33,7 +33,7 @@ from ..storage.session_file import (
     write_session,
 )
 from . import theme
-from .settings.common import downloads_dir, save_text
+from .settings.common import downloads_dir, parse_then, save_text
 from .settings.data import export_report, export_session
 from .theme import ui_font
 from .widgets import StatGrid, button, duration, elapsed, fmt, hbox, label, scroll_page
@@ -175,16 +175,21 @@ class ReviewScreen(QFrame):
         self.rec = engine.library.get(sid)
         self.parsed: ParsedSession | None = None
         self.zoom: Range | None = None
-        try:
-            if self.rec is None:
-                raise ValueError("This session is no longer in the library.")
-            self.parsed = engine.library.parse(sid)
-        except (OSError, ValueError) as e:
-            self.lay.addLayout(hbox(button("← Back to data", window.close_review, kind="primary"), stretch_end=True))
-            self.lay.addWidget(label(f"Could not open this session: {e}", "err", wrap=True))
-            self.lay.addStretch(1)
-            return
+        # a long recording opens in steps, so the monitor keeps running meanwhile
+        self.opening = label("", "lead")
+        self.lay.addWidget(self.opening)
+        parse_then(self, engine.library, sid, self._opened, self._failed, lambda f: self.opening.setText(f"Opening {self.rec.file_name}… {f * 100:.0f} %"))
+
+    def _opened(self, parsed: ParsedSession) -> None:
+        self.parsed = parsed
+        self.opening.hide()
         self._build()
+
+    def _failed(self, e: Exception) -> None:
+        self.opening.hide()
+        self.lay.addLayout(hbox(button("← Back to data", self.window.close_review, kind="primary"), stretch_end=True))
+        self.lay.addWidget(label(f"Could not open this session: {e}", "err", wrap=True))
+        self.lay.addStretch(1)
 
     @property
     def full(self) -> Range:

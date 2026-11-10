@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .. import __version__
 from ..storage.report import response_stats, session_response
-from ..storage.session_file import Range, breaths_csv, clean_breaths, event_type, events_csv, export_session_parts, summarize
+from ..storage.session_file import ParsedSession, Range, breaths_csv, clean_breaths, event_type, events_csv, export_session_parts, summarize
 from .charts import ReviewChart, elapsed
-from .dom import actions, btn, byid, css_var, data, download, esc, stat
+from .dom import actions, btn, byid, css_var, data, download, esc, run, set_html, set_text, stat
 from .views import duration, fmt, stamp
 
 if TYPE_CHECKING:
@@ -26,18 +27,43 @@ class ReviewView:
         self.error = ""
         self.zoom: Range | None = None
         self.charts: list[ReviewChart] = []
+        self.opening = False
 
     def open(self, sid: str) -> None:
         self.sid, self.zoom, self.error, self.charts = sid, None, "", []
+        self.opening = False
         lib = self.app.engine.library
         self.rec = lib.get(sid)
         try:
             if self.rec is None:
                 raise ValueError("This session is no longer in the library.")
-            self.parsed = lib.parse(sid)
+            if self.rec.bytes > lib.BIG_SESSION_BYTES:
+                # a long recording is parsed in steps (see mount), so the monitor keeps running
+                self.parsed = None
+                self.opening = True
+            else:
+                self.parsed = lib.parse(sid)
         except (OSError, ValueError) as e:
             self.parsed = None
             self.error = str(e)
+
+    async def _open_in_steps(self) -> None:
+        sid, lib = self.sid, self.app.engine.library
+        parsed = None
+        try:
+            for r in lib.parse_steps(sid):
+                if self.sid != sid or self.app.screen != "review":
+                    return  # the user moved on
+                if isinstance(r, ParsedSession):
+                    parsed = r
+                    break
+                set_text("review-opening", f"Opening {self.rec.file_name}… {r * 100:.0f} %")
+                await asyncio.sleep(0)  # let the monitor's timers run
+        except (OSError, ValueError) as e:
+            self.error = str(e)
+        self.parsed, self.opening = parsed, False
+        set_html("screen", self.html(), force=True)
+        self.mount()
 
     @property
     def full(self) -> Range:
@@ -45,6 +71,8 @@ class ReviewView:
 
     def html(self) -> str:
         back = btn("← Back to data", "review-back", "btn primary")
+        if self.opening:
+            return f'<div class="settings-body">{back}<p class="lead" id="review-opening">Opening {esc(self.rec.file_name)}…</p></div>'
         if self.error or self.parsed is None:
             return f'<div class="settings-body">{back}<p class="err">Could not open this session: {esc(self.error)}</p></div>'
         s, rec = self.parsed, self.rec
@@ -90,6 +118,9 @@ class ReviewView:
         )
 
     def mount(self) -> None:
+        if self.opening:
+            run(self._open_in_steps())
+            return
         if self.parsed is None:
             return
         s = self.parsed

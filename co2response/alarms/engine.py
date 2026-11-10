@@ -29,6 +29,11 @@ PRIORITIES = ("high", "medium", "advisory")
 _RANK = {"high": 0, "medium": 1, "advisory": 2}
 
 
+def _limit(v: float | None) -> str:
+    """A limit for an alarm message ("off" for one that is switched off)."""
+    return js_num(v) if v is not None else "off"
+
+
 @dataclass
 class AlarmRecord:
     id: str
@@ -121,7 +126,7 @@ class AlarmEngine:
         return f"EtCO2 HIGH {to_fixed(v, 0)} mmHg > {js_num(self.settings.high_mm_hg)}"
 
     def _low_msg(self, v: float) -> str:
-        return f"EtCO2 LOW {to_fixed(v, 0)} mmHg < {js_num(self.settings.low_mm_hg)}"
+        return f"EtCO2 LOW {to_fixed(v, 0)} mmHg < {_limit(self.settings.low_mm_hg)}"
 
     @property
     def _high_priority(self) -> str:
@@ -129,7 +134,7 @@ class AlarmEngine:
         return "medium" if self.settings.stop_mm_hg is not None else "high"
 
     def _stop_msg(self, v: float, what: str = "CO2") -> str:
-        return f"STOP TEST: {what} {to_fixed(v, 0)} mmHg at the stop limit {js_num(self.settings.stop_mm_hg)}: turn the valve to room air"
+        return f"STOP TEST: {what} {to_fixed(v, 0)} mmHg at the stop limit {_limit(self.settings.stop_mm_hg)}: turn the valve to room air"
 
     def _check_stop_sample(self, co2: float, t: float) -> None:
         """The stop limit on the live CO2: every sample, whatever the alarm source."""
@@ -216,7 +221,7 @@ class AlarmEngine:
 
         def live(v: float, hi: bool) -> str:
             lim = s.high_mm_hg if hi else s.low_mm_hg
-            return f"CO2 {'HIGH' if hi else 'LOW'} {to_fixed(v, 0)} mmHg {'>' if hi else '<'} {js_num(lim)}"
+            return f"CO2 {'HIGH' if hi else 'LOW'} {to_fixed(v, 0)} mmHg {'>' if hi else '<'} {_limit(lim)}"
 
         high = self._records.get("co2High")
         high_active = high is not None and high.state == "active"

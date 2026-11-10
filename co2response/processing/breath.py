@@ -196,7 +196,7 @@ class BreathDetector:
                 # upstroke is the rise that follows a low reading.
                 if co2 <= self._co2_rise_level():
                     self._lag_open = True
-                elif self._lag_open:
+                elif self._lag_open and self._t_exp is not None:
                     self._lag = t - self._t_exp
                     self._lag_open = False
             self._last_flow = flow

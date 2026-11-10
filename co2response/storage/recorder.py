@@ -158,6 +158,8 @@ class SessionRecorder:
             self._memory.append(text)
             return
         try:
+            if self.rec is None:
+                raise OSError("the session file was not created")
             self.library.append(self.rec, text)
         except OSError as e:
             # disk full or the folder went away: keep everything from here on in memory

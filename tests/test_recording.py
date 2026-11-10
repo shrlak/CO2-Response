@@ -369,3 +369,45 @@ def test_chunked_library_stores_sessions_as_small_parts(tmp_path):
     assert len(lib.list()) == 2
     lib.delete(rec.id)
     assert [r.id for r in ChunkedSessionLibrary(tmp_path / "s").list()] == [rec2.id]
+
+
+def test_a_long_recording_parses_in_steps_to_the_same_result(lib):
+    """Opening a long recording must not hold up the monitor: it is parsed a piece at a time."""
+    from co2response.storage.session_file import ParsedSession
+
+    _, (rec, _), _, _ = record_session(lib, 60)
+    whole = lib.parse(rec.id)
+    steps = list(lib.parse_steps(rec.id, size=50_000))
+    fractions, stepped = steps[:-1], steps[-1]
+    assert isinstance(stepped, ParsedSession) and len(fractions) > 10
+    assert fractions == sorted(fractions) and 0 < fractions[0] < 0.2 and fractions[-1] <= 0.99
+    assert stepped.n == whole.n and (stepped.v0 == whole.v0).all() and (stepped.co2_mmhg == whole.co2_mmhg).all()
+    assert same(stepped.breaths, whole.breaths) and stepped.events == whole.events
+
+
+def test_dropped_samples_are_counted_like_the_live_tracker():
+    import numpy as np
+
+    from co2response.protocol import SeqTracker
+    from co2response.storage.session_file import dropped_samples
+
+    seq, t, n, clock = [], [], 65500, 0
+    rng = np.random.default_rng(3)
+    for i in range(4000):
+        r = rng.random()
+        if r < 0.02:
+            n += int(rng.integers(1, 5))  # samples lost
+        elif r < 0.025:
+            n -= 1  # the same number twice
+        if i == 2500:
+            n, clock = 0, 0  # the device reset: its clock starts again
+        seq.append(n & 0xFFFF)
+        t.append(clock)
+        n += 1
+        clock += 10
+    live = SeqTracker()
+    for q, ms in zip(seq, t):
+        live.push(q, ms)
+    assert live.dropped > 50
+    assert dropped_samples(np.array(seq, dtype=np.int32), np.array(t, dtype=float)) == live.dropped
+    assert dropped_samples(np.array([], dtype=np.int32), np.array([])) == 0

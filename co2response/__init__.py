@@ -11,5 +11,5 @@ monitor window (PySide6).
 RESEARCH USE ONLY. Not a medical device.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 APP_NAME = "CO2-Response"
