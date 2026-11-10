@@ -86,13 +86,13 @@ class SessionRecorder:
         self._buf.append(s)
         self._buf_bytes += len(s)
 
-    def breath(self, etco2: float, fico2: float, rr: float, vt: float, mv: float, peak: float, quality: str = "ok") -> int | None:
+    def breath(self, etco2: float, fico2: float, rr: float, vt: float, mv: float, peak: float, quality: str = "ok", period: float = math.nan, vte: float = math.nan) -> int | None:
         """A breath completed on the sample about to be recorded. Returns its number in
         the file (None when not recording)."""
         if not self.active:
             return None
         self.breaths += 1
-        self._pending_breath = BreathCells(self.breaths, etco2, fico2, rr, vt, mv, peak, quality)
+        self._pending_breath = BreathCells(self.breaths, etco2, fico2, rr, vt, mv, peak, quality, period, vte)
         return self.breaths
 
     def event(self, wall_ms: float, text: str) -> None:
@@ -106,7 +106,7 @@ class SessionRecorder:
             self._pending_since = wall_ms
         self._pending_events.append(text)
 
-    def sample(self, wall_ms: float, t_ms: float, seq: int, volts, co2_mmhg: float, co2_pct: float, flow_lpm: float, pneumo_pa: float, pneumo_lpm: float) -> None:
+    def sample(self, wall_ms: float, t_ms: float, seq: int, volts, co2_mmhg: float, co2_pct: float, flow_lpm: float, pneumo_pa: float, pneumo_lpm: float, spo2: float = math.nan) -> None:
         if not self.active:
             return
         if self._anchor is None or t_ms < self._last_t:
@@ -127,6 +127,7 @@ class SessionRecorder:
                 pneumo_lpm,
                 self._pending_breath,
                 self._pending_events,
+                spo2,
             )
         )
         self.rows += 1
@@ -158,6 +159,8 @@ class SessionRecorder:
             self._memory.append(text)
             return
         try:
+            if self.rec is None:
+                raise OSError("the session file was not created")
             self.library.append(self.rec, text)
         except OSError as e:
             # disk full or the folder went away: keep everything from here on in memory

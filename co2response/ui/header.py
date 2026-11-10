@@ -24,8 +24,8 @@ PRI_LABEL = {"high": "HIGH", "medium": "MED", "advisory": "INFO"}
 def describe(a: AlarmRecord) -> str:
     if a.state == "resolved":
         peak = ""
-        if a.peak is not None and a.id in ("co2High", "co2Low"):
-            peak = f" ({'peak' if a.id == 'co2High' else 'lowest'} {a.peak:.0f} mmHg)"
+        if a.peak is not None and a.id in ("co2High", "co2Low", "co2Stop"):
+            peak = f" ({'lowest' if a.id == 'co2Low' else 'peak'} {a.peak:.0f} mmHg)"
         return f"{a.message}{peak}: resolved at {hms(a.resolved_at or a.since)}"
     return a.message
 

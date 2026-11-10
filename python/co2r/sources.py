@@ -189,7 +189,11 @@ class SampledSource(Source):
         if not parts:
             return
         name = parts[0]
-        if name == "INFO":
+        if name == "HB":
+            # the dashboard's heartbeat (Arduino firmware with a watchdog): nothing to do here
+            if len(parts) > 1 and parts[1] == "OFF":
+                self.emit("A,HB,OFF")
+        elif name == "INFO":
             self.emit(info_line(self.info_fields()))
         elif name == "START":
             self.streaming = True

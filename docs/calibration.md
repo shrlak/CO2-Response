@@ -6,6 +6,8 @@ Every sensor conversion lives in the monitor app, so recalibrating never means r
 - **Methods:** Enter values, Zero & span / Two-point, Multi-point fit, and (pneumotach) 3 L syringe.
 - **Save calibration / Discard changes / Load defaults.** Nothing on the monitor changes until you save. Saved calibrations get a timestamp, stay on this computer, and are written into the header of every recording.
 
+**Calibration age.** While a real device is connected, a blue notice says which channels were calibrated more than 24 hours ago, or never (still on the default values). The limit is **Calibration reminder after** in **Settings > Alarms**; 0 turns it off. A stale calibration at the start of a recording is also written into the file (`CALIBRATION_STALE`), and the test report lists when each channel was calibrated. If a calibration cannot be saved to disk, a **SETTINGS NOT SAVED** notice says so: the calibration is in use, but only until the app closes.
+
 Use **Export calibration (JSON)** to keep a copy with your lab notes, and **Import calibration…** to load it on another computer. **Reset all to defaults** returns to `co2response/config/channels.json`.
 
 ## Calibration models
@@ -49,6 +51,24 @@ The monitor shows CO2 in mmHg using P_CO2 = F_CO2/100 × (P_B − P_H2O). Set th
    3. The card shows ∫ΔP dt, the volume measured with the current k1 and its error, and the new k1 that makes the stroke read the syringe volume (k2 is held).
    4. Press **Apply**, **Save calibration**, and push again to confirm the volume reads correctly.
 4. Check VT on the monitor: a 3 L stroke should read about 3000 mL.
+
+## Gas conditions and timing (Settings > Display & units)
+
+These change how the pneumotach's flow becomes the reported volumes. All three are off (or neutral) by default, are written into every recording's header, and never touch the raw volts.
+
+| Setting | What it does | When to use it |
+| --- | --- | --- |
+| **Report volumes at body conditions (BTPS)** and **Room temperature** | Multiplies pneumotach flow, VT and MV by (310.15 / (273.15 + T)) × (P_B − P_H2O(T)) / (P_B − 47): the factor from room temperature, saturated, to 37 °C, saturated. About ×1.09 at 22 °C. | When the clinicians want ventilation at BTPS, the usual convention in lung-function testing. During rebreathing the inspired gas warms and humidifies, so the true factor falls below this; agree the convention before comparing results. |
+| **Bag gas correction** | Multiplies pneumotach flow by this factor from the Rebreathing marker to the End-of-test marker only. | A linear (Fleisch or screen) pneumotach's pressure drop follows gas viscosity, so one calibrated in air over-reads in an oxygen-rich bag: true flow = reading × μ_air / μ_mix. About 0.90 for pure O2 and 1 for air; `co2response.processing.co2.gas_factor(o2_pct, co2_pct)` gives a first-order estimate. Leave it at 1 if you did the syringe calibration with the bag gas (then the baseline, in room air, under-reads instead). |
+| **CO2 signal delay** | Holds the flow signals back by this many ms so each breath's CO2 lines up with its flow. | A sidestream analyser's sample line delays CO2 by a second or more. Without the correction the end of the plateau falls in the next inspiration, so inspired CO2 reads high and partial breaths are mis-flagged. A mainstream sensor needs 0. |
+
+**Measuring the CO2 delay.** The field's hint shows what the monitor measures now: how long after expiration begins the CO2 rises (median of the last 10 breaths). Dead-space washout alone takes 0.1 to 0.3 s. If the hint says more, enter the excess as the delay; the hint then falls back to the washout time. For a direct bench measurement, switch the gas at the sample port (room air to calibration gas) and time the step against the flow signal.
+
+**Checking the pneumotach zero while it runs.** The VT tile shows the expired volume beside the inspired one ("exp 497 mL"). They should match. If they differ by more than 20 % over 5 breaths (**Volume mismatch notice** in Settings > Alarms), a blue notice says so: look for a leak at the mouthpiece or mask, or re-zero the pneumotach.
+
+## SpO2 (optional)
+
+The oximeter channel has no calibration card: it is a safety signal, not a measurement the test reports. **Settings > Display & units > SpO2** takes the analog output's scaling (SpO2 % = scaling × volts + offset, from the oximeter's manual; often 1 V = 100 %). Check it against the oximeter's own display before each session.
 
 ## Where calibrations are stored
 

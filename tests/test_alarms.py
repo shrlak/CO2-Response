@@ -11,8 +11,9 @@ from co2response.sim.core import SimulatorCore
 
 
 def make(**s):
+    """One warning limit at 50 mmHg and no stop limit, unless the test says otherwise."""
     log = []
-    e = AlarmEngine(dataclasses.replace(DEFAULT_ALARMS, **s), log.append)
+    e = AlarmEngine(dataclasses.replace(DEFAULT_ALARMS, **{"high_mm_hg": 50, "stop_mm_hg": None, **s}), log.append)
     return e, log
 
 
@@ -157,6 +158,99 @@ def test_sanitizes_stored_settings():
     assert s.volume == 0.1
     assert s.silence_sec == 120
     assert s.delay_breaths == 1
+
+
+# ---------- two tiers: a warning limit and a stop limit
+
+
+def test_defaults_are_a_warning_at_60_and_a_stop_at_65():
+    assert (DEFAULT_ALARMS.high_mm_hg, DEFAULT_ALARMS.stop_mm_hg) == (60, 65)
+    # the stop limit can never sit below the warning limit
+    assert sanitize_alarms(dataclasses.replace(DEFAULT_ALARMS, high_mm_hg=70, stop_mm_hg=65)).stop_mm_hg == 70
+
+
+def test_warning_is_medium_priority_while_a_stop_limit_stands_behind_it():
+    e, _ = make(high_mm_hg=60, stop_mm_hg=65, delay_breaths=2)
+    e.on_breath(61, 0)
+    e.on_breath(62, 4000)
+    assert e.get("co2High").priority == "medium" and e.get("co2Stop") is None
+    assert e.active_priority() == "medium"
+    # without a stop limit the single limit stays high priority
+    solo, _ = make(high_mm_hg=60, delay_breaths=1)
+    solo.on_breath(61, 0)
+    assert solo.get("co2High").priority == "high"
+
+
+def test_stop_limit_alarms_on_the_live_co2_within_a_second_not_after_two_breaths():
+    e, _ = make(high_mm_hg=60, stop_mm_hg=65, stop_delay_sec=0.5, delay_breaths=2)
+    for i in range(100):  # CO2 at 66 mmHg, sampled at 100 Hz
+        e.on_live_co2(66, i * 10)
+        if e.is_active("co2Stop"):
+            break
+    r = e.get("co2Stop")
+    assert r is not None and r.priority == "high" and r.since == 500
+    assert r.message.startswith("STOP TEST: CO2 66 mmHg at the stop limit 65")
+    assert e.get("co2High") is None  # the warning still waits for its two breaths
+
+
+def test_stop_limit_ignores_a_blip_shorter_than_its_delay():
+    e, _ = make(stop_mm_hg=65, stop_delay_sec=0.5)
+    for i in range(30):
+        e.on_live_co2(70 if i < 20 else 40, i * 10)  # 200 ms above, then back down
+    for i in range(30, 60):
+        e.on_live_co2(70 if i < 50 else 40, i * 10)  # again, timed from scratch
+    assert e.get("co2Stop") is None
+
+
+def test_stop_alarm_fires_on_a_single_breath_and_resolves_on_a_breath_back_under_the_limit():
+    e, _ = make(high_mm_hg=60, stop_mm_hg=65, hysteresis_mm_hg=2, delay_breaths=2)
+    e.on_breath(66, 0)
+    assert e.is_active("co2Stop")
+    # the capnogram drops on every inspiration: that alone does not resolve it
+    for i in range(300):
+        e.on_live_co2(2, 1000 + i * 10)
+    assert e.is_active("co2Stop")
+    e.on_breath(64, 5000)  # inside the hysteresis band
+    assert e.is_active("co2Stop")
+    e.on_breath(62, 9000)
+    assert e.get("co2Stop").state == "resolved"
+
+
+def test_stop_alarm_resolves_after_20_s_under_the_limit_when_no_breath_is_reported():
+    e, _ = make(stop_mm_hg=65, hysteresis_mm_hg=2)
+    for i in range(100):
+        e.on_live_co2(70, i * 10)
+    assert e.is_active("co2Stop")
+    for i in range(1999):
+        e.on_live_co2(30, 1000 + i * 10)
+    assert e.is_active("co2Stop")
+    for i in range(1999, 2010):
+        e.on_live_co2(30, 1000 + i * 10)
+    assert e.get("co2Stop").state == "resolved"
+
+
+def test_a_new_high_alarm_cancels_the_silence_of_the_warning():
+    e, log = make(high_mm_hg=60, stop_mm_hg=65, delay_breaths=1)
+    e.on_breath(62, 0)
+    e.acknowledge(1000)  # silences the warning for 120 s
+    assert e.is_silenced(2000)
+    e.on_breath(66, 5000)
+    assert e.is_active("co2Stop") and not e.is_silenced(5000)
+    assert [x.kind for x in log] == ["start", "acknowledged", "silenced", "unsilenced", "start"]
+    assert [a.id for a in e.list()][:2] == ["co2Stop", "co2High"]
+    # a medium alarm does not cancel a silence, and neither does the test alarm
+    e.silence(6000)
+    e.set_condition("noData", True, 7000, "medium", "NO DATA")
+    e.set_condition("test", True, 7000, "high", "TEST")
+    assert e.is_silenced(7000)
+
+
+def test_turning_the_stop_limit_off_resolves_its_alarm():
+    e, _ = make(stop_mm_hg=65)
+    e.on_breath(70, 0)
+    assert e.is_active("co2Stop")
+    e.set_settings(dataclasses.replace(e.settings, stop_mm_hg=None), 1000)
+    assert e.get("co2Stop").state == "resolved"
 
 
 # ---------- technical alarms and ordering

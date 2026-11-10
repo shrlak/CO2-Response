@@ -149,14 +149,30 @@ def test_simulator_alarms_and_themes(page, site_url):
     page.locator(".drawer").get_by_role("button", name="Test alarm").click()
     sync_api.expect(page.locator(".alarm-slot")).to_contain_text("TEST ALARM")
     sync_api.expect(page.locator(".alarm-slot")).to_have_class(re.compile("high"))
-    # lower the high limit below the simulated 38 mmHg: EtCO2 HIGH after two breaths
+    # lower the warning limit below the simulated 38 mmHg: EtCO2 HIGH after two breaths.
+    # It is medium priority, because the stop limit (65) stands behind it.
+    sync_api.expect(page.locator("[data-testid=tile-etco2] .limits .hi")).to_have_text("60 / 65")
     page.fill("#drawer-high", "30")
     page.press("#drawer-high", "Enter")
     page.locator(".drawer").get_by_role("button", name="Done").click()
     sync_api.expect(page.locator(".alarm-slot")).to_contain_text("EtCO2 HIGH", timeout=30_000)
-    sync_api.expect(page.locator("[data-testid=tile-etco2]")).to_have_class(re.compile("alarm-high"))
+    sync_api.expect(page.locator("[data-testid=tile-etco2]")).to_have_class(re.compile("alarm-medium"))
     page.locator(".alarm-slot .slot-btn").click()
     sync_api.expect(page.locator(".pill")).to_contain_text("SILENCED")
+    # now the stop limit, also below 38 mmHg: STOP TEST within a second or so, high
+    # priority, and the silence of the warning is cancelled
+    page.locator('[data-act="drawer-open"]').click()
+    page.fill("#drawer-stop", "35")
+    page.press("#drawer-stop", "Enter")
+    page.locator(".drawer").get_by_role("button", name="Done").click()
+    sync_api.expect(page.locator(".alarm-slot")).to_contain_text("STOP TEST", timeout=15_000)
+    sync_api.expect(page.locator("[data-testid=tile-etco2]")).to_have_class(re.compile("alarm-high"))
+    sync_api.expect(page.locator(".pill")).to_contain_text("ALARM")
+    # the stop tier can be switched off; its number row goes with it
+    page.locator('[data-act="drawer-open"]').click()
+    page.locator("#drawer-stopon").uncheck()
+    sync_api.expect(page.locator("#drawer-stop")).to_have_count(0)
+    page.locator(".drawer").get_by_role("button", name="Done").click()
     page.locator('[data-act="open-settings"]').last.click()
     page.locator("#nav-display").click()
     page.get_by_role("button", name="Light").click()
@@ -175,8 +191,54 @@ def test_rebreathing_marker_splits_the_response_plot(page, site_url):
     page.keyboard.press("m")
     page.fill("#mark-label", "Rebreathing")
     page.locator('[data-act="mark-save-btn"]').click()
-    # breaths after the marker are fitted; those before it are the baseline
-    sync_api.expect(page.locator("#trend-meta")).to_contain_text(re.compile(r"slope .* · baseline 3[6-9]\.\d mmHg"), timeout=40_000)
+    # breaths after the marker are fitted (once the first 30 s have passed); those before it are the baseline
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text(re.compile(r"slope .* · baseline 3[6-9]\.\d mmHg"), timeout=70_000)
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text("outside the fit")
+    assert page.errors == []
+
+
+def test_test_keys_trends_and_taking_a_breath_out_by_hand(page, site_url):
+    boot(page, site_url + "?sim")
+    numbers_ok(page)
+    bar = page.locator("#testbar")
+    sync_api.expect(bar).to_contain_text("No test running")
+    sync_api.expect(bar.get_by_role("button", name="End test")).to_be_disabled()
+    bar.get_by_role("button", name="Start baseline").click()
+    sync_api.expect(bar).to_contain_text(re.compile(r"BASELINE 0:0\d"))
+    sync_api.expect(bar).to_contain_text("NOT RECORDING")
+    # the trend tab can plot MV and RR as well as EtCO2
+    page.select_option("#trend-series", "mv")
+    sync_api.expect(page.locator("#tab-trend")).to_have_text("MV trend")
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text("MV (L/min, 60 s average)")
+    page.select_option("#trend-series", "rr")
+    sync_api.expect(page.locator("#tab-trend")).to_have_text("RR trend")
+    page.select_option("#trend-series", "etco2")
+    # some baseline, then rebreathing with no skip so the fit starts at once
+    page.locator('[data-act="open-settings"]').last.click()
+    page.locator("#nav-data").click()
+    page.fill("#test-skip", "0")
+    page.press("#test-skip", "Enter")
+    page.fill("#test-weight", "60")
+    page.press("#test-weight", "Enter")
+    page.get_by_role("button", name="← Back to monitor").click()
+    page.wait_for_timeout(8000)
+    bar.get_by_role("button", name="Start rebreathing").click()
+    sync_api.expect(bar).to_contain_text(re.compile(r"REBREATHING 0:\d\d of 5:00"))
+    page.locator("#tab-response").click()
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text(re.compile(r"slope .* n \d+ · baseline"), timeout=40_000)
+    # a click on a drawn breath takes it out of the fit; clicking its cross puts it back
+    hit = page.evaluate("""() => {
+        const c = document.getElementById('trend-canvas');
+        const [x, y] = c.dataset.points.split(';').pop().split(',').map(Number);
+        const r = c.getBoundingClientRect();
+        return [r.left + x, r.top + y];
+    }""")
+    page.mouse.click(hit[0], hit[1])
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text("1 excluded by hand")
+    bar.get_by_role("button", name="End test").click()
+    sync_api.expect(bar).to_contain_text("TEST ENDED after")
+    page.mouse.click(hit[0], hit[1])
+    sync_api.expect(page.locator("#trend-meta")).not_to_contain_text("excluded by hand")
     assert page.errors == []
 
 
@@ -197,7 +259,7 @@ def test_record_import_review_and_persistence(page, site_url, tmp_path):
     saved = tmp_path / "reimported.csv"
     d.save_as(saved)
     text = saved.read_text()
-    assert text.startswith("# CO2-Response session,v3") and "MARK Event 1" in text and "RECORDING_STOPPED" in text
+    assert text.startswith("# CO2-Response session,v4") and "MARK Event 1" in text and "RECORDING_STOPPED" in text
 
     page.locator('[data-act="open-settings"]').last.click()
     page.locator("#nav-data").click()
@@ -216,10 +278,31 @@ def test_record_import_review_and_persistence(page, site_url, tmp_path):
     sync_api.expect(page.locator(".review")).to_contain_text("reimported.csv")
     sync_api.expect(page.locator(".review .stats")).to_contain_text("Breaths")
     sync_api.expect(page.locator(".review .loglist")).to_contain_text("MARK Event 1")
-    assert page.locator(".review-chart canvas").count() == 3
+    assert page.locator(".review-chart canvas").count() == 4  # the response plot and three time charts
     with page.expect_download() as dl2:
         page.get_by_role("button", name="Breaths (.csv)", exact=True).click()
     assert dl2.value.suggested_filename == "reimported_breaths.csv"
+    # the response plot of a saved session: a click on a breath takes it out of the fit
+    sync_api.expect(page.locator("#review-resp-note")).to_contain_text("Click a breath")
+    page.locator("#rc-resp").scroll_into_view_if_needed()
+    spot = page.evaluate("""() => {
+        const c = document.getElementById('rc-resp');
+        const [x, y] = c.dataset.points.split(';')[0].split(',').map(Number);
+        const r = c.getBoundingClientRect();
+        return [r.left + x, r.top + y];
+    }""")
+    page.mouse.click(spot[0], spot[1])
+    sync_api.expect(page.locator("#review-resp-note")).to_contain_text("1 excluded by hand")
+    page.mouse.click(spot[0], spot[1])
+    sync_api.expect(page.locator("#review-resp-note")).not_to_contain_text("excluded by hand")
+    # the test report, as a PDF made in the browser
+    sync_api.expect(page.locator(".review .stats")).to_contain_text("CO2 response")
+    with page.expect_download() as dl3:
+        page.get_by_role("button", name="CO2 response report (.pdf)", exact=True).click()
+    assert dl3.value.suggested_filename == "reimported_report.pdf"
+    pdf = tmp_path / "report.pdf"
+    dl3.value.save_as(pdf)
+    assert pdf.read_bytes().startswith(b"%PDF-1.4") and pdf.read_bytes().rstrip().endswith(b"%%EOF")
 
     # sessions survive a reload (kept in the browser's IndexedDB)
     page.wait_for_timeout(1500)
@@ -328,15 +411,19 @@ def test_simulation_panel_and_enlarged_graphs(page, site_url):
     sync_api.expect(page.locator("#simpanel")).to_be_visible()
     sync_api.expect(page.locator(".sp-start")).to_be_visible()  # not running yet
     page.locator('[data-act="sim-situation"][data-arg="hypoventilation"]').click()
-    sync_api.expect(tile(page, "rr")).to_have_text("7", timeout=60_000)
-    sync_api.expect(page.locator("#sp-mon-rr")).to_have_text("7")
-    sync_api.expect(page.locator("#sp-set-rr")).to_have_text("7")
+    sync_api.expect(tile(page, "rr")).to_have_text("6", timeout=60_000)
+    sync_api.expect(page.locator("#sp-mon-rr")).to_have_text("6")
+    sync_api.expect(page.locator("#sp-set-rr")).to_have_text("6")
     sync_api.expect(page.locator(".alarm-slot")).to_contain_text("EtCO2 HIGH", timeout=30_000)
-    # dragging a slider changes the running simulator
+    # the speed slider (at the top of the panel) runs simulated time faster
+    page.eval_on_selector("#sp-speed", "el => { el.value = 5; el.dispatchEvent(new Event('input', { bubbles: true })); }")
+    sync_api.expect(page.locator("#spv-speed")).to_have_text("5 ×")
+    sync_api.expect(page.locator("#sp-current")).not_to_contain_text("(adjusted)")
+    # dragging a slider changes the running simulator; at 5× the monitor follows in seconds
     page.eval_on_selector("#sp-rr", "el => { el.value = 20; el.dispatchEvent(new Event('input', { bubbles: true })); }")
     sync_api.expect(page.locator("#spv-rr")).to_have_text("20 /min")
     sync_api.expect(page.locator("#sp-current")).to_contain_text("(adjusted)")
-    sync_api.expect(tile(page, "rr")).to_have_text("20", timeout=40_000)
+    sync_api.expect(tile(page, "rr")).to_have_text("20", timeout=15_000)
     page.locator("#sp-apnea").check()
     sync_api.expect(page.locator("[data-testid=tile-rr]")).to_have_class(re.compile("alarm-high"), timeout=40_000)  # apnea
     # enlarge one graph, then go back with Esc
@@ -353,3 +440,130 @@ def test_simulation_panel_and_enlarged_graphs(page, site_url):
     page.locator('[data-act="sim-close"]').click()
     sync_api.expect(page.locator("#simpanel")).to_be_hidden()
     assert page.errors == []
+
+
+def test_a_whole_simulated_test_runs_by_itself_and_fills_every_graph(page, site_url):
+    boot(page, site_url)
+    page.locator('[data-act="sim-toggle"]').click()
+    page.eval_on_selector("#sp-speed", "el => { el.value = 10; el.dispatchEvent(new Event('input', { bubbles: true })); }")
+    sync_api.expect(page.locator("#spv-speed")).to_have_text("10 ×")
+    page.locator('[data-act="sim-situation"][data-arg="test_normal"]').click()
+    bar, prog = page.locator("#testbar"), page.locator("#sp-progress")
+    # the simulation presses the keys: baseline, then rebreathing until the stop alarm, then the end of the test
+    sync_api.expect(prog).to_contain_text("Whole test: baseline", timeout=60_000)
+    sync_api.expect(bar).to_contain_text("BASELINE")
+    sync_api.expect(prog).to_contain_text("Whole test: rebreathing", timeout=60_000)
+    sync_api.expect(bar).to_contain_text("REBREATHING")
+    sync_api.expect(bar).to_contain_text("TEST ENDED after", timeout=120_000)
+    # the stop alarm ended it, and the response plot has its line
+    page.locator("#tab-response").click()
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text(re.compile(r"slope .* n \d+ · baseline"), timeout=20_000)
+    assert page.errors == []
+
+
+def test_valve_from_the_app_emergency_stop_and_the_spo2_tile(page, site_url):
+    boot(page, site_url + "?sim")
+    numbers_ok(page)
+    # SpO2 is off until the channel is switched on; the simulator then has an oximeter
+    assert page.locator("[data-testid=tile-spo2]").count() == 0
+    page.locator('[data-act="open-settings"]').last.click()
+    page.locator("#nav-display").click()
+    page.locator("#spo2-spo2on").check()
+    sync_api.expect(page.locator("#spo2-spo2gain")).to_be_visible()
+    # the app switches the valve (the simulated board has a valve output)
+    page.locator("#nav-alarms").click()
+    page.locator("#settings-autovalve").check()
+    page.get_by_role("button", name="← Back to monitor").click()
+    sync_api.expect(tile(page, "spo2")).to_have_text(re.compile(r"^9[6-9]$"), timeout=20_000)
+    bar = page.locator("#testbar")
+    bar.get_by_role("button", name="Start rebreathing").click()
+    sync_api.expect(bar).to_contain_text("valve to the bag")
+    bar.get_by_role("button", name="Emergency stop").click()
+    sync_api.expect(page.locator(".toast")).to_contain_text("Emergency stop: the test is ended.")
+    sync_api.expect(bar).to_contain_text("TEST ENDED after")
+    sync_api.expect(bar).not_to_contain_text("valve to the bag")
+    assert page.errors == []
+
+
+def labchart_export_of_the_sample() -> str:
+    """The sample session as a LabChart text export: flow in mL/s with inspiration
+    negative, CO2 in mmHg, a comment at each marker. Made with the standard library
+    only, because the job that runs these tests installs neither numpy nor the app."""
+    import csv
+
+    rows = [x for x in (ROOT / "sample-data" / "synthetic_session.csv").read_text(encoding="utf-8").splitlines() if not x.startswith("#")]
+    out = [
+        "Interval=\t0.01 s",
+        "ExcelDateTime=\t4.63312083333e+004\t11/05/26 05:00:00.000",
+        "TimeFormat=\tStartOfBlock",
+        "DateFormat=\t",
+        "ChannelTitle=\tFlow\tCO2",
+        "Range=\t10.000 V\t10.000 V",
+        "UnitName=\tmL/s\tmmHg",
+    ]
+    for row in csv.DictReader(rows):
+        if not row["pneumo_lpm"] or not row["co2_mmHg"]:
+            continue  # an event while no data was flowing
+        mark = next((e[5:] for e in row["event"].split(" | ") if e.startswith("MARK ")), "")
+        out.append(f"{float(row['time_s']):.4f}\t{-float(row['pneumo_lpm']) * 1000 / 60:.3f}\t{float(row['co2_mmHg']):.3f}" + (f"\t#* {mark}" if mark else ""))
+    return "\r\n".join(out) + "\r\n"
+
+
+def test_a_labchart_text_export_is_imported_as_a_session(page, site_url, tmp_path):
+    chart = tmp_path / "patient-x.txt"
+    chart.write_text(labchart_export_of_the_sample(), encoding="utf-8", newline="")
+    boot(page, site_url)
+    page.locator('[data-act="open-settings"]').last.click()
+    page.locator("#nav-data").click()
+    page.set_input_files('input[data-change="import-files"]', str(chart))
+    table = page.locator("table.sessions")
+    sync_api.expect(table.locator("tbody tr")).to_have_count(1, timeout=60_000)
+    sync_api.expect(table).to_contain_text("patient-x")
+    table.locator("tbody tr").first.get_by_role("button", name="Open").click()
+    # its breaths and its CO2 response were worked out here, from the two waveforms
+    sync_api.expect(page.locator(".review .stats")).to_contain_text("Breaths", timeout=60_000)
+    sync_api.expect(page.locator(".review .stats")).to_contain_text("CO2 response")
+    sync_api.expect(page.locator(".review .loglist")).to_contain_text("MARK CO2 rebreathing started")
+    assert page.errors == []
+
+
+def test_site_starts_without_internet_after_one_visit(browser, site_url):
+    """The service worker stores the site and the Python runtime on the first visit."""
+    ctx = browser.new_context(viewport={"width": 1366, "height": 800})
+    page = ctx.new_page()
+    try:
+        boot(page, site_url + "?sim")
+        sync_api.expect(page.locator("html")).to_have_attribute("data-offline", "ready", timeout=60_000)
+        ctx.set_offline(True)
+        page.reload()
+        page.wait_for_selector(".monitor-screen", timeout=BOOT_MS)
+        numbers_ok(page)  # the simulator runs: Python, numpy and the package all came from the stored copy
+    finally:
+        ctx.close()
+
+
+def test_vendored_build_fetches_nothing_from_the_cdn(tmp_path):
+    """--vendor-pyodide copies the runtime into the site for a network with no internet."""
+    import importlib.util
+    import json
+
+    spec = importlib.util.spec_from_file_location("build_site", ROOT / "scripts" / "build_site.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    out = mod.build(tmp_path / "site")
+    assert (out / "sw.js").exists() and "cdn.jsdelivr.net/pyodide" in (out / "index.html").read_text()
+    asked = []
+
+    def fetch(url: str) -> bytes:
+        if url.endswith("pyodide.asm.js"):
+            raise OSError("404")  # this version ships pyodide.asm.mjs
+        asked.append(url.rsplit("/", 1)[1])
+        if url.endswith("pyodide-lock.json"):
+            return json.dumps({"packages": {"numpy": {"file_name": "numpy-2.whl", "depends": ["dep"]}, "dep": {"file_name": "dep-1.whl", "depends": []}}}).encode()
+        return b"x"
+
+    names = mod.vendor(out, fetch)
+    assert sorted(names) == sorted(asked) and {"pyodide.js", "pyodide.asm.mjs", "pyodide.asm.wasm", "numpy-2.whl", "dep-1.whl"} <= set(names)
+    assert all((out / "pyodide" / n).exists() for n in names)
+    html = (out / "index.html").read_text()
+    assert "cdn.jsdelivr.net" not in html and 'src="pyodide/pyodide.js"' in html

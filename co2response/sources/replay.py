@@ -7,8 +7,8 @@ from typing import Callable
 
 from ..jsfmt import js_round
 from ..protocol import format_data_line
-from ..storage.session_file import ParsedSession
-from .base import Source, SourceItem, StatusEvent
+from ..storage.session_file import ParsedSession, session_markers
+from .base import MarkerEvent, Source, SourceItem, StatusEvent
 
 
 class ReplaySource(Source):
@@ -22,6 +22,14 @@ class ReplaySource(Source):
         self._t = session.t_ms.tolist()
         self._seq = session.seq.tolist()
         self._v = list(zip(session.v0.tolist(), session.v1.tolist(), session.v2.tolist()))
+        if len(session.v3) == session.n and session.n and bool((session.v3 == session.v3).any()):
+            # a fourth input was recorded (the oximeter): replay it too
+            self._v = [(a, b, c, d if d == d else 0.0) for (a, b, c), d in zip(self._v, session.v3.tolist())]
+        # the recording's own markers are replayed too, so a rebreathing test is
+        # split and fitted the same way it was live
+        self._time_s = session.time_s.tolist()
+        self._marks = sorted(session_markers(session.events))
+        self._mi = 0
         self._i = 0
         self._t0_device = 0.0
         self._t0_wall = 0.0
@@ -44,8 +52,9 @@ class ReplaySource(Source):
 
     def start(self) -> None:
         fw = self.session.meta.get("firmware") or "replay"
-        self._out = [f"I,FW,{fw},ADC,FILE,CH,3,RATE,{self.rate_hz}"]
+        self._out = [f"I,FW,{fw},ADC,FILE,CH,{len(self._v[0]) if self._v else 3},RATE,{self.rate_hz}"]
         self._i = 0
+        self._mi = 0
         self._done = False
         self._t0_device = self._t[0] if self._t else 0.0
         self._t0_wall = self._clock()
@@ -66,6 +75,9 @@ class ReplaySource(Source):
                 device_now = self._t0_device
             if t[i] > device_now:
                 break
+            while self._mi < len(self._marks) and self._marks[self._mi][0] <= self._time_s[i]:
+                out.append(MarkerEvent(self._marks[self._mi][1]))
+                self._mi += 1
             out.append(format_data_line(self._seq[i], t[i], self._v[i]))
             self._i += 1
             count += 1

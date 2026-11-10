@@ -150,7 +150,10 @@ class SeqTracker:
         return self.dropped / expected if expected else 0.0
 
     def reset(self) -> None:
-        self.__init__()
+        self.received = 0
+        self.dropped = 0
+        self._last = None
+        self._last_t = None
 
 
 class LineSplitter:

@@ -74,9 +74,9 @@ def js_num(x: float | int) -> str:
         return "0"
     sign = "-" if x < 0 else ""
     d = Decimal(repr(abs(x)))
-    _, dig, exp = d.as_tuple()
+    _, dig, exponent = d.as_tuple()
     digits = "".join(map(str, dig)).rstrip("0") or "0"
-    exp += len(dig) - len(digits)
+    exp = int(exponent) + len(dig) - len(digits)  # a finite number: the exponent is an int
     k = len(digits)
     n = k + exp  # value = 0.digits × 10^n
     if k <= n <= 21:

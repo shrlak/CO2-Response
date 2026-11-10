@@ -30,8 +30,9 @@ This guide takes you from a box of parts to a running session: wiring the sensor
 | Flow sensor with a 0–5 V analog output | |
 | Pneumotachograph and a differential pressure transducer with a 0–5 V output | Example transducer: NXP MPXV7002DP (±2 kPa, 5 V supply, 0.5–4.5 V output). Plus two lengths of tubing to connect it. |
 | 1 MΩ resistor | Pull-up on the CO2 input, so an unplugged capnograph raises an alarm instead of reading 0. |
+| Piezo buzzer (passive) | Between Arduino pin 8 and GND. The board sounds it if the monitor app stops running, when nothing would be watching the CO2. Optional, but recommended for any live study. |
 | Breadboard or perfboard, jumper wires | Use twisted pair or shielded cable for the pressure transducer's signal. |
-| Computer | Windows 10/11, macOS or Linux, with **Python 3.10 or newer** (free from [python.org](https://www.python.org/downloads/)). |
+| Computer | Windows 10/11, macOS or Linux, with **Python 3.10 or newer** (free from [python.org](https://www.python.org/downloads/)), or the standalone app, which needs no Python ([section 4](#4-install-and-open-the-monitor-app)). |
 | For calibration | Room air, a certified CO2 calibration gas (for example 5 %), a 3 L calibration syringe. Optional: a reference flowmeter and a manometer. |
 | For any live study | A medical-grade USB isolator, or a laptop running on battery. See [safety](docs/safety.md). |
 
@@ -94,6 +95,8 @@ With P1 on the circuit side, inspiration (flow toward the patient) gives a posit
 | Your transducer has two outputs (differential) | Connect them to A2 and A3, and set `PNEUMO_DIFFERENTIAL 1` in `config.h`. |
 | You use an Arduino Mega | SDA is pin 20 and SCL is pin 21. Everything else is the same. |
 
+| You have a piezo buzzer | Wire it between pin **8** and GND. It sounds if the monitor app stops sending its heartbeat for 3 s. Change `BUZZER_PIN` in `config.h` for another pin, or set it to -1 for none. |
+
 ### 2.5 Before you plug in
 
 With a multimeter, check for continuity between 5V and GND. There must be none: a short there will cut out the USB port. If you can, power each sensor on its own first and measure its output to confirm it stays inside 0–5 V.
@@ -113,7 +116,7 @@ You only need to do this once per Arduino, and again after changing `config.h`.
 5. **Tools → Board →** Arduino Uno (or your board). **Tools → Port →** the Arduino's port.
 6. Press **Upload** (the right-arrow button). Wait for "Done uploading".
 7. Check it: **Tools → Serial Monitor**, set the baud rate to **115200**. You should see:
-   - `I,FW,1.0.0,ADC,ADS1115,CH,3,RATE,100,…`, then a stream of `D,…` lines. Good.
+   - `I,FW,1.1.0,ADC,ADS1115,CH,3,RATE,100,…`, then a stream of `D,…` lines. Good.
    - `E,ADC_NOT_FOUND` and `I,I2C_SCAN,…` instead: the ADS1115 is not answering. See [troubleshooting](#10-troubleshooting).
 8. **Close the Serial Monitor.** Only one program can use the port at a time, and the monitor app needs it.
 
@@ -138,6 +141,10 @@ Use `-e mega` or `-e nano` for those boards. `pio device monitor -b 115200` show
 | `ADS_I2C_ADDRESS` | 0x48 | ADDR is not wired to GND. |
 | `ADS_GAIN` | `GAIN_TWOTHIRDS` (±6.144 V) | Your sensors are 0–3.3 V (use `GAIN_ONE`). |
 | `PNEUMO_DIFFERENTIAL` | 0 | Your transducer has two outputs on A2/A3. |
+| `WATCHDOG_TIMEOUT_MS` | 3000 | You want the board's buzzer to wait longer (or 0: no watchdog) when the app's heartbeat stops. |
+| `BUZZER_PIN` | 8 | The buzzer is on another pin (-1: no buzzer; the built-in LED still blinks). |
+| `VALVE_PIN` | 7 | The valve driver is on another pin (-1: no valve output; the app then never offers to switch the valve). |
+| `SPO2_CHANNEL` | 0 | A pulse oximeter's analog output is wired to A3: set it to 1 and the board sends a fourth value. Not together with `PNEUMO_DIFFERENTIAL`, which uses A3. |
 
 ---
 
@@ -145,7 +152,9 @@ Use `-e mega` or `-e nano` for those boards. `pio device monitor -b 115200` show
 
 The monitor is a Python desktop program. It runs on Windows, macOS and Linux and talks to the Arduino's USB serial port directly.
 
-> **No install?** The same monitor runs in the browser at <https://shrlak.github.io/CO2-Response/>. In desktop Chrome or Edge it can read the Arduino over USB (Web Serial); press **Connect Arduino (USB)** and pick the port. Sessions recorded there are kept in the browser, so export the ones you want to keep. For long or important sessions, the desktop app below is the more robust choice: it writes each recording straight to a file.
+> **No install?** The same monitor runs in the browser at <https://shrlak.github.io/CO2-Response/>. In desktop Chrome or Edge it can read the Arduino over USB (Web Serial); press **Connect Arduino (USB)** and pick the port. After one visit with internet it also starts with no internet (the site keeps a copy of itself in the browser). Sessions recorded there are kept in the browser, so export the ones you want to keep. For long or important sessions, the desktop app below is the more robust choice: it writes each recording straight to a file, and it keeps running when its window is in the background (a browser slows a background tab down, and the board's buzzer will say so).
+
+> **No Python on the computer?** A standalone build of the desktop app (Windows, macOS, Linux) is attached to each [release](https://github.com/shrlak/CO2-Response/releases) once one is tagged: unzip it and run **CO2-Response**. On macOS the app is not signed, so right-click it and choose **Open** the first time. To check an installation, run `CO2-Response --sim --exit-after 12`: it runs the simulator for 12 s, prints what it measured and closes. Everything below about using the app applies to it; skip steps 1 to 4.
 
 1. Install **Python 3.10 or newer** from [python.org](https://www.python.org/downloads/). On Windows, tick **Add python.exe to PATH** in the installer.
 2. Get the code: on the GitHub repository page, **Code → Download ZIP** and unzip it, or `git clone` it.
@@ -260,7 +269,11 @@ The app converts volts to real units using the numbers in **Settings → Calibra
    2. With no flow, press **Zero now (no flow)**, then **Save calibration**.
    3. **3 L syringe:** on the **3 L syringe** tab, press **Start stroke**, push the syringe fully in with one smooth stroke, press **Stop**, then **Apply** the new k1 and **Save calibration**.
    4. Push the syringe again and confirm VT on the monitor reads about 3000 mL.
-5. **Export a copy.** Press **Export calibration (JSON)** and keep it with your lab notes. Every recording also stores the calibration that was in use.
+5. **Gas conditions and timing** (only if they apply; **Settings → Display & units**, details in [docs/calibration.md](docs/calibration.md#gas-conditions-and-timing-settings--display--units)):
+   - **CO2 signal delay** for a sidestream analyser. The field's hint shows the delay the monitor measures.
+   - **Report volumes at body conditions (BTPS)**, with the room temperature.
+   - **Bag gas correction** if the bag holds an oxygen-rich mix and the syringe calibration was done in air.
+6. **Export a copy.** Press **Export calibration (JSON)** and keep it with your lab notes. Every recording also stores the calibration that was in use.
 
 You can type any calibration in by hand (gain/offset, polynomial, or a lookup table) under **Enter values**.
 
@@ -274,9 +287,12 @@ You can type any calibration in by hand (gain/offset, polynomial, or a lookup ta
 - [ ] The laptop runs on battery, or the Arduino is behind a USB isolator (for any live study).
 - [ ] The computer will not sleep: set its power settings to never sleep while plugged in or on battery, and postpone OS updates. The app asks the computer to stay awake while a device is connected (Windows and macOS), but do not rely on that alone.
 - [ ] The header shows **100 Hz · 0 dropped**, and the hardware check passed.
-- [ ] Each calibration card shows today's date (or a recent one you trust).
-- [ ] The study code is set in **Settings → Data & recordings**. **Never use a name, MRN or date of birth.**
-- [ ] Alarm limits are set: **Alarm limits** soft key (default: EtCO2 high at 50 mmHg, 2-breath delay).
+- [ ] Each calibration card shows today's date (or a recent one you trust). A blue **CALIBRATION** notice names any channel calibrated more than 24 h ago, or never.
+- [ ] The study code is set in **Settings → Data & recordings**. **Never use a name, MRN or date of birth.** If the slope should be normalized for body size, enter the subject's height and weight there too (and age in years); they are cleared when the study code changes.
+- [ ] Alarm limits are set: **Alarm limits** soft key (default: warning at 60 mmHg after 2 breaths; stop at 65 mmHg at once).
+- [ ] If the board has a buzzer: close the app once with the Arduino connected, by ending its process (not with Disconnect), and check that the buzzer sounds within about 3 s. Start the app again.
+- [ ] If the app switches the valve (**Settings → Alarms → Switch the valve from the app**): with nobody on the mouthpiece, press **Start rebreathing** and check the valve goes to the bag, then **Emergency stop** and check it returns to room air. The setting's hint says if the connected board has no valve output.
+- [ ] If an oximeter is connected (**Settings → Display & units → SpO2 channel connected**): the SpO2 tile agrees with the oximeter's own display. If not, correct the scaling and offset there.
 - [ ] The **Audio armed** soft key is green (it arms by itself when the app finds a sound output), then **Alarm limits → Test alarm**: you see the red banner and hear the high-priority tone, then the medium tone.
 
 ### Recording
@@ -285,16 +301,33 @@ Press **● Record**. The header shows **● REC** and a timer. The session file
 
 To start recording automatically whenever the Arduino connects, turn on **Settings → Data & recordings → Start recording when the Arduino connects**. This suits overnight runs.
 
+### Running a rebreathing test
+
+To see a whole test before running one, open the **Simulation** panel and choose **Whole rebreathing test** with Speed at 10×: the simulation presses these keys itself and every graph fills in, in about 20 s.
+
+The keys under the trend tabs run the test and place its markers. Record first: the keys remind you with **NOT RECORDING** if you have not.
+
+1. **Start baseline** once the subject is on the mouthpiece with the nose clip on, breathing room air. The line beside the keys shows the time and whether breathing is steady: at least 6 breaths in the last minute with EtCO2 within about ±1.5 mmHg and MV within about ±20 %.
+2. **Start rebreathing** as you turn the valve to the bag. Coach the three deep breaths. The line shows the time since the valve was turned, against the time limit (5 min by default).
+3. Watch EtCO2. At the **warning** (60 mmHg, amber, three pulses) the end is near. At **STOP TEST** (65 mmHg, red, ten pulses) turn the valve back to room air.
+4. **End test** as you turn the valve back. Breaths after this are not fitted. **Emergency stop** does the same at once from any point, and with a valve output it sends the valve to room air even if the app does not normally switch it.
+5. Open the **Ventilatory response** tab: filled points are fitted, rings are the baseline, faint rings are outside the fit (the first 30 s of rebreathing, and after the end), crosses were taken out by hand. **Click a point** to take an erratic breath (a cough, a sigh) out of the fit; click its cross to put it back. The line under the tabs gives slope, r, x-intercept, n and the baseline means.
+6. **Stop rec**, then **Settings → Data & recordings → Export → CO2 response report (.pdf)** for the report.
+
+**If the app switches the valve** (a valve driver on pin 7 and the setting on), Start rebreathing and End test turn it for you, and the stop alarm, apnea and a low SpO2 turn it back to room air by themselves and end the test. The line beside the keys says where the valve is. Stay ready to turn or remove it by hand: this has not been tested on hardware.
+
+Otherwise the keys only place markers labelled **Baseline**, **Rebreathing** and **End of test**. A marker you place with **M** and label yourself works the same way ("CO2 rebreathing started", "Test ended" …).
+
 ### Reading the screen
 
 | Area | Shows |
 | --- | --- |
 | Header | Study code, connection and sample rate, dropped samples, recording timer, alarm status (`ARMED`, `ALARM`, `SILENCED 1:42`, `AUDIO OFF`), clock |
 | Alarm strip | The most important alarm: red flashing = high priority, amber = medium (technical), blue = information. "+N more" lists the rest. |
-| CO2 row | Capnogram (yellow, with the high limit dashed), **EtCO2** (large, with its limits beside it), RR, FiCO2 |
-| Flow row | Flow-sensor waveform (cyan), live flow, peak inspiratory flow |
-| Pneumotach row | Pneumotach flow (green), VT, MV |
-| Bottom chart | EtCO2 per breath over 15 min to the whole session, with alarm and event markers. The **Ventilatory response** tab plots MV against EtCO2: baseline breaths (before a marker labelled **Rebreathing**) as hollow rings, and a line fitted to the rebreathing breaths, with slope, r and x-intercept. |
+| CO2 row | Capnogram (yellow, with the warning limit dashed), **EtCO2** (large, with its limits beside it: warning / stop, and low), RR, FiCO2 |
+| Flow row | Flow-sensor waveform (cyan), live flow, peak inspiratory flow, and SpO2 with its low limit when an oximeter is connected |
+| Pneumotach row | Pneumotach flow (green), VT (with the expired volume under it), MV (the 60 s average) |
+| Bottom chart | The trend: EtCO2, MV or RR per breath (the drop-down beside **Window**) over 5 min to the whole session, with the warning limit dashed, the stop limit solid, and alarm and event markers. The **Ventilatory response** tab plots each breath's own MV against its EtCO2 (see above). |
 
 A number shows `---` when its sensor has sent no valid data for 2 s.
 
@@ -312,16 +345,26 @@ A number shows `---` when its sensor has sent no valid data for 2 s.
 
 | Alarm | Priority | Meaning | What to do |
 | --- | --- | --- | --- |
-| EtCO2 HIGH | high (red) | EtCO2 above the high limit for the trigger delay | Check the subject first, then the primary monitor |
+| STOP TEST | high (red) | CO2 at or above the stop limit (65 mmHg) for half a second, or one breath ending above it | Turn the valve back to room air. Check the subject first, then the primary monitor |
+| EtCO2 HIGH | medium (amber) with a stop limit set; high (red) without one | EtCO2 above the warning limit (60 mmHg) for the trigger delay | The end of the test is near: get ready to turn the valve |
+| REBREATHING TIME LIMIT | medium | The time limit has passed since the valve was turned | End the test |
 | APNEA | high | No breath detected for 20 s | Check the subject and the airway connection |
+| SpO2 LOW | high | SpO2 below its limit (90 %) for 10 s | Turn the valve to room air; check the subject, then the probe |
+| SpO2: no reading | info (blue) | The SpO2 channel is on but gives no valid value | Check the probe, the wiring to A3 and the scaling |
 | EtCO2 LOW (if set) | medium | EtCO2 below the low limit | Check for a leak, a disconnected sample line, or apnea |
 | DEVICE DISCONNECTED | medium (amber) | USB link lost | Reconnect the cable; the app reconnects on its own |
 | NO DATA FROM DEVICE | medium | Connected, but nothing received for 3 s | Check the Arduino; unplug and replug it |
 | ADC NOT FOUND | medium | The Arduino cannot reach the ADS1115 | Check the ADC wiring (VDD, GND, SDA, SCL, ADDR) |
 | … SIGNAL AT ADC RAIL | medium | A sensor reads 0 V or 5 V for 2 s | Sensor unplugged, unpowered or out of range |
+| SIGNAL TOO NOISY | medium | 3 of the last 5 breaths were left out: noise, partial breaths, or flow beyond the pneumotach's range | Check the sample line and wiring. If breaths are simply too large for the pneumotach, its range does not suit this subject |
+| VOLUME MISMATCH | info (blue) | Expired volume differs from inspired by more than 20 % over 5 breaths | Check for a leak at the mouthpiece, nose clip or mask; re-zero the pneumotach |
+| CALIBRATION | info | A channel was calibrated more than 24 h ago, or never | Calibrate it ([section 7](#7-calibrate)) |
+| SETTINGS NOT SAVED | info | The settings folder could not be written | Free disk space or fix the folder's permissions; changes are lost when the app closes |
 | Audible alarm NOT armed | info (blue) | No sound output was found | Plug in speakers or headphones, then press **Arm audio** |
 
-Alarms **latch**: after the condition clears, the alarm stays as "resolved" until someone presses **Clear**, so a short event is never missed.
+Alarms **latch**: after the condition clears, the alarm stays as "resolved" until someone presses **Clear**, so a short event is never missed. Silencing the warning does not mute the stop alarm: a new high-priority alarm cancels the silence.
+
+**The board's own buzzer** (if wired) means the monitor app has stopped talking to the Arduino for 3 s: the app closed or crashed, the computer went to sleep, or (browser version) the tab went into the background. Nothing is checking the CO2 until the app is back, so look at the certified monitor and bring the app back.
 
 **Keep the app open and the laptop awake.** The alarms work while the window is minimised or behind other windows (a high alarm also flashes the taskbar), but not if the app is closed or crashes, or the computer sleeps.
 
@@ -331,9 +374,12 @@ Alarms **latch**: after the condition clears, the alarm stays as "resolved" unti
 
 1. Press **■ Stop rec**. The session is finished as **one CSV file**, `co2r_<study code>_<date>-<time>.csv`, in the sessions folder (**Documents/CO2-Response/sessions** by default; **Settings → Data & recordings → Open folder** shows it). It is also listed in **Settings → Data & recordings**.
 2. Copy the file to the lab's storage.
-3. To look at it again, go to **Settings → Data & recordings → Open**. You get the summary, zoomable charts and the event list. Export the whole session, the breath table or the events, for everything or a zoomed time range, or **Replay** it on the monitor.
-4. To analyse it, open the file in Excel, MATLAB or R, or use `analysis/load_session.py` with Python. The columns and examples are in [docs/data-format.md](docs/data-format.md).
-5. In **Settings → Connection** press **Disconnect**, then unplug the Arduino.
+3. To look at it again, go to **Settings → Data & recordings → Open**. You get the summary (with the CO2 response), the response plot, zoomable charts and the event list. A breath that should not count (a cough you only noticed afterwards) can still be taken out: click it on the response plot. The file remembers it. Export the whole session, the breath table or the events, for everything or a zoomed time range, or **Replay** it on the monitor.
+4. For the test report, use **CO2 response report (.pdf)** there, or `python -m co2response --report file.csv`. It has the results, the response plot and a table of every breath saying how it was used.
+5. To analyse it further, open the file in Excel, MATLAB or R, or use `analysis/load_session.py` with Python. The columns and examples are in [docs/data-format.md](docs/data-format.md).
+6. In **Settings → Connection** press **Disconnect**, then unplug the Arduino. (Disconnect tells the board the app is leaving, so its buzzer stays quiet.)
+
+**Old LabChart recordings.** **Settings → Data & recordings → Import** also takes a LabChart (PowerLab) text export (`.txt`: in LabChart, File → Export → Text, with the time column and comments included). It needs a flow channel and a CO2 channel; the app works out the breaths, the response and the report from them. Check the first one against LabChart's own numbers.
 
 If the app closes or the computer crashes while recording, the file is kept up to the last second; the next time the app starts it lists it as **Recovered**.
 
@@ -357,6 +403,8 @@ If the app closes or the computer crashes while recording, the file is kept up t
 | Dropped samples above 0.1 % | USB hub, poor cable, or an overloaded computer | Plug in directly, use a short good-quality cable, close heavy programs |
 | No alarm sound | No sound output found (on Linux: PortAudio missing), system volume muted, or sound going to another output | Check the computer's volume and output device (on Linux `sudo apt install libportaudio2`), press **Arm audio**, then **Test alarm** |
 | Cannot find the recording file | It is in the sessions folder, not Downloads | **Settings → Data & recordings → Open folder**, or **Export → Whole session** to save a copy anywhere |
+| The Arduino's buzzer sounds | The app's heartbeat stopped for 3 s: the app closed without Disconnect, froze, the computer slept, or the browser tab is in the background | Bring the app back to the front or restart it; the buzzer stops at the next heartbeat. To switch the watchdog off, set `WATCHDOG_TIMEOUT_MS 0` in `config.h` |
+| The response line looks wrong | The markers are missing or misplaced, or erratic breaths are in the fit | Check the markers in **Data & recordings → Event markers** (labels can be edited). Click erratic breaths in the plot to take them out. The first seconds left out are set by **Leave out the start of rebreathing** |
 | The computer went to sleep | OS power settings | Set the computer to never sleep, and keep it on mains through an isolator or on battery as your safety plan allows |
 
 Still stuck? **Settings → Diagnostics** shows the last raw lines from the Arduino and the session log. **Save session log** in **Data & recordings** saves it to share.

@@ -97,21 +97,45 @@ def test_test_alarm_sounds_high_then_medium_then_clears(tmp_path):
     assert "test" not in ids(e.snapshot())
 
 
-def test_co2_ramp_raises_the_high_alarm_and_acknowledge_silences_it(tmp_path):
+def test_co2_ramp_raises_the_warning_then_the_stop_alarm_which_breaks_the_silence(tmp_path):
     e = make_engine(tmp_path)
+    e.connect("simulator")
+    e.set_sim(scenario="co2Ramp", ramp_max_mm_hg=68, drive=0.5)
+    for _ in range(140):
+        run(e, 1)
+        if e.alarms.is_active("co2High"):
+            break
+    a = e.alarms.get("co2High")
+    # the warning limit (60 mmHg): medium priority, because a stop limit stands behind it
+    assert a is not None and a.state == "active" and a.message.startswith("EtCO2 HIGH") and a.priority == "medium"
+    assert "medium" in e.audio.played and "high" not in e.audio.played
+    assert e.alarm_starts and e.alarm_starts[-1][1] == "medium"
+    e.acknowledge()
+    s = e.snapshot()
+    assert s.silence_ms > 0 and e.alarms.get("co2High").acknowledged
+    # the stop limit (65 mmHg): high priority, and it sounds although the warning was silenced
+    for _ in range(60):
+        run(e, 1)
+        if e.alarms.is_active("co2Stop"):
+            break
+    stop = e.alarms.get("co2Stop")
+    assert stop is not None and stop.priority == "high" and stop.message.startswith("STOP TEST")
+    assert e.snapshot().silence_ms == 0
+    run(e, 1)
+    assert "high" in e.audio.played
+    assert e.snapshot().alarms[0].id == "co2Stop"
+
+
+def test_one_limit_without_a_stop_tier_is_a_high_priority_alarm(tmp_path):
+    e = make_engine(tmp_path)
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, high_mm_hg=50, stop_mm_hg=None))
     e.connect("simulator")
     e.set_sim(scenario="co2Ramp")
     for _ in range(120):
         run(e, 1)
         if e.alarms.is_active("co2High"):
             break
-    a = e.alarms.get("co2High")
-    assert a is not None and a.state == "active" and a.message.startswith("EtCO2 HIGH")
-    assert "high" in e.audio.played
-    assert e.alarm_starts and e.alarm_starts[-1][1] == "high"
-    e.acknowledge()
-    s = e.snapshot()
-    assert s.silence_ms > 0 and e.alarms.get("co2High").acknowledged
+    assert e.alarms.get("co2High").priority == "high" and "high" in e.audio.played
 
 
 def test_rebreathing_marker_sets_the_baseline_apart(tmp_path):
@@ -127,11 +151,155 @@ def test_rebreathing_marker_sets_the_baseline_apart(tmp_path):
     e.rename_marker(m.id, "Rebreathing")
     assert e.rebreathing_start() == m.t / 1000
     e.set_sim(scenario="co2Ramp")
-    run(e, 40)
+    run(e, 70)
     res = e.co2_response()
     assert res.split and len(res.baseline) >= 6 and len(res.rebreathing) >= 6
     assert 36 <= res.baseline_etco2 <= 39
-    assert max(a for a, _ in res.rebreathing) > res.baseline_etco2
+    assert max(p.etco2 for p in res.rebreathing) > res.baseline_etco2
+    # the breaths in the first 30 s of rebreathing are drawn but not fitted
+    assert res.skip_sec == 30 and 5 <= len(res.skipped) <= 9
+    assert all(p.t >= m.t / 1000 + 30 for p in res.rebreathing)
+    # each point is the breath's own minute ventilation, not the 60 s average
+    by_key = {q.key: q for q in e.trend}
+    p = res.rebreathing[-1]
+    assert p.mv == by_key[p.key].mv_breath != by_key[p.key].mv
+    e.update_settings(test=dataclasses.replace(e.settings.test, response_skip_sec=0))
+    assert e.co2_response().skipped == [] and len(e.co2_response().rebreathing) > len(res.rebreathing)
+
+
+def test_guided_test_baseline_rebreathing_end_and_the_time_limit(tmp_path):
+    e = make_engine(tmp_path)
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, rebreathing_max_sec=60))
+    e.connect("simulator")
+    run(e, 20)
+    assert e.snapshot().test.phase == "idle"
+    e.start_baseline()
+    run(e, 10)
+    ts = e.snapshot().test
+    assert ts.phase == "baseline" and not ts.stable and "settling" in ts.text and "NOT RECORDING" in ts.text
+    run(e, 30)
+    ts = e.snapshot().test
+    assert ts.stable and ts.text.startswith("BASELINE 0:40 · steady (EtCO2 ±")
+    # breaths before the Baseline key (settling in) are not part of the baseline
+    assert all(p.t >= ts.window.baseline for p in e.co2_response().baseline)
+    assert not e.pipeline.rebreathing
+
+    e.start_rebreathing()
+    e.set_sim(scenario="co2Ramp", ramp_mm_hg_per_min=6)
+    assert e.pipeline.rebreathing  # the bag gas factor applies from here
+    run(e, 50)
+    ts = e.snapshot().test
+    assert ts.phase == "rebreathing" and ts.text.startswith("REBREATHING 0:50 of 1:00")
+    assert not e.alarms.is_active("testTime")
+    run(e, 12)
+    limit = e.alarms.get("testTime")
+    assert limit is not None and limit.priority == "medium" and limit.message.startswith("REBREATHING TIME LIMIT: 1:0")
+
+    e.end_test()
+    assert not e.alarms.is_active("testTime") and not e.pipeline.rebreathing
+    n = len(e.co2_response().rebreathing)
+    e.set_sim(scenario="normal")
+    run(e, 20)
+    ts = e.snapshot().test
+    assert ts.phase == "ended" and ts.text.startswith("TEST ENDED after 1:02")
+    res = e.co2_response()
+    assert len(res.rebreathing) == n  # recovery breaths are not fitted
+    assert len(res.skipped) > 5
+    assert [m.label for m in e.markers] == ["Baseline", "Rebreathing", "End of test"]
+    # a new baseline opens the next test
+    e.start_baseline()
+    assert e.snapshot().test.phase == "baseline"
+
+
+def test_a_breath_can_be_taken_out_of_the_fit_by_hand_and_put_back(tmp_path):
+    from co2response.storage.session_file import breaths_csv, clean_breaths
+
+    e = make_engine(tmp_path)
+    e.update_settings(test=dataclasses.replace(e.settings.test, response_skip_sec=0))
+    e.connect("simulator")
+    e.start_recording()
+    run(e, 20)
+    e.start_rebreathing()
+    e.set_sim(scenario="co2Ramp")
+    run(e, 40)
+    res = e.co2_response()
+    first, second = res.rebreathing[0], res.rebreathing[1]
+    assert e.toggle_breath(first.key) and e.set_breath_excluded(second.key)
+    assert not e.set_breath_excluded(second.key)  # already out
+    out = e.co2_response()
+    assert [p.key for p in out.excluded] == [first.key, second.key]
+    assert len(out.rebreathing) == len(res.rebreathing) - 2
+    assert e.toggle_breath(second.key)  # put back
+    assert [p.key for p in e.co2_response().excluded] == [first.key]
+    stop = e.stop_recording()
+    text = stop.path.read_text()
+    assert text.count("BREATH_EXCLUDED") == 2 and text.count("BREATH_INCLUDED") == 1
+    parsed = e.library.parse(stop.rec.id)
+    gone = [b for b in parsed.breaths if b.quality == "excluded"]
+    assert len(gone) == 1 and gone[0].etco2 == pytest.approx(first.etco2, abs=0.06)
+    assert gone[0] not in clean_breaths(parsed)
+    assert ",excluded\n" in breaths_csv(parsed)
+    # the breath's own length and expired volume are in the file
+    b = clean_breaths(parsed)[-1]
+    assert b.mv_breath == pytest.approx(b.vt / 1000 * 60 / b.period) and b.vte == pytest.approx(b.vt, rel=0.05)
+    assert "excluded" in e.trend_csv()
+
+
+def test_volume_mismatch_advisory_when_expired_volume_falls_short(tmp_path):
+    e = make_engine(tmp_path)
+    e.connect("simulator")
+    run(e, 40)
+    s = e.snapshot()
+    assert abs(s.numbers.volume_mismatch_pct) < 3 and s.numbers.vte == pytest.approx(s.numbers.vt, rel=0.03)
+    assert not e.alarms.is_active("leak")
+    # a pneumotach zero that has drifted by +9 L/min: inspiration over-reads, expiration under-reads
+    c = e.channels
+    c["channels"]["pneumo"]["zeroOffset"] = -45  # Pa (0.2 L/min per Pa)
+    e.set_channels(c)
+    run(e, 40)
+    leak = e.alarms.get("leak")
+    assert leak is not None and leak.priority == "advisory" and leak.message.startswith("VOLUME MISMATCH: expired volume")
+    assert e.snapshot().numbers.volume_mismatch_pct > 20
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, leak_pct=0))
+    run(e, 1)
+    assert not e.alarms.is_active("leak")
+
+
+def test_a_save_that_fails_is_shown_not_swallowed(tmp_path):
+    e = make_engine(tmp_path)
+    cfg = tmp_path / "cfg"
+    cfg.mkdir(exist_ok=True)
+    (cfg / "settings.tmp").mkdir()  # the temporary file cannot be written
+    e.update_settings(theme="light")
+    assert e.store.save_error and "settings.json" in e.store.save_error
+    e.tick()
+    a = e.alarms.get("settingsSave")
+    assert a is not None and a.priority == "advisory" and a.message.startswith("SETTINGS NOT SAVED (settings.json")
+    assert any("could not be saved" in line.text for line in e.log)
+    (cfg / "settings.tmp").rmdir()
+    e.update_settings(theme="dark")
+    e.tick()
+    assert e.store.save_error is None and not e.alarms.is_active("settingsSave")
+
+
+def test_subject_size_is_recorded_and_cleared_with_a_new_study_code(tmp_path):
+    e = make_engine(tmp_path)
+    e.update_settings(study_code="S-07", test=dataclasses.replace(e.settings.test, height_cm=172, weight_kg=64, age_years=23))
+    e.connect("simulator")
+    e.start_recording()
+    run(e, 3)
+    stop = e.stop_recording()
+    parsed = e.library.parse(stop.rec.id)
+    import json
+
+    assert json.loads(parsed.meta["test"]) == {"responseSkipSec": 30, "heightCm": 172, "weightKg": 64, "ageYears": 23}
+    # the next subject does not inherit the last one's size
+    e.update_settings(study_code="S-08")
+    assert (e.settings.test.height_cm, e.settings.test.weight_kg, e.settings.test.age_years) == (None, None, None)
+    # nonsense is not kept
+    e.update_settings(test=dataclasses.replace(e.settings.test, height_cm=-5, weight_kg="x"))
+    assert (e.settings.test.height_cm, e.settings.test.weight_kg) == (None, None)
+    assert make_engine(tmp_path).settings.study_code == "S-08"
 
 
 def test_apnea_and_no_data_alarms(tmp_path):
@@ -174,7 +342,7 @@ def test_record_stop_import_review_export(tmp_path):
     assert res.path is not None and res.path.exists() and res.path.parent == tmp_path / "sessions"
     assert res.file_name.startswith("co2r_STUDY-01_") and res.file_name.endswith(".csv")
     text = res.path.read_text()
-    assert text.startswith("# CO2-Response session,v3")
+    assert text.startswith("# CO2-Response session,v4")
     assert "MARK Event 1" in text and "MARK_RENAMED 1 drug given" in text and "RECORDING_STOPPED" in text
     lib = e.library
     assert [(r.status, r.stats["breaths"] > 3) for r in lib.list()] == [("complete", True)]
@@ -185,12 +353,15 @@ def test_record_stop_import_review_export(tmp_path):
     assert breaths_csv(parsed).startswith("breath,time_s,wall_time_iso,etco2_mmHg")
 
     # replay it through the monitor with the file's calibration
+    e.markers.clear()
     assert e.connect("replay", session=parsed, file_name="reimported.csv", speed=10)
     assert e.snapshot().using_file_calibration
     run(e, 5)
     s = e.snapshot()
     assert s.source_kind is None and s.status == "idle" and s.status_detail == "Replay finished"
     assert len(e.breaths) >= 6
+    # the recording's marker is replayed too, with the label it was given
+    assert [m.label for m in e.markers] == ["drug given"]
 
 
 def test_settings_and_calibration_persist(tmp_path):
@@ -247,10 +418,12 @@ class FakeArduino(threading.Thread):
     """A pseudo-terminal that behaves like the firmware: boot banner, commands, and
     data lines (``speed`` times faster than real time)."""
 
-    def __init__(self, speed: float = 10) -> None:
+    def __init__(self, speed: float = 10, info: bytes = INFO) -> None:
         super().__init__(daemon=True)
         import pty
         import tty
+
+        self.info = info
 
         self.master, self.slave = pty.openpty()
         tty.setraw(self.slave)
@@ -285,7 +458,7 @@ class FakeArduino(threading.Thread):
                 select.select([], [self.master], [], 0.01)
 
     def run(self) -> None:
-        self._write(INFO)
+        self._write(self.info)
         t0 = time.monotonic()
         sent = 0
         buf = b""
@@ -300,7 +473,7 @@ class FakeArduino(threading.Thread):
                 for raw in lines:
                     cmd = raw.decode().strip()
                     self.commands.append(cmd)
-                    replies = [INFO.decode().strip()] if cmd == "INFO" else self.core.command(cmd)
+                    replies = [self.info.decode().strip()] if cmd == "INFO" else self.core.command(cmd)
                     self._write("".join(x + "\n" for x in replies).encode())
             due = int((time.monotonic() - t0) * 100 * self.speed)
             while sent < due:
@@ -373,3 +546,294 @@ def test_arduino_over_serial_connect_check_unplug_auto_reconnect(tmp_path):
     finally:
         e.shutdown()
         ard.unplug()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="needs a pseudo-terminal")
+def test_heartbeat_is_sent_to_firmware_with_a_watchdog_and_switched_off_on_disconnect(tmp_path):
+    """Firmware 1.1 sounds its own buzzer when the host's heartbeat stops; older firmware
+    (no WD in its info line) is never sent one."""
+    ard = FakeArduino(info=INFO.rstrip() + b",WD,3000\n")
+    old = FakeArduino()
+
+    def engine(dev, folder):
+        ports = [PortInfo(dev.device, "Arduino Uno", 0x2341, 0x0043, "A1")]
+        return MonitorEngine(store=SettingsStore(tmp_path / folder), audio=SilentAudio(), port_lister=lambda: ports, sessions_dir=tmp_path / "s", prevent_sleep=False)
+
+    e, e_old = engine(ard, "a"), engine(old, "b")
+    try:
+        assert e.connect("serial", port=ard.device) and e_old.connect("serial", port=old.device)
+        assert run_real(e, 8, lambda: ard.commands.count("HB") >= 3)
+        assert e.info["WD"] == "3000"
+        run_real(e_old, 2.5)
+        assert "HB" not in old.commands and old.commands[:2] == ["INFO", "START"]
+        # about one a second, not one per tick
+        n0, t0 = ard.commands.count("HB"), time.monotonic()
+        run_real(e, 2.2)
+        assert 1 <= ard.commands.count("HB") - n0 <= 3, (ard.commands, time.monotonic() - t0)
+        e.disconnect()
+        time.sleep(0.3)
+        assert ard.commands[-2:] == ["HB OFF", "STOP"]
+    finally:
+        e.shutdown()
+        e_old.shutdown()
+        ard.unplug()
+        old.unplug()
+
+
+# ------------------------------------------------------------------ the valve output
+
+
+def valve_events(e) -> list[str]:
+    return [line.text for line in e.log if line.text.startswith(("Valve to", "EMERGENCY STOP", "Marker: End"))]
+
+
+def test_app_switches_the_valve_and_the_stop_alarm_turns_it_back(tmp_path):
+    """With the valve switched from the app: to the bag at Start rebreathing, and back to
+    room air by itself, with an end-of-test marker, as soon as the stop alarm starts."""
+    e = make_engine(tmp_path)
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, auto_valve=True))
+    e.connect("simulator")
+    run(e, 20)
+    s = e.snapshot()
+    assert s.valve == "air" and e.source.core.valve_to_bag is False
+    e.start_recording()
+    e.start_baseline()
+    run(e, 5)
+    e.set_sim(ramp_mm_hg_per_min=30, ramp_max_mm_hg=70, drive=0.5)
+    e.start_rebreathing()
+    run(e, 0.1)
+    # the simulated valve is on the bag, and in the simulation that is what makes CO2 rise
+    assert e.source.core.valve_to_bag and e.snapshot().valve == "bag" and e.settings.sim.ramp
+    assert "valve to the bag" in e.snapshot().test.text
+    stopped_at = None
+    for _ in range(1200):
+        run(e, 0.1)
+        if e.alarms.get("co2Stop") is not None:
+            stopped_at = e.clock.t
+            break
+    assert stopped_at is not None
+    # within one pass of the alarm: valve to room air, test ended, CO2 no longer rising
+    assert not e.source.core.valve_to_bag and e.snapshot().valve == "air" and not e.settings.sim.ramp
+    run(e, 0.1)
+    assert e.snapshot().test.phase == "ended" and e.markers[-1].label == "End of test (stop limit)"
+    assert e.markers[-1].t - stopped_at <= 100
+    assert valve_events(e) == ["Valve to the bag", "Valve to room air: automatic stop: stop limit", "Marker: End of test (stop limit)"]
+    text = e.stop_recording().path.read_text(encoding="utf-8")
+    assert "VALVE BAG" in text and "VALVE AIR (automatic stop: stop limit)" in text and "MARK End of test (stop limit)" in text
+    run(e, 30)
+    assert e.alarms.get("co2Stop").state == "resolved"  # CO2 came back down
+
+
+def test_without_the_setting_the_app_never_moves_the_valve_but_emergency_stop_does(tmp_path):
+    e = make_engine(tmp_path)
+    e.connect("simulator")
+    run(e, 5)
+    assert not e.settings.alarms.auto_valve
+    e.start_rebreathing()
+    run(e, 1)
+    assert not e.source.core.valve_to_bag and valve_events(e) == []
+    assert e.snapshot().test.can_emergency
+    # someone moved the valve output by another route: the emergency stop still returns it to room air
+    e.source.send("VALVE 1")
+    run(e, 0.5)
+    assert e.source.core.valve_to_bag and e.snapshot().valve == "bag"
+    e.emergency_stop()
+    run(e, 0.2)
+    assert not e.source.core.valve_to_bag and e.snapshot().test.phase == "ended" and not e.snapshot().test.can_emergency
+    assert e.markers[-1].label == "End of test (emergency stop)"
+    assert valve_events(e)[-3:] == ["Valve to room air: emergency stop", "EMERGENCY STOP: valve to room air", "Marker: End of test (emergency stop)"]
+
+
+def test_apnea_and_disconnecting_return_the_valve_to_room_air(tmp_path):
+    e = make_engine(tmp_path)
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, auto_valve=True))
+    e.connect("simulator")
+    run(e, 10)
+    e.start_rebreathing()
+    run(e, 5)
+    e.set_sim_switch("apnea", True)
+    run(e, 26)
+    assert e.alarms.is_active("apnea") and not e.source.core.valve_to_bag
+    assert e.markers[-1].label == "End of test (apnea)"
+    # a deliberate disconnect never leaves the valve on the bag
+    e.set_sim_switch("apnea", False)
+    e.start_rebreathing()
+    core = e.source.core
+    assert core.valve_to_bag
+    e.disconnect()
+    assert not core.valve_to_bag
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="needs a pseudo-terminal")
+def test_valve_commands_reach_the_board_and_a_board_without_a_valve_is_left_alone(tmp_path):
+    ard = FakeArduino(info=INFO.rstrip() + b",WD,3000,VALVE,1\n")
+    plain = FakeArduino()
+
+    def engine(dev, folder):
+        ports = [PortInfo(dev.device, "Arduino Uno", 0x2341, 0x0043, "A1")]
+        e = MonitorEngine(store=SettingsStore(tmp_path / folder), audio=SilentAudio(), port_lister=lambda: ports, sessions_dir=tmp_path / "s", prevent_sleep=False)
+        e.update_settings(alarms=dataclasses.replace(e.settings.alarms, auto_valve=True))
+        return e
+
+    e, e_plain = engine(ard, "a"), engine(plain, "b")
+    try:
+        assert e.connect("serial", port=ard.device) and e_plain.connect("serial", port=plain.device)
+        assert run_real(e, 8, lambda: e.valve_available()) and e.snapshot().valve == "air"
+        run_real(e_plain, 2)
+        assert not e_plain.valve_available() and e_plain.snapshot().valve is None
+        e.start_rebreathing()
+        e_plain.start_rebreathing()
+        assert run_real(e, 3, lambda: "VALVE 1" in ard.commands)
+        e.end_test()
+        assert run_real(e, 3, lambda: "VALVE 0" in ard.commands)
+        e.start_rebreathing()
+        assert run_real(e, 3, lambda: ard.commands.count("VALVE 1") == 2)
+        e.disconnect()  # room air first, then the heartbeat is switched off
+        time.sleep(0.3)
+        assert [c for c in ard.commands if c != "HB"][-3:] == ["VALVE 0", "HB OFF", "STOP"]
+        run_real(e_plain, 0.5)
+        assert not any(c.startswith("VALVE") for c in plain.commands)
+        assert e_plain.emergency_stop() is not None  # still ends the test in the record
+    finally:
+        e.shutdown()
+        e_plain.shutdown()
+        ard.unplug()
+        plain.unplug()
+
+
+def test_a_late_answer_to_an_earlier_valve_command_is_not_mistaken_for_the_valve_moving(tmp_path):
+    """End then Start again before the board's answers are read: the answer to the End
+    arrives after the app has sent the valve to the bag. Believing it would show the
+    valve on room air while it is on the bag."""
+    e = make_engine(tmp_path)
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, auto_valve=True))
+    e.connect("simulator")
+    run(e, 5)
+    events: list[str] = []
+    record = e.recorder.event
+    e.recorder.event = lambda t, text: (events.append(text), record(t, text))[1]
+    e.start_rebreathing()
+    e.end_test()
+    e.start_rebreathing()  # three answers are now waiting: bag, air, bag
+    seen = []
+    on_line = e._on_line
+    e._on_line = lambda line: (on_line(line), seen.append((line, e.snapshot().valve)))[0]
+    run(e, 0.1)
+    assert [v for line, v in seen if line.startswith("A,VALVE")] == ["bag", "bag", "bag"]
+    assert not any("reported by the device" in x for x in events)
+    # the board moving the valve by itself (its watchdog) is still believed
+    e._on_line("A,VALVE,0")
+    assert e.snapshot().valve == "air" and "VALVE AIR (reported by the device)" in events
+    # and so is a refusal: asked for the bag, the board answers room air
+    e.start_rebreathing()
+    e.source._out.clear()
+    e._on_line("A,VALVE,0")
+    assert e.snapshot().valve == "air"
+    # an answer that never came does not make the next report unbelievable for ever
+    e.start_rebreathing()
+    e.source._out.clear()
+    run(e, 3)
+    e._on_line("A,VALVE,0")
+    assert e.snapshot().valve == "air"
+    # disconnecting sends the valve to room air whatever the app believes
+    e.start_rebreathing()
+    core = e.source.core
+    e._valve = False
+    e.disconnect()
+    assert core.valve_to_bag is False
+
+
+# ------------------------------------------------------------------ SpO2 (the safety channel)
+
+
+def with_oximeter(e, **kw):
+    e.update_settings(spo2=dataclasses.replace(e.settings.spo2, enabled=True, **kw))
+
+
+def test_spo2_channel_reads_the_oximeter_and_is_recorded_and_replayed(tmp_path):
+    e = make_engine(tmp_path)
+    e.connect("simulator")
+    run(e, 5)
+    assert math.isnan(e.snapshot().numbers.spo2) and len(e._last.volts) == 3  # no oximeter: three values per line
+    with_oximeter(e)  # switched on while running: the simulated oximeter appears on the fourth input
+    run(e, 5)
+    s = e.snapshot()
+    assert len(e._last.volts) == 4 and s.numbers.spo2 == pytest.approx(98, abs=0.5)
+    assert not e.alarms.is_active("spo2Low") and not e.alarms.is_active("spo2NoSignal")
+    e.set_sim(spo2=94)
+    e.start_recording()
+    run(e, 20)
+    assert e.snapshot().numbers.spo2 == pytest.approx(94, abs=0.5)
+    res = e.stop_recording()
+    parsed = e.library.parse(res.rec.id)
+    assert parsed.has_spo2 and float(parsed.spo2[-1]) == pytest.approx(94, abs=0.5)
+    assert float(parsed.v3[-1]) == pytest.approx(0.94, abs=0.01)  # 1 V = 100 % by default
+    import json
+
+    from co2response.storage.session_file import summarize
+
+    assert json.loads(parsed.meta["spo2"])["enabled"] is True and summarize(parsed).spo2_min == pytest.approx(94, abs=1.5)
+    from co2response.storage.report import build_report, result_lines
+
+    assert dict(result_lines(build_report(parsed)))["SpO2"] == "lowest 94 %"
+    # replay sends the fourth value again, so the replayed monitor shows SpO2 too
+    e.disconnect()
+    assert e.connect("replay", session=parsed, file_name="x.csv", speed=10)
+    run(e, 1)
+    assert len(e._last.volts) == 4 and e.snapshot().numbers.spo2 == pytest.approx(94, abs=1.5)
+    # a session with no oximeter has empty columns and replays three values
+    plain = make_engine(tmp_path / "plain")
+    plain.connect("simulator")
+    plain.start_recording()
+    run(plain, 3)
+    p2 = plain.library.parse(plain.stop_recording().rec.id)
+    assert not p2.has_spo2 and "spo2" not in p2.meta and math.isnan(summarize(p2).spo2_min)
+
+
+def test_low_spo2_alarm_after_apnea_and_it_returns_the_valve_to_room_air(tmp_path):
+    e = make_engine(tmp_path)
+    with_oximeter(e, low_pct=92, low_delay_sec=5)
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, auto_valve=True, apnea_sec=0))  # the apnea alarm off, to see SpO2 act alone
+    e.connect("simulator")
+    run(e, 10)
+    e.start_rebreathing()
+    run(e, 5)
+    e.set_sim_switch("apnea", True)
+    run(e, 30)
+    # the saturation holds for 20 s of apnea, then falls: 98 -> 92 takes 15 s more, and the alarm 5 s after that
+    assert e.snapshot().numbers.spo2 > 91 and not e.alarms.is_active("spo2Low")
+    run(e, 15)
+    a = e.alarms.get("spo2Low")
+    assert a is not None and a.priority == "high" and a.message.startswith("SpO2 LOW 8") and a.message.endswith("% < 92")
+    assert not e.source.core.valve_to_bag and e.markers[-1].label == "End of test (low SpO2)"
+    # breathing again: it recovers and the alarm resolves 1 % above the limit
+    e.set_sim_switch("apnea", False)
+    run(e, 20)
+    assert e.alarms.get("spo2Low").state == "resolved" and e.snapshot().numbers.spo2 > 96
+    # the limit can be switched off
+    with_oximeter(e, low_pct=0)
+    e.set_sim(spo2=75)
+    run(e, 20)
+    assert e.alarms.get("spo2Low").state == "resolved"
+
+
+def test_an_oximeter_that_gives_no_reading_is_reported_not_shown_as_a_number(tmp_path):
+    e = make_engine(tmp_path)
+    with_oximeter(e)
+    e.connect("simulator")
+    run(e, 3)
+    assert e.snapshot().numbers.spo2 == pytest.approx(98, abs=0.5)
+    # the probe comes off: the oximeter's output drops to 0 V, which is not a saturation
+    e.source.core.encoders = e.source.core.encoders._replace(spo2=lambda pct: 0.0)
+    run(e, 6)
+    assert math.isnan(e.snapshot().numbers.spo2) and not e.alarms.is_active("spo2Low")
+    run(e, 6)
+    assert e.alarms.get("spo2NoSignal").priority == "advisory"
+    # a wrong scaling shows the same way rather than as a wrong number, and the right one clears it
+    with_oximeter(e, gain_pct_per_v=20)
+    run(e, 3)
+    assert e.snapshot().numbers.spo2 == pytest.approx(98, abs=0.5) and not e.alarms.is_active("spo2NoSignal")
+    # switched off: no number, no notice
+    e.update_settings(spo2=dataclasses.replace(e.settings.spo2, enabled=False))
+    run(e, 12)
+    assert math.isnan(e.snapshot().numbers.spo2) and not e.alarms.is_active("spo2NoSignal") and len(e._last.volts) == 3

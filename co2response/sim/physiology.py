@@ -79,6 +79,12 @@ class SimParams:
     #: the flow sensor reads gain × true flow + offset (a miscalibrated or drifting sensor)
     flow_gain: float = 1
     flow_offset_lpm: float = 0
+    #: how much of the way to a new end-tidal CO2 each breath goes: 0.5 halves the gap
+    #: every breath (the original, gradual approach over about five breaths); 1 reaches
+    #: it on the next breath, or on the breath being drawn if that is still inspiring
+    settle: float = 0.5
+    #: the subject's oxygen saturation while breathing, %
+    spo2: float = 98
     #: events, on top of the scenario
     ramp: bool = False
     apnea: bool = False
@@ -113,6 +119,8 @@ class PhysSample:
     flow_lpm: float
     #: pneumotach differential pressure, Pa
     pneumo_pa: float
+    #: oxygen saturation, % (what a pulse oximeter would read)
+    spo2_pct: float = 98.0
 
 
 class PhysioModel:
@@ -131,6 +139,8 @@ class PhysioModel:
         self._tau = 0.5
         self._apnea_co2 = 0.0
         self._shallow = False
+        self._sat = self.params.spo2
+        self._apnea_for = 0.0
         self._reset_breathing()
 
     def set_params(self, **patch) -> None:
@@ -139,6 +149,10 @@ class PhysioModel:
         self.params = dataclasses.replace(prev, **patch)
         if scenario_changed or "etco2" in patch or self.params.ramp_on != prev.ramp_on:
             self._target = self.params.etco2
+            # the CO2 of an inspiration does not depend on this breath's EtCO2, so a breath
+            # that is still inspiring can take the new value without a step in the trace
+            if self.params.settle >= 1 and not self.params.apnea_on and self._t - self._breath_start < self._ti:
+                self._et = self._target
         if self.params.apnea_on and not prev.apnea_on:
             self._apnea_co2 = max(self._apnea_co2, self.params.fico2)
 
@@ -217,7 +231,7 @@ class PhysioModel:
             if x >= self._period:
                 self._breath_start += self._period
                 self._prev_end = self._et
-                self._et += (self._target - self._et) * 0.5
+                self._et += (self._target - self._et) * min(1.0, max(0.0, p.settle))
                 self._plan_breath()
                 x = self._t - self._breath_start
             if x < self._ti:
@@ -245,4 +259,12 @@ class PhysioModel:
         pneumo_pa = (flow + self._noise(0.4 * noisy)) / p.k_pneumo
         co2_mm = max(0, co2 + self._noise(0.25 * noisy))
         co2_pct = None if p.co2_disconnected_on else (co2_mm / p.barometric_mm_hg) * 100
-        return PhysSample(co2_pct, flow_lpm, pneumo_pa)
+        # oxygen saturation: holds for about 20 s of apnea, then falls about 0.4 %/s
+        # (room air); it comes back within a few breaths. No random numbers are used,
+        # so the rest of the simulation is the same with or without an oximeter.
+        self._apnea_for = self._apnea_for + dt if p.apnea_on else 0.0
+        if self._apnea_for > 20:
+            self._sat = max(50.0, self._sat - 0.4 * dt)
+        else:
+            self._sat += (p.spo2 - self._sat) * min(1.0, dt / 4)
+        return PhysSample(co2_pct, flow_lpm, pneumo_pa, self._sat)

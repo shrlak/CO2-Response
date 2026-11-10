@@ -14,6 +14,10 @@ class BreathOptions:
     deadband_lpm: float = 3
     #: breaths shorter than this (s) are treated as noise
     min_breath_sec: float = 1
+    #: a flow dropout shorter than this (s) is bridged with the last valid value. The
+    #: usual cause is the sensor clipping at the end of its range on a hard breath;
+    #: without the bridge every clipped breath would be lost.
+    hold_sec: float = 0.5
 
 
 @dataclass
@@ -46,6 +50,22 @@ class Breath:
     reason: str = ""
     #: the breath's number in the recording, if one was running
     rec_n: int | None = None
+    #: expired volume, mL (NaN in CO2-only mode). It should match ``vt_ml``; a
+    #: difference means a leak or a drifting flow zero
+    vte_ml: float = NAN
+    #: how long after expiration began the CO2 rose past half of the last EtCO2, s.
+    #: Dead-space washout takes 0.1-0.3 s; more is the CO2 sensor's delay
+    co2_lag_sec: float = NAN
+    #: seconds of the inspiration during which the flow signal was out of range and
+    #: bridged: the inspired volume under-reads (see ``BreathOptions.hold_sec``)
+    clipped_sec: float = 0.0
+
+    @property
+    def mv_lpm(self) -> float:
+        """This breath's own minute ventilation, L/min: VT x 60 / its period."""
+        if not (math.isfinite(self.vt_ml) and self.period_sec > 0):
+            return NAN
+        return self.vt_ml / 1000 * 60 / self.period_sec
 
 
 class BreathDetector:
@@ -65,6 +85,13 @@ class BreathDetector:
         self._et = NAN
         self._last_et = NAN
         self._exp_co2: list[float] = []
+        self._vte_l = 0.0
+        self._t_exp: float | None = None
+        self._lag = NAN
+        self._lag_open = False
+        self._flow_t: float | None = None
+        self._clip_insp = 0.0
+        self._clip_exp = False
 
     def reset(self) -> None:
         self._mode = None
@@ -93,6 +120,10 @@ class BreathDetector:
                 detected_by=self._mode,
                 plateau=plateau,
                 level=level,
+                # an expiration that went out of range has no trustworthy volume
+                vte_ml=self._vte_l * 1000 if flow_mode and not self._clip_exp else NAN,
+                co2_lag_sec=self._lag if flow_mode else NAN,
+                clipped_sec=self._clip_insp,
             )
             if math.isfinite(self._et):
                 self._last_et = self._et
@@ -103,7 +134,18 @@ class BreathDetector:
         self._fi = NAN
         self._et = NAN
         self._exp_co2 = []
+        self._vte_l = 0.0
+        self._t_exp = None
+        self._lag = NAN
+        self._lag_open = False
+        self._clip_insp = 0.0
+        self._clip_exp = False
         return out
+
+    def _co2_rise_level(self) -> float:
+        """The CO2 level that marks the capnogram's upstroke: half of the last EtCO2."""
+        ref = self._last_et if math.isfinite(self._last_et) else 20
+        return max(4, 0.5 * ref)
 
     def push(self, t: float, flow: float, co2: float) -> Breath | None:
         """Feed one sample.
@@ -111,6 +153,12 @@ class BreathDetector:
         t: device time (s); flow: pneumotach flow (L/min, NaN when invalid);
         co2: CO2 (mmHg, NaN when invalid). Returns the breath that just finished, if any.
         """
+        held = False
+        if math.isfinite(flow):
+            self._flow_t = t
+        elif self._mode == "flow" and self._flow_t is not None and 0 <= t - self._flow_t <= self.opts.hold_sec:
+            flow = self._last_flow  # a short dropout: carry on from the last valid value
+            held = True
         mode = "flow" if math.isfinite(flow) else "co2" if math.isfinite(co2) else None
         if mode != self._mode:
             self.reset()
@@ -120,6 +168,11 @@ class BreathDetector:
 
         dt = 0.0 if self._last_t is None else max(0.0, min(0.5, t - self._last_t))
         self._last_t = t
+        if held:
+            if self._phase == "insp":
+                self._clip_insp += dt
+            else:
+                self._clip_exp = True
         long_enough = self._start is None or t - self._start >= self.opts.min_breath_sec
         breath = None
 
@@ -129,9 +182,23 @@ class BreathDetector:
                 breath = self._begin_breath(t)
             elif flow < -db and self._phase == "insp":
                 self._phase = "exp"
+                self._t_exp = t
+                self._lag_open = False
             if self._phase == "insp":
                 self._vt_l += ((max(0.0, flow) + max(0.0, self._last_flow)) / 2 / 60) * dt
                 self._peak = max(self._peak, flow)
+            if self._start is not None:
+                # expired volume: every sample of the breath with flow outward
+                self._vte_l += ((max(0.0, -flow) + max(0.0, -self._last_flow)) / 2 / 60) * dt
+            if self._phase == "exp" and math.isnan(self._lag) and math.isfinite(co2):
+                # timed from the start of expiration to the capnogram's next upstroke.
+                # A late CO2 signal may still show the previous plateau at first; the
+                # upstroke is the rise that follows a low reading.
+                if co2 <= self._co2_rise_level():
+                    self._lag_open = True
+                elif self._lag_open and self._t_exp is not None:
+                    self._lag = t - self._t_exp
+                    self._lag_open = False
             self._last_flow = flow
         else:
             ref = self._last_et if math.isfinite(self._last_et) else 20

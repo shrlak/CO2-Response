@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
 
 from .. import __version__
 from ..engine.monitor import MonitorEngine
+from ..processing.metrics import co2_response_summary
+from ..storage.report import response_stats, session_response, spo2_stats
 from ..storage.session_file import (
     ParsedSession,
     Range,
@@ -28,12 +30,14 @@ from ..storage.session_file import (
     clean_breaths,
     event_type,
     events_csv,
+    exclude_breath,
     summarize,
     write_session,
 )
 from . import theme
-from .settings.common import downloads_dir, save_text
-from .settings.data import export_session
+from .response_plot import ResponsePlot
+from .settings.common import downloads_dir, parse_then, save_text
+from .settings.data import export_report, export_session
 from .theme import ui_font
 from .widgets import StatGrid, button, duration, elapsed, fmt, hbox, label, scroll_page
 
@@ -174,16 +178,21 @@ class ReviewScreen(QFrame):
         self.rec = engine.library.get(sid)
         self.parsed: ParsedSession | None = None
         self.zoom: Range | None = None
-        try:
-            if self.rec is None:
-                raise ValueError("This session is no longer in the library.")
-            self.parsed = engine.library.parse(sid)
-        except (OSError, ValueError) as e:
-            self.lay.addLayout(hbox(button("← Back to data", window.close_review, kind="primary"), stretch_end=True))
-            self.lay.addWidget(label(f"Could not open this session: {e}", "err", wrap=True))
-            self.lay.addStretch(1)
-            return
+        # a long recording opens in steps, so the monitor keeps running meanwhile
+        self.opening = label("", "lead")
+        self.lay.addWidget(self.opening)
+        parse_then(self, engine.library, sid, self._opened, self._failed, lambda f: self.opening.setText(f"Opening {self.rec.file_name}… {f * 100:.0f} %"))
+
+    def _opened(self, parsed: ParsedSession) -> None:
+        self.parsed = parsed
+        self.opening.hide()
         self._build()
+
+    def _failed(self, e: Exception) -> None:
+        self.opening.hide()
+        self.lay.addLayout(hbox(button("← Back to data", self.window.close_review, kind="primary"), stretch_end=True))
+        self.lay.addWidget(label(f"Could not open this session: {e}", "err", wrap=True))
+        self.lay.addStretch(1)
 
     @property
     def full(self) -> Range:
@@ -195,7 +204,7 @@ class ReviewScreen(QFrame):
         head = QVBoxLayout()
         title = label(rec.file_name, "h2", selectable=True)
         started = datetime.fromtimestamp(s.started_ms / 1000).strftime("%d %b %Y %H:%M:%S") if s.started_ms else "?"
-        conv = " (exports are converted to v2)" if s.version < 2 else ""
+        conv = " (exports are converted to the current format)" if s.version < 4 else ""
         head.addWidget(title)
         head.addWidget(
             label(
@@ -218,9 +227,21 @@ class ReviewScreen(QFrame):
                 ("Markers", str(summ.markers)),
                 ("Samples", f"{summ.samples:,} at {summ.rate_hz} Hz"),
                 ("Dropped samples", str(summ.dropped)),
+                *spo2_stats(summ),
+                *response_stats(session_response(s)),
             ]
         )
         lay.addWidget(stats)
+        self.stats = stats
+
+        # the response plot: click a breath to take it out of the fit; the choice is kept in the file
+        lay.addWidget(label("VENTILATORY RESPONSE", "h3"))
+        self.resp_note = label("", "note", wrap=True)
+        lay.addWidget(self.resp_note)
+        self.resp = ResponsePlot(self.toggle_breath)
+        self.resp.setFixedHeight(300)
+        lay.addWidget(self.resp)
+        self._show_response()
         self.zoom_note = label("", "note")
         self.whole_btn = button("Show whole session", lambda: self.set_zoom(None), small=True)
         lay.addLayout(hbox(self.zoom_note, self.whole_btn, stretch_end=True))
@@ -260,6 +281,7 @@ class ReviewScreen(QFrame):
                 button("Whole session (one .csv)", lambda: export_session(self.window, self.engine, self.rec, "session"), kind="primary"),
                 button("Breaths (.csv)", lambda: export_session(self.window, self.engine, self.rec, "breaths")),
                 button("Alarms & events (.csv)", lambda: export_session(self.window, self.engine, self.rec, "events")),
+                button("CO2 response report (.pdf)", lambda: export_report(self.window, self.rec.file_name, self.parsed)),
                 *self.range_btns,
                 replay,
                 stretch_end=True,
@@ -281,6 +303,35 @@ class ReviewScreen(QFrame):
         lay.addWidget(self.events)
         lay.addStretch(1)
         self.set_zoom(None)
+
+    # ---------- the response, and taking a breath out of it by hand
+
+    def _show_response(self) -> None:
+        res = session_response(self.parsed)
+        self.resp.set_response(res)
+        can = self.rec.status != "recording"
+        hint = " Click a breath to take it out of the fit, or its cross to put it back; the choice is saved in the session file." if can else " (Still recording: breaths cannot be taken out here yet.)"
+        self.resp_note.setText(co2_response_summary(res, fmt) + "." + hint)
+        for key, value in response_stats(res):
+            self.stats.set(key, value)
+
+    def toggle_breath(self, n) -> None:
+        b = next((x for x in self.parsed.breaths if x.n == n), None)
+        if b is None:
+            return
+        try:
+            if self.rec.status == "recording":
+                raise ValueError("This session is still being recorded.")
+            row = exclude_breath(self.parsed, n, b.quality != "excluded")
+            if row is None:
+                return
+            self.engine.library.append_row(self.sid, row)
+        except (OSError, ValueError) as e:
+            self.window.toast(f"Could not save the change: {e}", 6000)
+            return
+        self.engine.library_changed()
+        self._show_response()
+        self.events.addItem(f"{elapsed(self.parsed.events[-1].time_s)}   {self.parsed.events[-1].text}")
 
     # ---------- zoom
 
@@ -308,6 +359,8 @@ class ReviewScreen(QFrame):
     def apply_theme(self) -> None:
         for pl in getattr(self, "plots", ()):
             pl.style()
+        if hasattr(self, "resp"):
+            self.resp.apply_theme()
 
     # ---------- exports
 

@@ -1,3 +1,4 @@
+import math
 import re
 from datetime import datetime
 
@@ -47,7 +48,7 @@ def record_session(lib: SessionLibrary, seconds: int, stop: bool = True):
 
     import dataclasses
 
-    alarms = AlarmEngine(dataclasses.replace(DEFAULT_ALARMS, high_mm_hg=45), log)
+    alarms = AlarmEngine(dataclasses.replace(DEFAULT_ALARMS, high_mm_hg=45, stop_mm_hg=None), log)
     rec.start(SessionMeta("TEST #01", T0, "test", "Simulator", "sim", 100, channels, DEFAULT_PROCESSING, DEFAULT_ALARMS), T0)
     rec.event(T0, "RECORDING_STARTED source=Simulator")
     breaths, co2 = [], []
@@ -55,7 +56,7 @@ def record_session(lib: SessionLibrary, seconds: int, stop: bool = True):
     def use(p):
         if p.breath:
             breaths.append(p.breath)
-            rec.breath(p.breath.etco2, p.breath.fico2, respiratory_rate(breaths), p.breath.vt_ml, minute_ventilation(breaths, p.breath.t_end), p.breath.peak_insp_lpm, p.breath.quality)
+            rec.breath(p.breath.etco2, p.breath.fico2, respiratory_rate(breaths), p.breath.vt_ml, minute_ventilation(breaths, p.breath.t_end), p.breath.peak_insp_lpm, p.breath.quality, p.breath.period_sec, p.breath.vte_ml)
             alarms.on_breath(p.breath.etco2, wall[0])
         rec.sample(wall[0], p.t_ms, p.seq, p.volts, p.co2_mmhg, p.co2_pct, p.flow_lpm, p.pneumo_pa, p.pneumo_lpm)
         co2.append(p.co2_mmhg)
@@ -105,7 +106,7 @@ def test_writes_a_single_rectangular_csv_with_samples_breaths_and_events(lib):
     assert mem is None
     text = lib.text(rec.id)
     lines = text.rstrip("\n").split("\n")
-    assert lines[0] == "# CO2-Response session,v3"
+    assert lines[0] == "# CO2-Response session,v4"
     header = next(line for line in lines if not line.startswith("#"))
     assert header == ",".join(COLUMNS)
     rows = lines[lines.index(header) + 1 :]
@@ -117,7 +118,7 @@ def test_writes_a_single_rectangular_csv_with_samples_breaths_and_events(lib):
     assert not any("#" in r for r in rows)
 
     s = parse_session_text(text)
-    assert s.version == 3
+    assert s.version == 4
     assert s.study_code == "TEST no.01"
     assert s.n == 6000
     assert len(s.breaths) == len(breaths)
@@ -182,7 +183,7 @@ def test_keeps_the_file_in_memory_when_the_folder_cannot_be_written(tmp_path):
     lib = SessionLibrary(blocker / "sessions")
     _, (rec, mem), _, _ = record_session(lib, 2)
     assert rec is None
-    assert mem.startswith("# CO2-Response session,v3") and parse_session_text(mem).n == 200
+    assert mem.startswith("# CO2-Response session,v4") and parse_session_text(mem).n == 200
 
 
 # ------------------------------------------------------------------ parsing
@@ -225,10 +226,10 @@ def test_reads_v1_files_and_converts_them_to_v2():
     nan = float("nan")
     from co2response.storage.session_file import BreathRec
 
-    assert same(s.breaths, [BreathRec(0.02, 1, 38.2, nan, 15, 500, 7.5, nan, "ok")])  # screened on load
+    assert same(s.breaths, [BreathRec(0.02, 1, 38.2, nan, 15, 500, 7.5, nan, "ok", period_est=4.0)])  # screened on load; length from its RR
     assert [e.text for e in s.events] == ["CONNECTED Simulator", "MARK a, b"]
     v2 = parse_session_text("".join(export_session_parts(s)))
-    assert v2.version == 3
+    assert v2.version == 4
     assert v2.meta["converted_from"] == "v1"
     assert v2.n == 2
     assert v2.breaths[0].etco2 == 38.2
@@ -267,7 +268,7 @@ def test_writes_breath_and_event_tables(lib):
     _, (rec, _), breaths, _ = record_session(lib, 30)
     s = lib.parse(rec.id)
     b = breaths_csv(s).rstrip("\n").split("\n")
-    assert b[0] == "breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,quality"
+    assert b[0] == "breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,period_s,vte_ml,mv_breath_lpm,quality"
     assert len(b) == len(breaths) + 1
     e = events_csv(s).rstrip("\n").split("\n")
     assert e[0] == "time_s,wall_time_iso,type,event"
@@ -279,11 +280,16 @@ def test_writes_breath_and_event_tables(lib):
 def test_the_bundled_sample_session_parses():
     from conftest import ROOT
 
-    from co2response.storage.session_file import read_session
+    from co2response.storage.session_file import read_session, session_markers
 
     s = read_session(ROOT / "sample-data" / "synthetic_session.csv")
     summ = summarize(s)
-    assert s.version == 3 and summ.samples > 14900 and summ.breaths >= 35 and summ.alarms >= 1 and summ.rejected >= 1
+    assert s.version == 4 and summ.samples > 17900 and summ.breaths >= 40 and summ.rejected >= 1
+    # a whole rebreathing test: baseline, rebreathing through the warning to the stop limit, end
+    assert [label for _, label in session_markers(s.events)] == ["Baseline", "CO2 rebreathing started", "End of test"]
+    starts = [e.text.split()[1:3] for e in s.events if e.text.startswith("ALARM_START")]
+    assert starts == [["co2High", "medium"], ["co2Stop", "high"]]
+    assert all(math.isfinite(b.period) and math.isfinite(b.vte) for b in s.breaths)
 
 
 # ------------------------------------------------------------------ library
@@ -350,7 +356,7 @@ def test_chunked_library_stores_sessions_as_small_parts(tmp_path):
     parts = sorted((tmp_path / "s" / rec.id).glob("*.part"))
     assert len(parts) > 5 and all(p.stat().st_size < 50_000 + 20_000 for p in parts)
     text = lib.text(rec.id)
-    assert text.startswith("# CO2-Response session,v3")
+    assert text.startswith("# CO2-Response session,v4")
     s = lib.parse(rec.id)
     assert s.n == 3000 and len(s.breaths) == len(breaths)
     # re-export is the same file, so the parts join up exactly
@@ -363,3 +369,87 @@ def test_chunked_library_stores_sessions_as_small_parts(tmp_path):
     assert len(lib.list()) == 2
     lib.delete(rec.id)
     assert [r.id for r in ChunkedSessionLibrary(tmp_path / "s").list()] == [rec2.id]
+
+
+def test_a_long_recording_parses_in_steps_to_the_same_result(lib):
+    """Opening a long recording must not hold up the monitor: it is parsed a piece at a time."""
+    from co2response.storage.session_file import ParsedSession
+
+    _, (rec, _), _, _ = record_session(lib, 60)
+    whole = lib.parse(rec.id)
+    steps = list(lib.parse_steps(rec.id, size=50_000))
+    fractions, stepped = steps[:-1], steps[-1]
+    assert isinstance(stepped, ParsedSession) and len(fractions) > 10
+    assert fractions == sorted(fractions) and 0 < fractions[0] < 0.2 and fractions[-1] <= 0.99
+    assert stepped.n == whole.n and (stepped.v0 == whole.v0).all() and (stepped.co2_mmhg == whole.co2_mmhg).all()
+    assert same(stepped.breaths, whole.breaths) and stepped.events == whole.events
+
+
+def test_dropped_samples_are_counted_like_the_live_tracker():
+    import numpy as np
+
+    from co2response.protocol import SeqTracker
+    from co2response.storage.session_file import dropped_samples
+
+    seq, t, n, clock = [], [], 65500, 0
+    rng = np.random.default_rng(3)
+    for i in range(4000):
+        r = rng.random()
+        if r < 0.02:
+            n += int(rng.integers(1, 5))  # samples lost
+        elif r < 0.025:
+            n -= 1  # the same number twice
+        if i == 2500:
+            n, clock = 0, 0  # the device reset: its clock starts again
+        seq.append(n & 0xFFFF)
+        t.append(clock)
+        n += 1
+        clock += 10
+    live = SeqTracker()
+    for q, ms in zip(seq, t):
+        live.push(q, ms)
+    assert live.dropped > 50
+    assert dropped_samples(np.array(seq, dtype=np.int32), np.array(t, dtype=float)) == live.dropped
+    assert dropped_samples(np.array([], dtype=np.int32), np.array([])) == 0
+
+
+@pytest.mark.parametrize("chunked", [False, True])
+def test_a_breath_excluded_in_the_review_is_saved_in_the_session_file(tmp_path, chunked):
+    """Taking a breath out of the fit after the recording appends an event to the file;
+    the breath's own row is never rewritten."""
+    from conftest import ROOT
+
+    from co2response.storage.library import ChunkedSessionLibrary
+    from co2response.storage.report import session_response
+    from co2response.storage.session_file import exclude_breath
+
+    lib = (ChunkedSessionLibrary if chunked else SessionLibrary)(tmp_path / "lib")
+    rec, parsed = lib.import_file(ROOT / "sample-data" / "synthetic_session.csv")
+    before = lib.text(rec.id)
+    res = session_response(parsed)
+    n = res.rebreathing[3].key
+    row = exclude_breath(parsed, n)
+    assert row is not None and row.rstrip("\n").endswith(f"BREATH_EXCLUDED {n:g} manual")
+    lib.append_row(rec.id, row)
+    assert exclude_breath(parsed, n) is None  # already out
+    after = lib.text(rec.id)
+    assert after.startswith(before) and after[len(before) :] == row  # only an event was added
+    again = lib.parse(rec.id)
+    assert next(b for b in again.breaths if b.n == n).quality == "excluded"
+    out = session_response(again)
+    assert [p.key for p in out.excluded] == [n] and len(out.rebreathing) == len(res.rebreathing) - 1
+    # put it back
+    lib.append_row(rec.id, exclude_breath(again, n, False))
+    assert session_response(lib.parse(rec.id)).excluded == []
+    # a breath the noise screen rejected cannot be put in or taken out by hand, and no breath 999
+    bad = next(b.n for b in parsed.breaths if b.quality == "artifact")
+    assert exclude_breath(parsed, bad) is None and exclude_breath(parsed, 999) is None
+    # a session still being recorded is not edited
+    live = lib.create("live.csv", "X", 0, "Simulator")
+    with pytest.raises(ValueError, match="still being recorded"):
+        lib.append_row(live.id, row)
+    # a file that does not end in a newline gets one first
+    if not chunked:
+        lib.path(rec).write_text(lib.path(rec).read_text().rstrip("\n"))
+        lib.append_row(rec.id, exclude_breath(lib.parse(rec.id), n))
+        assert next(b for b in lib.parse(rec.id).breaths if b.n == n).quality == "excluded"

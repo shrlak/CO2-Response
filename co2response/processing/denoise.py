@@ -15,8 +15,9 @@ Three stages, in the order the data meets them:
 
    - ``noisy``    the signal noise during the breath is too large next to the
                   breath itself (signal-to-noise below 8) to trust its numbers
-   - ``artifact`` impossible values, or no alveolar plateau (a partial breath whose
-                  EtCO2 under-reads)
+   - ``artifact`` impossible values, no alveolar plateau (a partial breath whose
+                  EtCO2 under-reads), or inspiratory flow beyond the sensor's range
+                  (its volume under-reads)
    - ``outlier``  an isolated EtCO2 jump: far from both the breath before and the
                   breath after, in the same direction. Decided one breath later,
                   because it needs the next breath; a real step change is followed
@@ -153,6 +154,7 @@ class BreathScreen:
     PLATEAU_MIN = 0.1  # fraction of expiration at ≥ 90 % of EtCO2
     OUTLIER_MIN = 5.0  # mmHg
     OUTLIER_K = 3.0  # robust SDs of the recent breath-to-breath spread
+    CLIP_MAX_SEC = 0.02  # inspiratory flow out of range for longer than this: VT is not trusted
 
     def __init__(self, enabled: bool = True) -> None:
         self.enabled = enabled
@@ -176,6 +178,8 @@ class BreathScreen:
             return "artifact", f"EtCO2 {et:.0f} mmHg is outside 0–120"
         if b.detected_by == "flow" and math.isfinite(b.vt_ml) and b.vt_ml < 1:
             return "artifact", "no inspiration"
+        if b.detected_by == "flow" and getattr(b, "clipped_sec", 0.0) > self.CLIP_MAX_SEC:
+            return "artifact", f"flow out of the sensor's range for {b.clipped_sec:.2f} s of inspiration (volume under-reads)"
         if b.detected_by == "flow" and math.isfinite(et) and et > 5 and math.isfinite(b.plateau) and b.plateau < self.PLATEAU_MIN:
             return "artifact", "no alveolar plateau (partial breath)"
         return "ok", ""

@@ -191,6 +191,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .nums { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-height: 0; }
 .row.co2 .nums { grid-template-columns: 1.35fr 1fr; grid-template-rows: 1fr 1fr; }
+/* a third tile (SpO2) appears in the flow row while the oximeter channel is on */
+.row.flow .nums:has(#t-spo2 > .tile) { grid-template-columns: 1fr 1fr 1fr; }
 .tile { background: var(--panel); border-radius: var(--radius); padding: 6px 12px; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
 .tile.big { grid-row: span 2; }
 .tlabel { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; font-size: 14px; }
@@ -219,7 +221,12 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .err { color: var(--alarm-high); font-weight: 600; }
 
 /* ---------- trend ---------- */
-.trend { background: var(--panel); border-radius: var(--radius); padding: 6px 10px 4px; display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.trend { background: var(--panel); border-radius: var(--radius); padding: 6px 10px 4px; display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-height: 0; }
+/* the rebreathing test: three keys and where the test stands */
+.testbar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 3px 0 2px; }
+.testbar .btn { flex: none; }
+.testbar .test-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-weight: 600; font-size: 15px; }
+#trend-canvas { cursor: default; }
 .trend-head { display: flex; align-items: center; gap: 16px; font-size: 15px; min-width: 0; }
 .trend-head .tab, .trend-meta label { white-space: nowrap; flex: none; }
 .trend-meta { min-width: 0; }

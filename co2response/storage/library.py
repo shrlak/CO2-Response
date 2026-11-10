@@ -16,6 +16,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from .labchart import labchart_to_session, looks_like_labchart
 from .session_file import ParsedSession, SessionParser, summarize
 
 STATUS_LABELS = {"recording": "Recording", "complete": "Recorded", "interrupted": "Recovered", "imported": "Imported"}
@@ -42,6 +43,10 @@ class SessionRecord:
     bytes: int = 0
     last_write_at: float = 0
     stats: dict = field(default_factory=dict)
+
+
+#: (the library has a method called ``list``, so the annotations below use this name)
+Records = list[SessionRecord]
 
 
 class SessionLibrary:
@@ -120,6 +125,27 @@ class SessionLibrary:
         rec.last_write_at = self.clock()
         self.put(rec)
 
+    def _ends_with_newline(self, rec: SessionRecord) -> bool:
+        try:
+            with open(self.path(rec), "rb") as f:
+                f.seek(-1, os.SEEK_END)
+                return f.read(1) == b"\n"
+        except OSError:  # an empty file
+            return True
+
+    def append_row(self, sid: str, row: str) -> None:
+        """Add a row to a finished session (a breath excluded by hand in the review).
+        Raises ValueError for a session that is still being recorded."""
+        rec = self.get(sid)
+        if rec is None:
+            raise ValueError("This session is no longer in the library.")
+        if rec.status == "recording":
+            raise ValueError("This session is still being recorded.")
+        last_write = rec.last_write_at
+        self.append(rec, row if self._ends_with_newline(rec) else "\n" + row)
+        rec.last_write_at = last_write  # when it was recorded, not when it was annotated
+        self.put(rec)
+
     # ---------- reading ----------
 
     def read_chunks(self, sid: str, size: int = 1 << 20):
@@ -140,6 +166,27 @@ class SessionLibrary:
             p.push(chunk)
         return p.finish()
 
+    #: sessions larger than this are parsed in steps by the screens (see ``parse_steps``)
+    BIG_SESSION_BYTES = 4_000_000
+
+    def parse_steps(self, sid: str, size: int = 1 << 18):
+        """Parse a stored session a piece at a time: yields the fraction done after
+        each piece (about 6 ms of work), then the ``ParsedSession``.
+
+        An hour of recording takes about a second to parse. Doing it in steps lets the
+        caller run the monitor in between, so opening a long recording never holds up
+        the alarm checks (or the device's heartbeat)."""
+        rec = self.get(sid)
+        total = max(1, rec.bytes if rec else 1)
+        done = 0
+        p = SessionParser()
+        for chunk in self.read_chunks(sid, size):
+            for i in range(0, len(chunk), size):  # a stored part can be larger than a step
+                p.push(chunk[i : i + size])
+                done += min(size, len(chunk) - i)
+                yield min(0.99, done / total)
+        yield p.finish()
+
     def delete(self, sid: str) -> None:
         rec = self._load().pop(sid, None)
         if rec is not None:
@@ -154,6 +201,9 @@ class SessionLibrary:
         read; a file that is not a session is rejected and nothing is kept."""
         src = Path(src)
         self.folder.mkdir(parents=True, exist_ok=True)
+        converted = _labchart_session(src, file_name)
+        if converted is not None:
+            return self._import_converted(*converted)
         in_place = src.resolve().parent == self.folder.resolve() and not any(r.file_name == src.name for r in self._load().values())
         name = src.name if in_place else self._unique_name(file_name or src.name)
         rec = SessionRecord(new_id(), name, "", self.clock(), None, "imported", "Imported file", 0, self.clock(), {})
@@ -189,7 +239,20 @@ class SessionLibrary:
         self.put(rec)
         return rec, parsed
 
-    def recover_interrupted(self, now: float | None = None) -> list[SessionRecord]:
+    def _import_converted(self, text: str, file_name: str) -> tuple[SessionRecord, ParsedSession]:
+        """Store a session made from another program's export (LabChart)."""
+        parser = SessionParser()
+        parser.push(text)
+        parsed = parser.finish()
+        rec = self.create(file_name, parsed.study_code, parsed.started_ms or self.clock(), "", status="imported")
+        self.append(rec, text)
+        rec.ended_at = rec.started_at + parsed.duration_s * 1000
+        rec.source = f"Imported · {parsed.meta.get('source', 'unknown source')}"
+        rec.stats = summarize(parsed).as_stats()
+        self.put(rec)
+        return rec, parsed
+
+    def recover_interrupted(self, now: float | None = None) -> Records:
         """Recordings left in 'recording' state by an app that closed or crashed.
         Anything not written to for 15 s is marked interrupted; its data is kept."""
         now = self.clock() if now is None else now
@@ -211,6 +274,29 @@ class SessionLibrary:
             return used, free
         except OSError:
             return None
+
+
+def _as_session_text(text: str, file_name: str) -> tuple[str, str]:
+    """A LabChart text export becomes a session file's text (and a .csv name); a
+    session file is returned as it is."""
+    if not looks_like_labchart(text):
+        return text, file_name
+    from .. import __version__
+
+    return labchart_to_session(text, file_name, __version__), str(Path(file_name).with_suffix(".csv"))
+
+
+def _labchart_session(src: Path, file_name: str | None) -> tuple[str, str] | None:
+    """(session text, name) if ``src`` is a LabChart text export, else None."""
+    try:
+        with open(src, encoding="utf-8", errors="replace", newline="") as f:
+            head = f.read(4000)
+            if not looks_like_labchart(head):
+                return None
+            text = head + f.read()
+    except OSError:
+        return None
+    return _as_session_text(text, file_name or src.name)
 
 
 class ChunkedSessionLibrary(SessionLibrary):
@@ -253,6 +339,13 @@ class ChunkedSessionLibrary(SessionLibrary):
         self.put(rec)
         return rec
 
+    def _ends_with_newline(self, rec: SessionRecord) -> bool:
+        parts = self._parts(rec)
+        if not parts:
+            return True
+        data = parts[-1].read_bytes()
+        return not data or data.endswith(b"\n")
+
     def _write(self, rec: SessionRecord, text: str) -> None:
         """Append text, starting a new part whenever the current one is full."""
         parts = self._parts(rec)
@@ -293,6 +386,7 @@ class ChunkedSessionLibrary(SessionLibrary):
 
     def import_text(self, text: str, file_name: str) -> tuple[SessionRecord, ParsedSession]:
         """Store a session file given as text (the browser reads uploads as text)."""
+        text, file_name = _as_session_text(text, file_name)  # a LabChart export is converted first
         parser = SessionParser()
         parser.push(text)
         parsed = parser.finish()  # raises before anything is stored if it is not a session

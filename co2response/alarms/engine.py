@@ -3,6 +3,12 @@
 - Physiological CO2 alarms need ``delay_breaths`` consecutive breaths (EtCO2 source)
   or ``delay_sec`` continuous seconds (live source) beyond the limit.
 - They clear only past the limit by ``hysteresis_mm_hg``.
+- Two tiers: ``high_mm_hg`` is the warning and ``stop_mm_hg`` the stop limit. The stop
+  limit is checked on every sample (CO2 at or above it for ``stop_delay_sec``) and on
+  every breath, so it does not wait for a second breath. While a stop limit is set,
+  the warning is medium priority and the stop is high, so the two sound different.
+- A new high-priority alarm cancels a silence: silencing the warning never mutes the
+  stop alarm that follows it.
 - High and medium alarms latch: once the condition clears they stay, marked resolved,
   until acknowledged. Advisories come and go on their own.
 - Silence mutes audio for ``silence_sec`` (≤ 120 s) and then re-arms by itself.
@@ -17,10 +23,15 @@ from typing import Callable
 from ..jsfmt import js_num, to_fixed
 from ..settings import AlarmSettings
 
-# Alarm ids: co2High co2Low apnea noData deviceLost adcError railCo2 railFlow railPneumo
-#            test audioOff dropped checksum
+# Alarm ids: co2Stop co2High co2Low apnea noData deviceLost adcError railCo2 railFlow
+#            railPneumo testTime test audioOff dropped checksum leak calibration settingsSave
 PRIORITIES = ("high", "medium", "advisory")
 _RANK = {"high": 0, "medium": 1, "advisory": 2}
+
+
+def _limit(v: float | None) -> str:
+    """A limit for an alarm message ("off" for one that is switched off)."""
+    return js_num(v) if v is not None else "off"
 
 
 @dataclass
@@ -56,10 +67,16 @@ class AlarmEngine:
         self._low_count = 0
         self._high_since: float | None = None
         self._low_since: float | None = None
+        self._stop_since: float | None = None
+        self._stop_clear_since: float | None = None
         self._silenced_until = 0.0
 
     def set_settings(self, s: AlarmSettings, now: float) -> None:
         self.settings = s
+        if s.stop_mm_hg is None:
+            self._stop_since = self._stop_clear_since = None
+            if self.is_active("co2Stop"):
+                self._resolve("co2Stop", now)
         if s.low_mm_hg is None:
             self._low_count = 0
             self._low_since = None
@@ -75,6 +92,10 @@ class AlarmEngine:
         if active:
             if r is None or r.state == "resolved":
                 self._records[aid] = AlarmRecord(aid, priority, message, "active", t, value=value, peak=value)
+                if priority == "high" and aid != "test" and self.is_silenced(t):
+                    # a silence covers the alarms that were sounding, not a new, worse one
+                    self._silenced_until = 0
+                    self._log(AlarmLogEntry(t, "unsilenced", "Silence cancelled by a new high-priority alarm"))
                 if priority != "advisory":
                     self._log(AlarmLogEntry(t, "start", message, aid, priority))
             else:
@@ -105,26 +126,71 @@ class AlarmEngine:
         return f"EtCO2 HIGH {to_fixed(v, 0)} mmHg > {js_num(self.settings.high_mm_hg)}"
 
     def _low_msg(self, v: float) -> str:
-        return f"EtCO2 LOW {to_fixed(v, 0)} mmHg < {js_num(self.settings.low_mm_hg)}"
+        return f"EtCO2 LOW {to_fixed(v, 0)} mmHg < {_limit(self.settings.low_mm_hg)}"
+
+    @property
+    def _high_priority(self) -> str:
+        """The warning limit is medium priority while a stop limit stands behind it."""
+        return "medium" if self.settings.stop_mm_hg is not None else "high"
+
+    def _stop_msg(self, v: float, what: str = "CO2") -> str:
+        return f"STOP TEST: {what} {to_fixed(v, 0)} mmHg at the stop limit {_limit(self.settings.stop_mm_hg)}: turn the valve to room air"
+
+    def _check_stop_sample(self, co2: float, t: float) -> None:
+        """The stop limit on the live CO2: every sample, whatever the alarm source."""
+        s = self.settings
+        if s.stop_mm_hg is None:
+            return
+        active = self.is_active("co2Stop")
+        if co2 >= s.stop_mm_hg:
+            if self._stop_since is None:
+                self._stop_since = t
+            self._stop_clear_since = None
+            if active or t - self._stop_since >= s.stop_delay_sec * 1000:
+                self.set_condition("co2Stop", True, t, "high", self._stop_msg(co2), co2)
+        else:
+            self._stop_since = None
+            # CO2 falls on every inspiration, so the alarm is resolved by a breath back
+            # under the limit (on_breath), or by 20 s without a sample near it
+            if active and co2 < s.stop_mm_hg - s.hysteresis_mm_hg:
+                if self._stop_clear_since is None:
+                    self._stop_clear_since = t
+                elif t - self._stop_clear_since >= 20000:
+                    self._resolve("co2Stop", t)
+            else:
+                self._stop_clear_since = None
+
+    def _check_stop_breath(self, etco2: float, t: float) -> None:
+        s = self.settings
+        if s.stop_mm_hg is None:
+            return
+        if etco2 >= s.stop_mm_hg:
+            self.set_condition("co2Stop", True, t, "high", self._stop_msg(etco2, "EtCO2"), etco2)
+        elif self.is_active("co2Stop") and etco2 < s.stop_mm_hg - s.hysteresis_mm_hg:
+            self._resolve("co2Stop", t)
 
     def on_breath(self, etco2: float, t: float) -> None:
         """Call once per detected breath with its EtCO2 (mmHg)."""
         s = self.settings
-        if s.source != "etco2" or not math.isfinite(etco2):
+        if not math.isfinite(etco2):
             return
+        self._check_stop_breath(etco2, t)
+        if s.source != "etco2":
+            return
+        pri = self._high_priority
         high = self._records.get("co2High")
         high_active = high is not None and high.state == "active"
         if etco2 > s.high_mm_hg:
             self._high_count += 1
             if self._high_count >= s.delay_breaths or high_active:
-                self.set_condition("co2High", True, t, "high", self._high_msg(etco2), etco2)
+                self.set_condition("co2High", True, t, pri, self._high_msg(etco2), etco2)
         else:
             self._high_count = 0
             if high_active:
                 if etco2 < s.high_mm_hg - s.hysteresis_mm_hg:
                     self._resolve("co2High", t)
                 else:
-                    self.set_condition("co2High", True, t, "high", self._high_msg(etco2), etco2)
+                    self.set_condition("co2High", True, t, pri, self._high_msg(etco2), etco2)
 
         if s.low_mm_hg is not None:
             low = self._records.get("co2Low")
@@ -142,15 +208,20 @@ class AlarmEngine:
                         self.set_condition("co2Low", True, t, "medium", self._low_msg(etco2), etco2)
 
     def on_live_co2(self, co2: float, t: float) -> None:
-        """Call on every sample when the alarm source is the live CO2 waveform (mmHg)."""
+        """Call on every sample with the live CO2 (mmHg). The stop limit is always
+        checked; the warning and low limits only when the alarm source is the waveform."""
         s = self.settings
-        if s.source != "live" or not math.isfinite(co2):
+        if not math.isfinite(co2):
+            return
+        self._check_stop_sample(co2, t)
+        if s.source != "live":
             return
         ms = s.delay_sec * 1000
+        pri = self._high_priority
 
         def live(v: float, hi: bool) -> str:
             lim = s.high_mm_hg if hi else s.low_mm_hg
-            return f"CO2 {'HIGH' if hi else 'LOW'} {to_fixed(v, 0)} mmHg {'>' if hi else '<'} {js_num(lim)}"
+            return f"CO2 {'HIGH' if hi else 'LOW'} {to_fixed(v, 0)} mmHg {'>' if hi else '<'} {_limit(lim)}"
 
         high = self._records.get("co2High")
         high_active = high is not None and high.state == "active"
@@ -158,7 +229,7 @@ class AlarmEngine:
             if self._high_since is None:
                 self._high_since = t
             if t - self._high_since >= ms or high_active:
-                self.set_condition("co2High", True, t, "high", live(co2, True), co2)
+                self.set_condition("co2High", True, t, pri, live(co2, True), co2)
         else:
             self._high_since = None
             if high_active and co2 < s.high_mm_hg - s.hysteresis_mm_hg:
@@ -255,3 +326,4 @@ class AlarmEngine:
         self._records.clear()
         self._high_count = self._low_count = 0
         self._high_since = self._low_since = None
+        self._stop_since = self._stop_clear_since = None

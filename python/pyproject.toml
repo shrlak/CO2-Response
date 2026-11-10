@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "co2r"
-version = "0.3.0"
+version = "0.4.0"
 description = "CO2-Response data acquisition in Python: read an Arduino or another DAQ and feed the CO2-Response monitor. Research use only."
 readme = "README.md"
 requires-python = ">=3.9"
