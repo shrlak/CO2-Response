@@ -219,7 +219,12 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .err { color: var(--alarm-high); font-weight: 600; }
 
 /* ---------- trend ---------- */
-.trend { background: var(--panel); border-radius: var(--radius); padding: 6px 10px 4px; display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.trend { background: var(--panel); border-radius: var(--radius); padding: 6px 10px 4px; display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-height: 0; }
+/* the rebreathing test: three keys and where the test stands */
+.testbar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 3px 0 2px; }
+.testbar .btn { flex: none; }
+.testbar .test-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-weight: 600; font-size: 15px; }
+#trend-canvas { cursor: default; }
 .trend-head { display: flex; align-items: center; gap: 16px; font-size: 15px; min-width: 0; }
 .trend-head .tab, .trend-meta label { white-space: nowrap; flex: none; }
 .trend-meta { min-width: 0; }

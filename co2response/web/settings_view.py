@@ -10,16 +10,20 @@ import math
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from .. import __version__
 from ..channels import CHANNEL_IDS, DEFAULT_CHANNELS, clone_channels, validate_channels
 from ..engine.link_test import overall, report_text
 from ..engine.monitor import Snapshot
+from ..forms import PROCESSING_FIELDS, TEST_FIELDS
 from ..jsfmt import precision
 from ..processing.calibration import apply_calibration, fit_polynomial, pneumo_flow, syringe_k1, two_point_linear
 from ..processing.co2 import pct_to_mmhg
 from ..sim.controls import SITUATION_BY_ID, SITUATIONS
 from ..storage.library import STATUS_LABELS
+from ..storage.report import build_report, report_pdf
 from ..storage.session_file import breaths_csv, events_csv, parse_session_text
 from .dom import actions, as_float, btn, byid, data, download, editing_inside, esc, field, num, number_field, read_files, seg, select, set_html, stat, toast, toggle
+from .spec_form import install_spec_actions, spec_form_html
 from .views import alarm_form_html, duration, fmt, hms, size_text, stamp
 
 if TYPE_CHECKING:
@@ -395,7 +399,8 @@ class SettingsView:
             return (json.dumps(dataclasses.asdict(a)), s.audio_armed)
         return (
             '<div style="max-width:720px"><h2>Alarms</h2><p class="lead">CO2 limits, delays and audio. Changes apply immediately. Technical alarms (no data, sensor at rail, device disconnected) are always on.</p>'
-            f'{alarm_form_html(a, "settings")}<div class="row-actions" style="margin-top:14px">{btn("Audio armed" if s.audio_armed else "Arm audio", "arm-audio", "btn" if s.audio_armed else "btn primary")}'
+            '<p class="note">The warning limit tells the operator the end of the test is near; the stop limit says to turn the valve back to room air now.</p>'
+            f'{alarm_form_html(a, "settings", s)}<div class="row-actions" style="margin-top:14px">{btn("Audio armed" if s.audio_armed else "Arm audio", "arm-audio", "btn" if s.audio_armed else "btn primary")}'
             f'{btn("Test alarm (high, then medium tone)", "test-alarm")}</div></div>'
         )
 
@@ -403,7 +408,8 @@ class SettingsView:
         st = s.settings
         p = st.processing
         if key_only:
-            return json.dumps(dataclasses.asdict(st))
+            lag = s.numbers.co2_lag_sec
+            return (json.dumps(dataclasses.asdict(st)), round(lag, 2) if math.isfinite(lag) else None)
         return (
             '<div style="max-width:760px"><h2>Display & units</h2><p class="lead">How the monitor looks and how raw signals are turned into numbers.</p><h3 style="margin-top:10px">Screen</h3>'
             + field("Theme", seg("set-theme", st.theme, [("dark", "Dark"), ("light", "Light"), ("system", "Match system")]), "Dark is easier on the eyes in a dim room or overnight. Light suits a bright bench.")
@@ -413,14 +419,7 @@ class SettingsView:
             + field("Flow scale", select("set-num", st.flow_scale_lpm, [(x, f"±{x} L/min") for x in (30, 60, 100, 200)], "flowscale", arg="flow_scale_lpm"), None, "flowscale")
             + field("Show raw volts on the monitor", toggle("set-bool", st.show_raw_volts, "rawv", "show_raw_volts"), "Useful while calibrating; hide it for clinical use.", "rawv")
             + '<h3 style="margin-top:18px">Signal processing</h3>'
-            + number_field("Barometric pressure", "proc", p.barometric_mm_hg, "mmHg", "Used to convert % CO2 to mmHg. Pittsburgh is typically about 735 mmHg; enter the lab's reading for accuracy.", "pb", 500, 800, 1, "barometric_mm_hg")
-            + field("Water-vapor correction (BTPS)", toggle("proc-bool", p.water_vapor, "wv", "water_vapor"), "Subtracts 47 mmHg before converting % to mmHg.", "wv")
-            + field("Low-pass filter", toggle("proc-bool", p.filter_on, "filt", "filter_on"), "2nd-order Butterworth on every channel.", "filt")
-            + (number_field("Filter cutoff", "proc", p.filter_hz, "Hz", None, "filthz", 1, 40, 0.5, "filter_hz") if p.filter_on else "")
-            + number_field("Breath detection deadband", "proc-db", round(p.deadband_lpm / 60, 3), "L/s", "Flow must pass ± this to count as a new inspiration. Raise it if noise is counted as breaths.", "deadband", 0.005, 0.5, 0.005)
-            + number_field("Minimum breath length", "proc", p.min_breath_sec, "s", None, "minbreath", 0.3, 5, 0.1, "min_breath_sec")
-            + field("Remove spikes (Hampel filter)", toggle("proc-bool", p.despike, "despike", "despike"), 'Replaces single glitchy samples with the median of their neighbours before anything is calculated. Keeps real fast changes such as the capnogram upstroke. Adds 30 ms of delay.', "despike")
-            + field("Leave noisy breaths out", toggle("proc-bool", p.reject_bad_breaths, "reject", "reject_bad_breaths"), 'Each breath is checked before it is used: too noisy (signal-to-noise below 8), a partial breath with no alveolar plateau, an impossible value, or an isolated EtCO2 jump. Those breaths are left out of the numbers, the EtCO2 trend, the response plot and the EtCO2 alarms, but stay in the recording, marked. A run of them raises a technical alarm.', "reject")
+            + spec_form_html(PROCESSING_FIELDS, p, "proc", "proc", s)
             + "</div>"
         )
 
@@ -430,7 +429,7 @@ class SettingsView:
         st, r, e = s.settings, s.recording, self.app.engine
         recs = e.library.list()
         if key_only:
-            return (r.library_version, r.active, int(s.now // 2000) if r.active else 0, st.study_code, st.auto_record, self.confirm_del, s.trend_version, len(e.markers), self.usage, self.persisted, bool(e.trend))
+            return (r.library_version, r.active, int(s.now // 2000) if r.active else 0, st.study_code, st.auto_record, self.confirm_del, s.trend_version, len(e.markers), self.usage, self.persisted, bool(e.trend), dataclasses.astuple(st.test))
         out = (
             '<div style="max-width:1180px"><h2>Data & recordings</h2><p class="lead">Each recording is one CSV file with every sample, every breath, every alarm and every marker, ready for Excel, MATLAB, '
             "Python or R. While it records it is saved to this browser every second, so a crash loses at most a second. When you stop, the file is saved to your computer and also kept here. "
@@ -455,10 +454,11 @@ class SettingsView:
                 "Useful for overnight runs: connecting (or reconnecting after an unplug) starts a recording if none is running.",
                 "autorecord",
             )
+            + f'<h3 style="margin-top:12px">Test and subject</h3>{spec_form_html(TEST_FIELDS, st.test, "test", "test", s)}'
             + f'{status}<div class="row-actions">{btn("Stop and save file" if r.active else "Start recording", "record", "btn danger" if r.active else "btn primary")}</div></section>'
         )
         out += (
-            '<section class="card"><div class="card-head"><h3>Import</h3><span class="meta">.csv session files, v1 or v2</span></div>'
+            '<section class="card"><div class="card-head"><h3>Import</h3><span class="meta">.csv session files, any version</span></div>'
             '<p class="note">Bring a session back to review it, replay it through the monitor, or export parts of it. Files made by older versions of this app are converted when you export them.</p>'
             '<div class="row-actions"><label class="btn primary" style="display:inline-flex;align-items:center">Import session files…<input type="file" accept=".csv,text/csv" multiple hidden data-change="import-files"></label></div></section></div>'
         )
@@ -479,7 +479,7 @@ class SettingsView:
                     length = dd * 1000 if dd is not None else (rec.ended_at or rec.last_write_at) - rec.started_at
                 menu = (
                     f'<details class="menu-wrap"><summary class="btn small">Export ▾</summary><span class="menu">{btn("Whole session (one .csv)", "export", arg=f"{rec.id}|session")}'
-                    f'{btn("Breaths only (.csv)", "export", arg=f"{rec.id}|breaths")}{btn("Alarms & events only (.csv)", "export", arg=f"{rec.id}|events")}</span></details>'
+                    f'{btn("Breaths only (.csv)", "export", arg=f"{rec.id}|breaths")}{btn("Alarms & events only (.csv)", "export", arg=f"{rec.id}|events")}{btn("CO2 response report (.pdf)", "export", arg=f"{rec.id}|report")}</span></details>'
                 )
                 if self.confirm_del == rec.id:
                     dele = btn("Confirm delete", "delete-session", "btn small danger", arg=rec.id) + btn("Keep", "delete-cancel", "btn small")
@@ -896,18 +896,9 @@ def install_settings_actions(app: "WebApp") -> None:
         e.update_settings(**{data(el, "arg"): float(el.value)})
         sv.bump()
 
-    def proc(el):
-        v = as_float(el)
-        if v is not None:
-            v = min(float(el.max), max(float(el.min), v))
-            e.update_settings(processing=dataclasses.replace(e.settings.processing, **{data(el, "arg"): v}))
-        sv.bump()
-
-    def proc_db(el):
-        v = as_float(el)
-        if v is not None:
-            e.update_settings(processing=dataclasses.replace(e.settings.processing, deadband_lpm=min(0.5, max(0.005, v)) * 60))
-        sv.bump()
+    # the processing and test rows come from co2response.forms (shared with the desktop window)
+    install_spec_actions("proc", PROCESSING_FIELDS, lambda: e.settings.processing, lambda patch: e.update_settings(processing=dataclasses.replace(e.settings.processing, **patch)), sv.bump)
+    install_spec_actions("test", TEST_FIELDS, lambda: e.settings.test, lambda patch: e.update_settings(test=dataclasses.replace(e.settings.test, **patch)), sv.bump)
 
     # --- data
     async def import_files(el):
@@ -932,6 +923,9 @@ def install_settings_actions(app: "WebApp") -> None:
                 return
             parsed = e.library.parse(sid)
             base = rec.file_name[:-4] if rec.file_name.lower().endswith(".csv") else rec.file_name
+            if what == "report":
+                download(f"{base}_report.pdf", report_pdf(build_report(parsed, rec.file_name, app_version=__version__, generated_ms=e.clock())), "application/pdf")
+                return
             download(f"{base}_{what}.csv", breaths_csv(parsed) if what == "breaths" else events_csv(parsed))
         except (OSError, ValueError) as ex:
             toast(f"Export failed: {ex}", 6000)
@@ -969,7 +963,6 @@ def install_settings_actions(app: "WebApp") -> None:
         sim=sim,
         export=export,
         persist=persist,
-        proc=proc,
         **{
             "settings-tab": lambda el: (setattr(sv, "tab", data(el, "arg")), sv.bump()),
             "rate-send": lambda el: (e.send(f"RATE {sv.rate}"), e.send("INFO")),
@@ -1013,8 +1006,6 @@ def install_settings_actions(app: "WebApp") -> None:
             "set-unit": lambda el: (e.update_settings(co2_unit=data(el, "arg")), sv.bump()),
             "set-num": set_num,
             "set-bool": lambda el: (e.update_settings(**{data(el, "arg"): bool(el.checked)}), sv.bump()),
-            "proc-bool": lambda el: (e.update_settings(processing=dataclasses.replace(e.settings.processing, **{data(el, "arg"): bool(el.checked)})), sv.bump()),
-            "proc-db": proc_db,
             "study": lambda el: (e.update_settings(study_code=el.value.strip()), sv.bump()),
             "import-files": import_files,
             "delete-ask": lambda el: (setattr(sv, "confirm_del", data(el, "arg")), sv.bump()),

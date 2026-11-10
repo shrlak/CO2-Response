@@ -358,32 +358,43 @@ def elapsed(s: float) -> str:
 
 
 class TrendChart(Plot):
-    def draw(self, t0, t1, ymax, high, low, pts_t, pts_v, trace_t, trace_v, trace_join, markers, alarms, pct: bool) -> None:
+    def draw(self, t0, t1, ymax, high, low, pts_t, pts_v, trace_t, trace_v, trace_join, markers, alarms, pct: bool, stop=None, color: str = "--co2", joined: bool = False) -> None:
+        """One point per breath against the clock. ``high``, ``low`` and ``stop`` are
+        the CO2 limits (None for the MV and RR trends); ``joined`` joins the points."""
         self.c.fit()
+        self.c.el.removeAttribute("data-points")
         self.x0, self.x1, self.y0, self.y1 = t0, t1, 0.0, ymax
         _, _, w, h = self.box
-        self.frame(time_labels(t0, t1, w / self.c.dpr), nice_ticks(0, ymax, self.y_tick_count(h)), (lambda v: f"{v:.1f}") if pct else (lambda v: f"{v:.0f}"))
+        self.frame(time_labels(t0, t1, w / self.c.dpr), nice_ticks(0, ymax, self.y_tick_count(h)), (lambda v: f"{v:.1f}") if pct else (lambda v: f"{v:g}"))
         g = self.c.ctx
         d = self.c.dpr
         left, top, w, h = self.box
         self.clip()
-        hi_c, med_c, co2, text = css_var("--alarm-high"), css_var("--alarm-med"), css_var("--co2"), css_var("--text")
-        yh = self.py(high)
+        hi_c, med_c, col, text = css_var("--alarm-high"), css_var("--alarm-med"), css_var(color), css_var("--text")
         g.globalAlpha = 0.1
-        g.fillStyle = hi_c
-        g.fillRect(left, top, w, max(0, yh - top))
+        if high is not None:
+            yh = self.py(high)
+            g.fillStyle = hi_c
+            g.fillRect(left, top, w, max(0, yh - top))
         if low is not None:
             yl = self.py(low)
             g.fillStyle = med_c
             g.fillRect(left, yl, w, max(0, top + h - yl))
         g.globalAlpha = 1
         if len(trace_t) > 1:
-            self.stroke(path_d([self.px(x) for x in trace_t], [self.py(v) for v in trace_v], trace_join), co2, 1.5, 0.3)
-        self.stroke(f"M{left} {yh}L{left + w} {yh}", hi_c, 2.5, dash=(10, 7))
+            self.stroke(path_d([self.px(x) for x in trace_t], [self.py(v) for v in trace_v], trace_join), col, 1.5, 0.3)
+        if high is not None:
+            self.stroke(f"M{left} {yh}L{left + w} {yh}", hi_c, 2.5, dash=(10, 7))
+        if stop is not None:
+            ys = self.py(stop)
+            self.stroke(f"M{left} {ys}L{left + w} {ys}", hi_c, 2.5)  # the stop limit: a solid line
         if low is not None:
             yl = self.py(low)
             self.stroke(f"M{left} {yl}L{left + w} {yl}", med_c, 2.5, dash=(10, 7))
-        self.dots([self.px(x) for x in pts_t], [self.py(v) for v in pts_v], co2)
+        PX, PY = [self.px(x) for x in pts_t], [self.py(v) for v in pts_v]
+        if joined and len(PX) > 1:
+            self.stroke(path_d(PX, PY), col, 2)
+        self.dots(PX, PY, col)
         g.font = f"600 {15 * d}px {FONT}"
         g.textAlign = "left"
         g.textBaseline = "top"
@@ -400,11 +411,20 @@ class TrendChart(Plot):
 
 
 class ResponseChart(Plot):
-    def draw(self, reb: list[tuple[float, float]], base: list[tuple[float, float]], fit) -> None:
+    def __init__(self, el) -> None:
+        super().__init__(el)
+        #: (x px, y px, key) of the points that can be clicked
+        self._hits: list[tuple[float, float, object]] = []
+
+    def draw(self, res) -> None:
         """Rebreathing breaths as dots with the fitted line over their range; baseline
-        breaths (before the rebreathing marker) as hollow rings, not fitted."""
-        xs = [a for a, _ in reb + base]
-        ys = [b for _, b in reb + base]
+        breaths (before the rebreathing marker) as hollow rings; the breaths outside
+        the fit (the first seconds, after the end) as faint rings; the ones taken out
+        by hand as crosses. ``res`` is a ``CO2Response``."""
+        reb, base, skip, out, fit = res.rebreathing, res.baseline, res.skipped, res.excluded, res.fit
+        every = reb + base + skip + out
+        xs = [p.etco2 for p in every]
+        ys = [p.mv for p in every]
         self.c.fit()
         self.x0 = math.floor((min(xs) if xs else 30) - 2)
         self.x1 = math.ceil((max(xs) if xs else 50) + 2)
@@ -413,23 +433,49 @@ class ResponseChart(Plot):
         xt = nice_ticks(self.x0, self.x1, max(2, int(w / self.c.dpr / 70)))
         self.frame([(x, f"{x:g}") for x in xt], nice_ticks(self.y0, self.y1, self.y_tick_count(h)), lambda v: f"{v:g}")
         self.clip()
-        if base:
-            g = self.c.ctx
-            d = self.c.dpr
+        g = self.c.ctx
+        d = self.c.dpr
+
+        def rings(pts, radius, width, alpha):
+            if not pts:
+                return
+            g.globalAlpha = alpha
             g.strokeStyle = css_var("--muted")
-            g.lineWidth = 2 * d
+            g.lineWidth = width * d
             g.beginPath()
-            for x, y in base:
-                X, Y = self.px(x), self.py(y)
-                g.moveTo(X + 5 * d, Y)
-                g.arc(X, Y, 5 * d, 0, 2 * math.pi)
+            for p in pts:
+                X, Y = self.px(p.etco2), self.py(p.mv)
+                g.moveTo(X + radius * d, Y)
+                g.arc(X, Y, radius * d, 0, 2 * math.pi)
             g.stroke()
-        self.dots([self.px(x) for x, _ in reb], [self.py(y) for _, y in reb], css_var("--pneumo"), 5)
+            g.globalAlpha = 1
+
+        rings(skip, 3.5, 1.5, 0.55)
+        rings(base, 5, 2, 1)
+        self.dots([self.px(p.etco2) for p in reb], [self.py(p.mv) for p in reb], css_var("--pneumo"), 5)
+        if out:
+            r = 5 * d
+            path = "".join(f"M{self.px(p.etco2) - r} {self.py(p.mv) - r}l{2 * r} {2 * r}m{-2 * r} 0l{2 * r} {-2 * r}" for p in out)
+            self.stroke(path, css_var("--alarm-high"), 2.5)
         if fit:
-            a, b = min(x for x, _ in reb), max(x for x, _ in reb)
+            a, b = min(p.etco2 for p in reb), max(p.etco2 for p in reb)
             self.stroke(f"M{self.px(a)} {self.py(fit.slope * a + fit.intercept)}L{self.px(b)} {self.py(fit.slope * b + fit.intercept)}", css_var("--text"), 3)
-        self.c.ctx.restore()
-        self.axis_titles("EtCO2 (mmHg)", "MV (L/min)")
+        g.restore()
+        self.axis_titles("EtCO2 (mmHg)", "MV of each breath (L/min)")
+        self._hits = [(self.px(p.etco2), self.py(p.mv), p.key) for p in reb + base + out if p.key is not None]
+        # where the clickable breaths are, in CSS pixels from the canvas corner (for tests and tools)
+        self.c.el.setAttribute("data-points", ";".join(f"{x / d:.1f},{y / d:.1f}" for x, y, _ in self._hits))
+
+    def hit(self, client_x: float, client_y: float, reach: float = 12):
+        """The key of the breath drawn nearest to a click (CSS pixels), within ``reach``; else None."""
+        r = self.c.el.getBoundingClientRect()
+        X, Y = (client_x - r.left) * self.c.dpr, (client_y - r.top) * self.c.dpr
+        best, key = (reach * self.c.dpr) ** 2, None
+        for px, py, k in self._hits:
+            dist = (px - X) ** 2 + (py - Y) ** 2
+            if dist <= best:
+                best, key = dist, k
+        return key
 
 
 def minmax_decimate(t: np.ndarray, v: np.ndarray, i0: int, i1: int, buckets: int):

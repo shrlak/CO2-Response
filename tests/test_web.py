@@ -149,14 +149,30 @@ def test_simulator_alarms_and_themes(page, site_url):
     page.locator(".drawer").get_by_role("button", name="Test alarm").click()
     sync_api.expect(page.locator(".alarm-slot")).to_contain_text("TEST ALARM")
     sync_api.expect(page.locator(".alarm-slot")).to_have_class(re.compile("high"))
-    # lower the high limit below the simulated 38 mmHg: EtCO2 HIGH after two breaths
+    # lower the warning limit below the simulated 38 mmHg: EtCO2 HIGH after two breaths.
+    # It is medium priority, because the stop limit (65) stands behind it.
+    sync_api.expect(page.locator("[data-testid=tile-etco2] .limits .hi")).to_have_text("60 / 65")
     page.fill("#drawer-high", "30")
     page.press("#drawer-high", "Enter")
     page.locator(".drawer").get_by_role("button", name="Done").click()
     sync_api.expect(page.locator(".alarm-slot")).to_contain_text("EtCO2 HIGH", timeout=30_000)
-    sync_api.expect(page.locator("[data-testid=tile-etco2]")).to_have_class(re.compile("alarm-high"))
+    sync_api.expect(page.locator("[data-testid=tile-etco2]")).to_have_class(re.compile("alarm-medium"))
     page.locator(".alarm-slot .slot-btn").click()
     sync_api.expect(page.locator(".pill")).to_contain_text("SILENCED")
+    # now the stop limit, also below 38 mmHg: STOP TEST within a second or so, high
+    # priority, and the silence of the warning is cancelled
+    page.locator('[data-act="drawer-open"]').click()
+    page.fill("#drawer-stop", "35")
+    page.press("#drawer-stop", "Enter")
+    page.locator(".drawer").get_by_role("button", name="Done").click()
+    sync_api.expect(page.locator(".alarm-slot")).to_contain_text("STOP TEST", timeout=15_000)
+    sync_api.expect(page.locator("[data-testid=tile-etco2]")).to_have_class(re.compile("alarm-high"))
+    sync_api.expect(page.locator(".pill")).to_contain_text("ALARM")
+    # the stop tier can be switched off; its number row goes with it
+    page.locator('[data-act="drawer-open"]').click()
+    page.locator("#drawer-stopon").uncheck()
+    sync_api.expect(page.locator("#drawer-stop")).to_have_count(0)
+    page.locator(".drawer").get_by_role("button", name="Done").click()
     page.locator('[data-act="open-settings"]').last.click()
     page.locator("#nav-display").click()
     page.get_by_role("button", name="Light").click()
@@ -175,8 +191,54 @@ def test_rebreathing_marker_splits_the_response_plot(page, site_url):
     page.keyboard.press("m")
     page.fill("#mark-label", "Rebreathing")
     page.locator('[data-act="mark-save-btn"]').click()
-    # breaths after the marker are fitted; those before it are the baseline
-    sync_api.expect(page.locator("#trend-meta")).to_contain_text(re.compile(r"slope .* · baseline 3[6-9]\.\d mmHg"), timeout=40_000)
+    # breaths after the marker are fitted (once the first 30 s have passed); those before it are the baseline
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text(re.compile(r"slope .* · baseline 3[6-9]\.\d mmHg"), timeout=70_000)
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text("outside the fit")
+    assert page.errors == []
+
+
+def test_test_keys_trends_and_taking_a_breath_out_by_hand(page, site_url):
+    boot(page, site_url + "?sim")
+    numbers_ok(page)
+    bar = page.locator("#testbar")
+    sync_api.expect(bar).to_contain_text("No test running")
+    sync_api.expect(bar.get_by_role("button", name="End test")).to_be_disabled()
+    bar.get_by_role("button", name="Start baseline").click()
+    sync_api.expect(bar).to_contain_text(re.compile(r"BASELINE 0:0\d"))
+    sync_api.expect(bar).to_contain_text("NOT RECORDING")
+    # the trend tab can plot MV and RR as well as EtCO2
+    page.select_option("#trend-series", "mv")
+    sync_api.expect(page.locator("#tab-trend")).to_have_text("MV trend")
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text("MV (L/min, 60 s average)")
+    page.select_option("#trend-series", "rr")
+    sync_api.expect(page.locator("#tab-trend")).to_have_text("RR trend")
+    page.select_option("#trend-series", "etco2")
+    # some baseline, then rebreathing with no skip so the fit starts at once
+    page.locator('[data-act="open-settings"]').last.click()
+    page.locator("#nav-data").click()
+    page.fill("#test-skip", "0")
+    page.press("#test-skip", "Enter")
+    page.fill("#test-weight", "60")
+    page.press("#test-weight", "Enter")
+    page.get_by_role("button", name="← Back to monitor").click()
+    page.wait_for_timeout(8000)
+    bar.get_by_role("button", name="Start rebreathing").click()
+    sync_api.expect(bar).to_contain_text(re.compile(r"REBREATHING 0:\d\d of 5:00"))
+    page.locator("#tab-response").click()
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text(re.compile(r"slope .* n \d+ · baseline"), timeout=40_000)
+    # a click on a drawn breath takes it out of the fit; clicking its cross puts it back
+    hit = page.evaluate("""() => {
+        const c = document.getElementById('trend-canvas');
+        const [x, y] = c.dataset.points.split(';').pop().split(',').map(Number);
+        const r = c.getBoundingClientRect();
+        return [r.left + x, r.top + y];
+    }""")
+    page.mouse.click(hit[0], hit[1])
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text("1 excluded by hand")
+    bar.get_by_role("button", name="End test").click()
+    sync_api.expect(bar).to_contain_text("TEST ENDED after")
+    page.mouse.click(hit[0], hit[1])
+    sync_api.expect(page.locator("#trend-meta")).not_to_contain_text("excluded by hand")
     assert page.errors == []
 
 
@@ -220,6 +282,14 @@ def test_record_import_review_and_persistence(page, site_url, tmp_path):
     with page.expect_download() as dl2:
         page.get_by_role("button", name="Breaths (.csv)", exact=True).click()
     assert dl2.value.suggested_filename == "reimported_breaths.csv"
+    # the test report, as a PDF made in the browser
+    sync_api.expect(page.locator(".review .stats")).to_contain_text("CO2 response")
+    with page.expect_download() as dl3:
+        page.get_by_role("button", name="CO2 response report (.pdf)", exact=True).click()
+    assert dl3.value.suggested_filename == "reimported_report.pdf"
+    pdf = tmp_path / "report.pdf"
+    dl3.value.save_as(pdf)
+    assert pdf.read_bytes().startswith(b"%PDF-1.4") and pdf.read_bytes().rstrip().endswith(b"%%EOF")
 
     # sessions survive a reload (kept in the browser's IndexedDB)
     page.wait_for_timeout(1500)

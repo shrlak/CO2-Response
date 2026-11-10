@@ -28,6 +28,8 @@ _actions: dict[str, Callable] = {}
 _keep: list = []
 _html: dict[str, str] = {}
 _toast_timer = [None]
+#: where the click being handled landed (viewport pixels), for actions on a canvas
+last_click = [0.0, 0.0]
 
 
 def nn(v):
@@ -98,6 +100,7 @@ def install() -> None:
     def on_click(ev):
         el = nn(ev.target.closest("[data-act]"))
         if el is not None and not el.hasAttribute("disabled"):
+            last_click[0], last_click[1] = float(ev.clientX), float(ev.clientY)
             _dispatch(data(el, "act"), el)
 
     def on_change(ev):
@@ -184,8 +187,8 @@ def after(ms: float, fn: Callable) -> None:
 
 
 def download(name: str, parts, mime: str = "text/csv") -> None:
-    """Save text (a string or a list of strings) as a file in the browser's Downloads."""
-    if isinstance(parts, str):
+    """Save text or bytes (one piece or a list of pieces) as a file in the browser's Downloads."""
+    if isinstance(parts, (str, bytes)):
         parts = [parts]
     blob = js.Blob.new(to_js(list(parts)), obj({"type": mime}))
     url = js.URL.createObjectURL(blob)

@@ -10,12 +10,14 @@ from typing import TYPE_CHECKING
 import js
 
 from ..engine.monitor import Snapshot
+from ..forms import ALARM_FIELDS
 from ..processing.co2 import mmhg_to_pct
 from ..processing.metrics import co2_response_summary
 from ..settings import AlarmSettings
 from .charts import ResponseChart, Sweep, TrendChart
-from .dom import as_float, btn, byid, data, esc, field, number_field, seg, set_html, toast, toggle
+from .dom import btn, byid, data, esc, field, set_html, toast
 from .sim_view import SimPanel
+from .spec_form import install_spec_actions, spec_form_html
 
 if TYPE_CHECKING:
     from .app import WebApp
@@ -139,25 +141,10 @@ def alarm_slot_html(s: Snapshot, open_list: bool) -> str:
 # ------------------------------------------------------------------ alarm form (drawer and settings)
 
 
-SOURCE_HINT = {
-    "etco2": "Compared once per breath, after each expiration.",
-    "live": "Live CO2 alarms when the waveform itself stays past a limit, e.g. raised inspired CO2 during rebreathing.",
-}
-
-
-def alarm_form_html(a: AlarmSettings, p: str) -> str:
-    out = field("Alarm on", seg("alarm-src", a.source, [("etco2", "EtCO2 per breath"), ("live", "Live CO2")]), SOURCE_HINT[a.source])
-    out += number_field("High CO2 limit", "alarm", a.high_mm_hg, "mmHg", "Drawn as the dashed line on the capnogram and trend.", f"{p}-high", 5, 150, 1, "high_mm_hg")
-    out += field("Low CO2 limit", toggle("alarm-low-on", a.low_mm_hg is not None, f"{p}-lowon"), "Optional. Helps catch apnea, a leak or a disconnected sample line.", f"{p}-lowon")
-    if a.low_mm_hg is not None:
-        out += number_field("Low limit", "alarm", a.low_mm_hg, "mmHg", None, f"{p}-low", 0, 100, 1, "low_mm_hg")
-    if a.source == "etco2":
-        out += number_field("Trigger delay", "alarm", a.delay_breaths, "breaths", "Consecutive breaths past the limit before alarming. Stops a single breath from alarming.", f"{p}-delayb", 1, 10, 1, "delay_breaths")
-    else:
-        out += number_field("Trigger delay", "alarm", a.delay_sec, "s", None, f"{p}-delays", 0, 60, 0.5, "delay_sec")
-    out += number_field("Hysteresis", "alarm", a.hysteresis_mm_hg, "mmHg", "A high alarm clears only below limit − hysteresis.", f"{p}-hyst", 0, 10, 0.5, "hysteresis_mm_hg")
-    out += number_field("Apnea alarm after", "alarm", a.apnea_sec, "s", "High-priority alarm when no breath is detected for this long. 0 turns it off.", f"{p}-apnea", 0, 120, 1, "apnea_sec")
-    out += number_field("Silence duration", "alarm", a.silence_sec, "s", "Audio comes back on by itself after this. Maximum 120 s.", f"{p}-silence", 10, 120, 1, "silence_sec")
+def alarm_form_html(a: AlarmSettings, p: str, snapshot=None) -> str:
+    """The alarm rows come from ``co2response.forms.ALARM_FIELDS`` (shared with the
+    desktop window); only the volume slider is built here."""
+    out = spec_form_html(ALARM_FIELDS, a, p, "alarm", snapshot)
     vol = round(a.volume * 100)
     out += field(
         "Alarm volume", f'<input type="range" id="{p}-vol" min="10" max="100" step="5" value="{vol}" data-change="alarm-vol"><span class="u">{vol} %</span>', "Cannot be set to zero.", f"{p}-vol"
@@ -168,35 +155,21 @@ def alarm_form_html(a: AlarmSettings, p: str) -> str:
 def install_alarm_actions(app: "WebApp") -> None:
     from .dom import actions
 
-    def setp(**patch):
-        e = app.engine
+    e = app.engine
+
+    def setp(patch: dict) -> None:
         e.update_settings(alarms=dataclasses.replace(e.settings.alarms, **patch))
-        app.rerender()
 
-    def on_alarm(el):
-        v = as_float(el)
-        name = data(el, "arg")
-        if v is None:
-            app.rerender(force=True)
-            return
-        lo, hi = float(el.min or -1e9), float(el.max or 1e9)
-        v = min(hi, max(lo, v))
-        setp(**{name: round(v) if name == "delay_breaths" else v})
-
-    actions(
-        alarm=on_alarm,
-        **{
-            "alarm-src": lambda el: setp(source=data(el, "arg")),
-            "alarm-low-on": lambda el: setp(low_mm_hg=25 if el.checked else None),
-            "alarm-vol": lambda el: setp(volume=float(el.value) / 100),
-        },
-    )
+    install_spec_actions("alarm", ALARM_FIELDS, lambda: e.settings.alarms, setp, lambda: app.rerender(force=True))
+    actions(**{"alarm-vol": lambda el: (setp({"volume": float(el.value) / 100}), app.rerender())})
 
 
 # ------------------------------------------------------------------ the monitor screen
 
 
 TILE_IDS = ("etco2", "rr", "fico2", "flow", "peak", "vt", "mv")
+#: what the trend tab can plot against time: setting value → (tab text, caption)
+SERIES = {"etco2": ("EtCO2 trend", "EtCO2"), "mv": ("MV trend", "MV (L/min, 60 s average)"), "rr": ("RR trend", "RR (/min)")}
 
 
 def tile_html(tid: str, label: str, unit: str, value: str, big=False, stale=False, alarm=None, flash=False, limits=None, qualifier="", raw="") -> str:
@@ -250,10 +223,15 @@ class MonitorView:
             '<section class="trend"><div class="trend-head" role="tablist">'
             '<button class="tab" role="tab" data-act="trend-tab" data-arg="trend" id="tab-trend">EtCO2 trend</button>'
             '<button class="tab" role="tab" data-act="trend-tab" data-arg="response" id="tab-response">Ventilatory response</button>'
-            '<span class="trend-meta"><span id="trend-meta"></span><label>Window <select id="trend-window" data-change="trend-window" aria-label="Trend window">'
+            '<span class="trend-meta"><span id="trend-meta"></span>'
+            '<select id="trend-series" data-change="trend-series" aria-label="Trend of" title="What the trend tab plots against time">'
+            '<option value="etco2">EtCO2</option><option value="mv">MV</option><option value="rr">RR</option></select>'
+            '<label>Window <select id="trend-window" data-change="trend-window" aria-label="Trend window">'
             '<option value="15">15 min</option><option value="30">30 min</option><option value="120">2 h</option><option value="0">All</option></select></label>'
             f"{expand_btn('trend', 'trend')}</span></div>"
-            '<div class="trend-plot"><canvas id="trend-canvas"></canvas></div></section>'
+            # the rebreathing test: three keys and where the test stands
+            '<div class="testbar" id="testbar"></div>'
+            '<div class="trend-plot"><canvas id="trend-canvas" data-act="resp-click"></canvas></div></section>'
         )
         return (
             f'<div class="monitor-screen" id="monscreen"><main class="monitor">{rows}<div id="overlay"></div></main>{trend}'
@@ -327,7 +305,8 @@ class MonitorView:
             self.sweeps[cid].set_options(-fs, fs, [-fs, 0, fs], True, None, st.sweep_sec, s.rate_hz, theme)
         byid("unit-co2").textContent = unit
 
-        co2_alarm = next((a for a in s.alarms if a.id in ("co2High", "co2Low") and a.state == "active"), None)
+        # the list is in priority order, so the stop alarm comes before the warning
+        co2_alarm = next((a for a in s.alarms if a.id in ("co2Stop", "co2High", "co2Low") and a.state == "active"), None)
         apnea = next((a for a in s.alarms if a.id == "apnea" and a.state == "active"), None)
         byid("row-co2").className = "row co2" + (" in-alarm" if (co2_alarm and co2_alarm.priority == "high") or apnea else "")
         tag = "FROZEN" if s.frozen else "SIMULATED" if s.source_kind == "simulator" else "REPLAY" if s.source_kind == "replay" else None
@@ -359,7 +338,7 @@ class MonitorView:
                 stale=sc["co2"],
                 alarm=("high" if co2_alarm.priority == "high" else "medium") if co2_alarm else None,
                 flash=bool(co2_alarm and not co2_alarm.acknowledged),
-                limits=(lim(st.alarms.high_mm_hg), lim(st.alarms.low_mm_hg)),
+                limits=(lim(st.alarms.high_mm_hg) + (f" / {lim(st.alarms.stop_mm_hg)}" if st.alarms.stop_mm_hg is not None else ""), lim(st.alarms.low_mm_hg)),
                 qualifier="no CO2 signal" if sc["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br: {fmt(disp(n.etco2_median), digits)}",
                 raw=raw("co2"),
             ),
@@ -367,8 +346,11 @@ class MonitorView:
             "fico2": tile_html("fico2", "FiCO2", unit, sv(sc["co2"], disp(n.fico2), digits), stale=sc["co2"]),
             "flow": tile_html("flow", "Flow", "L/min", sv(sc["flow"], n.flow), stale=sc["flow"], raw=raw("flow")),
             "peak": tile_html("peak", "Peak insp", "L/min", sv(sc["flow"], n.peak_flow), stale=sc["flow"]),
-            "vt": tile_html("vt", "VT", "mL", sv(sc["pneumo"], n.vt), stale=sc["pneumo"], raw=raw("pneumo"), qualifier="" if sc["pneumo"] else f"flow {fmt(n.pneumo_flow)} L/min"),
-            "mv": tile_html("mv", "MV", "L/min", sv(sc["pneumo"], n.mv, 1), stale=sc["pneumo"]),
+            "vt": tile_html(
+                "vt", "VT", "mL", sv(sc["pneumo"], n.vt), stale=sc["pneumo"], raw=raw("pneumo"),
+                qualifier="" if sc["pneumo"] else (f"exp {fmt(n.vte)} mL · " if math.isfinite(n.vte) else "") + f"flow {fmt(n.pneumo_flow)} L/min",
+            ),  # fmt: skip
+            "mv": tile_html("mv", "MV", "L/min", sv(sc["pneumo"], n.mv, 1), stale=sc["pneumo"], qualifier="" if sc["pneumo"] else "60 s average"),
         }
         for k, h in tiles.items():
             set_html(f"t-{k}", h)
@@ -384,7 +366,7 @@ class MonitorView:
             from .dom import editing_inside
 
             if not editing_inside("drawer"):
-                set_html("drawer", self._drawer(st.alarms))
+                set_html("drawer", self._drawer(st.alarms, s))
         else:
             set_html("drawer", "")
 
@@ -416,6 +398,7 @@ class MonitorView:
             return f'<button class="key {cls}" data-act="{act}"{f" data-arg={arg}" if arg else ""}>{main}<span class="sub">{sub}</span></button>'
 
         low = f" · low {fmt(disp(a.low_mm_hg), digits)}" if a.low_mm_hg is not None else ""
+        stop = f" · stop {fmt(disp(a.stop_mm_hg), digits)}" if a.stop_mm_hg is not None else ""
         mark = ""
         if self.mark:
             mid, label = self.mark
@@ -430,7 +413,7 @@ class MonitorView:
             + f'<div style="position:relative;display:grid">{key("Mark event", "hotkey M", "mark")}{mark}</div>'
             + key("■ Stop rec" if s.recording.active else "● Record", "saves one CSV on stop" if s.recording.active else "one CSV per session", "record", "rec-on" if s.recording.active else "")
             + key("Unfreeze" if s.frozen else "Freeze", "waveforms only", "freeze", "active" if s.frozen else "")
-            + key("Alarm limits", f"high {fmt(disp(a.high_mm_hg), digits)}{low}", "drawer-open")
+            + key("Alarm limits", f"{'warn' if stop else 'high'} {fmt(disp(a.high_mm_hg), digits)}{stop}{low}", "drawer-open")
             + key(
                 "Simulation",
                 "hide the controls" if self.sim.open else "situations and values" if s.source_kind == "simulator" else "try situations, no hardware",
@@ -445,22 +428,48 @@ class MonitorView:
                 el.focus()
                 el.select()
 
-    def _drawer(self, a: AlarmSettings) -> str:
+    def _drawer(self, a: AlarmSettings, s: Snapshot | None = None) -> str:
         return (
             '<div class="drawer-backdrop" data-act="drawer-close"></div><aside class="drawer" aria-label="Alarm limits"><h2>Alarm limits</h2>'
             '<p class="note">Changes apply immediately and are saved in this browser.</p>'
-            f'{alarm_form_html(a, "drawer")}<div class="row-actions" style="margin-top:auto">{btn("Test alarm", "test-alarm")}{btn("Done", "drawer-close", "btn primary")}</div></aside>'
+            f'<div class="drawer-scroll">{alarm_form_html(a, "drawer", s)}</div><div class="row-actions" style="margin-top:auto">{btn("Test alarm", "test-alarm")}{btn("Done", "drawer-close", "btn primary")}</div></aside>'
+        )
+
+    def _testbar(self, s: Snapshot) -> None:
+        ts = s.test
+
+        def key(text, act, on, active, title):
+            return btn(text, act, "btn small primary" if active else "btn small", disabled=not on, title=title)
+
+        set_html(
+            "testbar",
+            key("Start baseline", "test-baseline", ts.can_baseline, ts.phase == "baseline", "Breaths from now until rebreathing starts are the baseline")
+            + key("Start rebreathing", "test-start", ts.can_start, ts.phase == "rebreathing", "Press as the valve is turned to the bag")
+            + key("End test", "test-end", ts.can_end, False, "Press as the valve is turned back to room air")
+            + f'<span class="test-text" id="test-text" title="{esc(ts.text)}">{esc(ts.text)}</span>',
         )
 
     def _trend(self, s: Snapshot, disp, pct: bool) -> None:
         st = s.settings
         e = self.app.engine
+        self._testbar(s)
         sel = byid("trend-window")
         if str(sel.value) != f"{st.trend_minutes:g}":
             sel.value = f"{st.trend_minutes:g}"
-        byid("tab-trend").setAttribute("aria-selected", "true" if self.tab == "trend" else "false")
+        series = st.trend_series if st.trend_series in SERIES else "etco2"
+        ser = byid("trend-series")
+        if str(ser.value) != series:
+            ser.value = series
+        ser.hidden = self.tab != "trend"
+        tab = byid("tab-trend")
+        if tab.textContent != SERIES[series][0]:
+            tab.textContent = SERIES[series][0]
+        tab.setAttribute("aria-selected", "true" if self.tab == "trend" else "false")
         byid("tab-response").setAttribute("aria-selected", "true" if self.tab == "response" else "false")
-        key = (int(s.now // 1000), s.trend_version, self.tab, st.trend_minutes, st.co2_unit, st.alarms.high_mm_hg, st.alarms.low_mm_hg, st.co2_scale_max_mm_hg, self.app.theme)
+        key = (
+            int(s.now // 1000), s.trend_version, self.tab, st.trend_minutes, st.co2_unit, st.alarms.high_mm_hg, st.alarms.low_mm_hg,
+            st.alarms.stop_mm_hg, st.co2_scale_max_mm_hg, series, self.app.theme,
+        )  # fmt: skip
         if key == self._trend_key:
             return
         self._trend_key = key
@@ -473,34 +482,48 @@ class MonitorView:
         left_out = len(window) - len(pts)
         removed = f" · {left_out} noisy breath{'s' if left_out != 1 else ''} left out" if left_out else ""
         if self.tab == "trend":
-            # continuous CO2, without the stretches of breaths the noise screen left out
-            tt, vv, join = e.trend_trace(t0)
-            fin = [(q.t, disp(q.etco2)) for q in pts if math.isfinite(q.etco2)]
-            self.trend.draw(
-                t0,
-                now_s,
-                disp(st.co2_scale_max_mm_hg),
-                disp(st.alarms.high_mm_hg),
-                None if st.alarms.low_mm_hg is None else disp(st.alarms.low_mm_hg),
-                [a for a, _ in fin],
-                [b for _, b in fin],
-                tt,
-                [disp(v) for v in vv],
-                join,
-                [(m.t / 1000, m.label) for m in e.markers if m.t / 1000 >= t0],
-                [(a / 1000, p) for a, p in e.alarm_starts if a / 1000 >= t0],
-                pct,
-            )
+            markers = [(m.t / 1000, m.label) for m in e.markers if m.t / 1000 >= t0]
+            alarms = [(a / 1000, p) for a, p in e.alarm_starts if a / 1000 >= t0]
+            if series == "etco2":
+                # continuous CO2, without the stretches of breaths the noise screen left out
+                tt, vv, join = e.trend_trace(t0)
+                fin = [(q.t, disp(q.etco2)) for q in pts if math.isfinite(q.etco2)]
+                stop = None if st.alarms.stop_mm_hg is None else disp(st.alarms.stop_mm_hg)
+                ymax = disp(st.co2_scale_max_mm_hg)
+                if stop is not None:
+                    ymax = max(ymax, stop * 1.06)  # the stop limit is always on the plot
+                self.trend.draw(
+                    t0, now_s, ymax, disp(st.alarms.high_mm_hg), None if st.alarms.low_mm_hg is None else disp(st.alarms.low_mm_hg),
+                    [a for a, _ in fin], [b for _, b in fin], tt, [disp(v) for v in vv], join, markers, alarms, pct, stop=stop,
+                )  # fmt: skip
+            else:
+                fin = [(q.t, q.mv if series == "mv" else q.rr) for q in pts if math.isfinite(q.mv if series == "mv" else q.rr)]
+                ymax = max(10.0, math.ceil(max((v for _, v in fin), default=10) * 1.2))
+                self.trend.draw(
+                    t0, now_s, ymax, None, None, [a for a, _ in fin], [b for _, b in fin], [], [], [], markers, alarms, False,
+                    color="--pneumo" if series == "mv" else "--text", joined=True,
+                )  # fmt: skip
             span = f"{minutes:g} min" if minutes > 0 else "whole session"
-            meta = f"{span} · one point per breath · {len(pts)} breaths{removed}"
+            meta = f"{SERIES[series][1]} · {span} · one point per breath · {len(fin)} breaths{removed}"
         else:
             # Read's method: baseline breaths averaged, the line fitted to rebreathing only
             res = e.co2_response(t0)
-            self.resp.draw(res.rebreathing, res.baseline, res.fit)
-            meta = co2_response_summary(res, fmt) + (removed if res.fit else "")
+            self.resp.draw(res)
+            hint = " · click a point to leave it out" if res.baseline or res.rebreathing else ""
+            meta = co2_response_summary(res, fmt) + (removed if res.fit else "") + hint
         el = byid("trend-meta")
         el.textContent = meta
         el.title = meta  # the full text when it is cut short
+
+    def response_click(self, client_x: float, client_y: float) -> bool:
+        """A click on a breath in the response plot takes it out of the fit, or puts it back."""
+        if self.tab != "response" or self.resp is None:
+            return False
+        key = self.resp.hit(client_x, client_y)
+        if key is None or not self.app.engine.toggle_breath(int(key)):
+            return False
+        self._trend_key = None
+        return True
 
 
 def install_monitor_actions(app: "WebApp") -> None:
@@ -536,6 +559,16 @@ def install_monitor_actions(app: "WebApp") -> None:
         mv._trend_key = None
         app.refresh()
 
+    def series(el):
+        e.update_settings(trend_series=str(el.value))
+        app.refresh()
+
+    def resp_click(el):
+        from . import dom
+
+        if mv.response_click(dom.last_click[0], dom.last_click[1]):
+            app.refresh()
+
     actions(
         silence=lambda el: (e.toggle_silence(), app.refresh()),
         freeze=lambda el: (e.set_frozen(not e.frozen), app.refresh()),
@@ -550,6 +583,11 @@ def install_monitor_actions(app: "WebApp") -> None:
             "test-alarm": test_alarm,
             "trend-window": window,
             "trend-tab": tab,
+            "trend-series": series,
+            "resp-click": resp_click,
+            "test-baseline": lambda el: (e.start_baseline(), app.refresh()),
+            "test-start": lambda el: (e.start_rebreathing(), app.refresh()),
+            "test-end": lambda el: (e.end_test(), app.refresh()),
             "focus": lambda el: (mv.set_focus(None if mv.focus == data(el, "arg") else data(el, "arg")), app.refresh()),
         },
     )

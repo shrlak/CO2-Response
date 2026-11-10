@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .. import __version__
+from ..storage.report import response_stats, session_response
 from ..storage.session_file import Range, breaths_csv, clean_breaths, event_type, events_csv, export_session_parts, summarize
 from .charts import ReviewChart, elapsed
 from .dom import actions, btn, byid, css_var, data, download, esc, stat
@@ -48,7 +49,7 @@ class ReviewView:
             return f'<div class="settings-body">{back}<p class="err">Could not open this session: {esc(self.error)}</p></div>'
         s, rec = self.parsed, self.rec
         summ = summarize(s)
-        conv = " (exports are converted to v2)" if s.version < 2 else ""
+        conv = " (exports are converted to the current format)" if s.version < 4 else ""
         stats = "".join(
             stat(k, v)
             for k, v in [
@@ -62,6 +63,7 @@ class ReviewView:
                 ("Markers", str(summ.markers)),
                 ("Samples", f"{summ.samples:,} at {summ.rate_hz} Hz"),
                 ("Dropped samples", str(summ.dropped)),
+                *response_stats(session_response(s)),
             ]
         )
 
@@ -81,7 +83,7 @@ class ReviewView:
             f'<h3>Tidal volume and minute ventilation</h3>{legend([("VT (left)", "--pneumo"), ("MV (right)", "--flow")])}<div class="review-chart" style="height:180px"><canvas id="rc-1"></canvas></div>'
             f'<h3 id="wave-title">Waveforms</h3>{legend([("CO2 mmHg (left)", "--co2"), ("Flow (right)", "--flow"), ("Pneumotach (right)", "--pneumo")])}<div class="review-chart" style="height:230px"><canvas id="rc-2"></canvas></div>'
             '<h3 style="margin-top:14px">Export</h3><div class="row-actions" style="margin:6px 0 14px">'
-            f'{btn("Whole session (one .csv)", "export", "btn primary", arg=f"{rec.id}|session")}{btn("Breaths (.csv)", "export", arg=f"{rec.id}|breaths")}{btn("Alarms & events (.csv)", "export", arg=f"{rec.id}|events")}'
+            f'{btn("Whole session (one .csv)", "export", "btn primary", arg=f"{rec.id}|session")}{btn("Breaths (.csv)", "export", arg=f"{rec.id}|breaths")}{btn("Alarms & events (.csv)", "export", arg=f"{rec.id}|events")}{btn("CO2 response report (.pdf)", "export", arg=f"{rec.id}|report")}'
             f'{btn("Zoomed range, all data (.csv)", "review-range", arg="all", id="rr-all")}{btn("Zoomed range, breaths (.csv)", "review-range", arg="breaths", id="rr-breaths")}'
             f'{btn("Zoomed range, events (.csv)", "review-range", arg="events", id="rr-events")}{btn("Replay on the monitor", "review-replay", disabled=not s.n)}</div>'
             f'<h3>Alarms and events ({len(s.events)})</h3><div class="loglist" style="max-height:280px;margin-top:6px">{events}</div></div>'
