@@ -4,6 +4,8 @@ These cover what a person does: start the simulator, read the numbers, see and
 acknowledge alarms, calibrate, record, import, review, run the hardware check.
 """
 
+import dataclasses
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -80,6 +82,7 @@ def test_test_alarm_shows_the_high_priority_banner(win):
 
 def test_co2_ramp_raises_etco2_high_and_acknowledge_silences(win):
     e = win.engine
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, high_mm_hg=50, stop_mm_hg=None))
     e.connect("simulator")
     e.set_sim(scenario="co2Ramp")
     for _ in range(120):
@@ -156,7 +159,7 @@ def test_record_import_review(win, tmp_path):
     win.toggle_recording()
     rec = e.library.list()[0]
     text = e.library.path(rec).read_text()
-    assert text.startswith("# CO2-Response session,v3") and "MARK Event 1" in text and "RECORDING_STOPPED" in text
+    assert text.startswith("# CO2-Response session,v4") and "MARK Event 1" in text and "RECORDING_STOPPED" in text
 
     win.open_settings("data")
     page = win.settings_screen.pages["data"]
@@ -224,9 +227,12 @@ def test_sample_session_replays_through_the_window(win):
 
     s = read_session(ROOT / "sample-data" / "synthetic_session.csv")
     assert win.engine.connect("replay", session=s, file_name="synthetic_session.csv", speed=10)
-    advance(win, 16)
+    advance(win, 19)
     assert win.engine.snapshot().status_detail == "Replay finished"
     assert len(win.engine.breaths) >= 30
+    # the recording's markers are replayed, so the test is split and fitted as it was live
+    assert [m.label for m in win.engine.markers] == ["Baseline", "CO2 rebreathing started", "End of test"]
+    assert win.engine.snapshot().test.phase == "ended"
 
 
 def test_simulation_panel_sets_the_monitor_and_graphs_enlarge(win):
@@ -241,7 +247,7 @@ def test_simulation_panel_sets_the_monitor_and_graphs_enlarge(win):
     advance(win, 45)
     assert e.snapshot().source_kind == "simulator"
     assert m.tiles["rr"].value == "7"
-    assert 54 <= int(m.tiles["etco2"].value) <= 58
+    assert 60 <= int(m.tiles["etco2"].value) <= 65
     assert e.alarms.is_active("co2High")
     assert m.sim.set_labels["rr"].text() == "7" and m.sim.mon_labels["rr"].text() == "7"
     assert m.sim.sit_buttons["hypoventilation"].isChecked() and not m.sim.start_box.isVisible()
@@ -273,3 +279,122 @@ def test_simulation_panel_sets_the_monitor_and_graphs_enlarge(win):
     win.open_settings("connection")
     win.open_simulation()
     assert win.stack.currentWidget() is m and m.sim.isVisible()
+
+
+def test_test_keys_run_a_rebreathing_test_and_a_click_takes_a_breath_out(win):
+    m, e = win.monitor, win.engine
+    e.connect("simulator")
+    advance(win, 12)
+    tr = m.trend
+    assert tr.k_baseline.isEnabled() and tr.k_start.isEnabled() and not tr.k_end.isEnabled()
+    assert "No test running" in tr.test_text.toolTip()
+    tr.k_baseline.click()
+    advance(win, 30)
+    assert tr.test_text.toolTip().startswith("BASELINE 0:30")
+    tr.k_start.click()
+    e.set_sim(scenario="co2Ramp")
+    advance(win, 60)
+    assert tr.test_text.toolTip().startswith("REBREATHING 1:00") and tr.k_end.isEnabled() and not tr.k_start.isEnabled()
+    tr.tabs.button(1).click()
+    advance(win, 1)
+    n_fit, n_skip = tr.resp_points.data.size, tr.resp_skip.data.size
+    assert n_fit >= 5 and n_skip >= 5 and tr.resp_base.data.size >= 5
+    # a click on a fitted breath takes it out of the fit; a click on its cross puts it back
+    tr._point_clicked(tr.resp_points, tr.resp_points.points()[:1])
+    advance(win, 0.3)
+    assert tr.resp_out.data.size == 1 and "1 excluded by hand" in tr.meta.toolTip()
+    tr._point_clicked(tr.resp_out, tr.resp_out.points()[:1])
+    advance(win, 0.3)
+    assert tr.resp_out.data.size == 0
+    tr.k_end.click()
+    advance(win, 2)
+    assert tr.test_text.toolTip().startswith("TEST ENDED") and not tr.k_end.isEnabled()
+    assert [mk.label for mk in e.markers] == ["Baseline", "Rebreathing", "End of test"]
+    win.grab()
+
+
+def test_trend_tab_plots_mv_and_rr_and_shows_both_co2_limits(win):
+    m, e = win.monitor, win.engine
+    e.connect("simulator")
+    advance(win, 30)
+    tr = m.trend
+    assert tr.stop_line.isVisible() and tr.stop_line.value() == 65 and tr.high_line.value() == 60
+    assert m.tiles["etco2"].limits[0] == "60 / 65"
+    for series, text, lo, hi in (("mv", "MV TREND", 6.5, 8.5), ("rr", "RR TREND", 14, 16)):
+        e.update_settings(trend_series=series)
+        advance(win, 1)
+        assert tr.tabs.button(0).text() == text
+        assert not tr.high_line.isVisible() and not tr.stop_line.isVisible()
+        ys = tr.points.getData()[1]
+        assert len(ys) >= 4 and lo < ys[-1] < hi
+        win.grab()
+    e.update_settings(trend_series="etco2")
+    advance(win, 1)
+    assert tr.tabs.button(0).text() == "ETCO2 TREND" and tr.high_line.isVisible()
+
+
+def test_settings_forms_come_from_the_shared_field_lists(win):
+    from co2response.forms import ALARM_FIELDS, PROCESSING_FIELDS, TEST_FIELDS
+
+    e = win.engine
+    win.open_settings("alarms")
+    form = win.settings_screen.pages["alarms"].form
+    assert set(form.controls) == {f.name for f in ALARM_FIELDS}
+    # the stop limit: a switch, and its number while it is on
+    form.switches["stop"].setChecked(False)
+    assert e.settings.alarms.stop_mm_hg is None and not form.controls["stop"].isVisibleTo(form)
+    form.switches["stop"].setChecked(True)
+    assert e.settings.alarms.stop_mm_hg == 65
+    form.controls["stop"].setText("62")
+    form.controls["stop"]._commit()
+    assert e.settings.alarms.stop_mm_hg == 62
+    form.controls["high"].setText("64")
+    form.controls["high"]._commit()
+    assert (e.settings.alarms.high_mm_hg, e.settings.alarms.stop_mm_hg) == (64, 64)  # stop is never below the warning
+
+    win.open_settings("display")
+    proc = win.settings_screen.pages["display"].proc_form
+    assert set(proc.controls) == {f.name for f in PROCESSING_FIELDS}
+    proc.controls["deadband"].setText("0.1")  # shown in L/s, stored in L/min
+    proc.controls["deadband"]._commit()
+    assert e.settings.processing.deadband_lpm == pytest.approx(6)
+    proc.controls["btps"].setChecked(True)
+    assert e.settings.processing.volume_btps and e.pipeline.flow_factor > 1.05
+    proc.controls["co2delay"].setText("800")
+    proc.controls["co2delay"]._commit()
+    assert e.pipeline.co2_delay_sec == pytest.approx(0.8)
+
+    win.open_settings("data")
+    page = win.settings_screen.pages["data"]
+    assert set(page.test_form.controls) == {f.name for f in TEST_FIELDS}
+    page.test_form.controls["weight"].setText("61.5")
+    page.test_form.controls["weight"]._commit()
+    assert e.settings.test.weight_kg == 61.5
+    page.test_form.controls["weight"].setText("")
+    page.test_form.controls["weight"]._commit()
+    assert e.settings.test.weight_kg is None
+    advance(win, 0.3)
+    win.grab()
+
+
+def test_review_shows_the_response_and_saves_the_report(win, tmp_path, monkeypatch):
+    import pypdf
+    from PySide6.QtWidgets import QFileDialog
+
+    e = win.engine
+    rec, _ = e.library.import_file(ROOT / "sample-data" / "synthetic_session.csv")
+    e.library_changed()
+    win.open_review(rec.id)
+    rv = win.review
+    from co2response.ui.widgets import Stat
+
+    stats = {st.k.text(): st.v.text() for st in rv.findChildren(Stat)}
+    assert stats["CO2 RESPONSE"].startswith("slope 0.29 L/min/mmHg, r 1.00") and stats["BASELINE"].startswith("EtCO2 38.0 mmHg")
+    out = tmp_path / "report.pdf"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(out), ""))
+    from co2response.ui.settings.data import export_report
+
+    export_report(win, rec.file_name, rv.parsed)
+    pdf = pypdf.PdfReader(str(out))
+    text = pdf.pages[0].extract_text()
+    assert len(pdf.pages) == 2 and "Response slope" in text and "RESEARCH USE ONLY" in text

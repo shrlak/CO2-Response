@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from .. import __version__
 from ..engine.monitor import MonitorEngine
+from ..storage.report import response_stats, session_response
 from ..storage.session_file import (
     ParsedSession,
     Range,
@@ -33,7 +34,7 @@ from ..storage.session_file import (
 )
 from . import theme
 from .settings.common import downloads_dir, save_text
-from .settings.data import export_session
+from .settings.data import export_report, export_session
 from .theme import ui_font
 from .widgets import StatGrid, button, duration, elapsed, fmt, hbox, label, scroll_page
 
@@ -195,7 +196,7 @@ class ReviewScreen(QFrame):
         head = QVBoxLayout()
         title = label(rec.file_name, "h2", selectable=True)
         started = datetime.fromtimestamp(s.started_ms / 1000).strftime("%d %b %Y %H:%M:%S") if s.started_ms else "?"
-        conv = " (exports are converted to v2)" if s.version < 2 else ""
+        conv = " (exports are converted to the current format)" if s.version < 4 else ""
         head.addWidget(title)
         head.addWidget(
             label(
@@ -218,6 +219,7 @@ class ReviewScreen(QFrame):
                 ("Markers", str(summ.markers)),
                 ("Samples", f"{summ.samples:,} at {summ.rate_hz} Hz"),
                 ("Dropped samples", str(summ.dropped)),
+                *response_stats(session_response(s)),
             ]
         )
         lay.addWidget(stats)
@@ -260,6 +262,7 @@ class ReviewScreen(QFrame):
                 button("Whole session (one .csv)", lambda: export_session(self.window, self.engine, self.rec, "session"), kind="primary"),
                 button("Breaths (.csv)", lambda: export_session(self.window, self.engine, self.rec, "breaths")),
                 button("Alarms & events (.csv)", lambda: export_session(self.window, self.engine, self.rec, "events")),
+                button("CO2 response report (.pdf)", lambda: export_report(self.window, self.rec.file_name, self.parsed)),
                 *self.range_btns,
                 replay,
                 stretch_end=True,

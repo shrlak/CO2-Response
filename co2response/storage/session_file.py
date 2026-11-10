@@ -1,6 +1,6 @@
-"""Session file format v2: ONE self-contained CSV per recording, built for analysis.
+"""Session file format v4: ONE self-contained CSV per recording, built for analysis.
 
-    # CO2-Response session,v2            metadata lines start with '#'
+    # CO2-Response session,v4            metadata lines start with '#'
     # <key>,<value>                       (value may contain commas, e.g. JSON)
     time_s,wall_time_iso,t_ms,seq,v0,…    header row
     <one row per sample>                  every row has the same columns
@@ -8,8 +8,14 @@
 - Breath metrics (breath … breath_quality) are filled only on the sample row where that
   breath was completed; they are empty elsewhere. ``breath_quality`` is ok, noisy,
   artifact or outlier (see co2response/processing/denoise.py); an ``outlier`` is decided
-  one breath later and written as a ``BREATH_REJECTED <n> outlier: …`` event. Only
-  ``ok`` breaths are meant to be analysed; the others are kept so nothing is lost.
+  one breath later and written as a ``BREATH_REJECTED <n> outlier: …`` event. A breath
+  the operator took out by hand is written as ``BREATH_EXCLUDED <n> manual`` (and
+  ``BREATH_INCLUDED <n>`` if it was put back) and reads back as quality ``excluded``.
+  Only ``ok`` breaths are meant to be analysed; the others are kept so nothing is lost.
+- ``period_s`` is the breath's own length, so its own minute ventilation is
+  vt_ml / 1000 × 60 / period_s (``mv_lpm`` is the 60 s average the monitor shows).
+  ``vte_ml`` is the expired volume. Both are new in v4; for older files the period is
+  taken from the time between breath rows.
 - The calibrated columns (co2_mmHg … pneumo_lpm) are after spike removal and filtering;
   v0–v2 are the raw volts exactly as the device sent them.
 - ``event`` holds alarms, markers, connections etc. on the sample row where they happened
@@ -22,7 +28,7 @@
 pandas: ``pd.read_csv(path, comment='#')``     MATLAB: ``readtable(path, 'CommentStyle', '#')``
 Free text never contains '#' (it is replaced), so comment='#' is safe on every row.
 
-v1 and v2 files (earlier formats) still import; their breaths are screened when read.
+v1, v2 and v3 files (earlier formats) still import; v1 and v2 breaths are screened when read.
 Full description: docs/data-format.md
 """
 
@@ -44,7 +50,7 @@ from ..protocol import SeqTracker
 from ..settings import to_dict
 
 NAN = float("nan")
-FORMAT_VERSION = 3
+FORMAT_VERSION = 4
 
 COLUMNS = (
     "time_s",
@@ -66,6 +72,8 @@ COLUMNS = (
     "vt_ml",
     "mv_lpm",
     "peak_insp_lpm",
+    "period_s",
+    "vte_ml",
     "breath_quality",
     "event",
 )
@@ -83,6 +91,8 @@ class SessionMeta:
     processing: Any
     #: None = not written
     alarm_settings: Any = None
+    #: the test settings: how the response is analysed, and the subject's size
+    test: Any = None
 
 
 @dataclass
@@ -95,6 +105,8 @@ class BreathCells:
     mv: float
     peak: float
     quality: str = "ok"
+    period: float = NAN
+    vte: float = NAN
 
 
 _NEG_ZERO = re.compile(r"-0(\.0*)?")
@@ -128,12 +140,14 @@ def format_header(m: SessionMeta) -> str:
         f"# firmware,{clean_text(m.firmware)}",
         f"# rate_hz,{js_num(m.rate_hz)}",
         "# time_base,time_s = seconds since start from the device clock; wall_time_iso = same instant on the computer clock",
-        "# units,volts V; co2 mmHg and %; flow L/min; pneumo_pa Pa; vt mL; mv L/min; rr breaths/min",
+        "# units,volts V; co2 mmHg and %; flow L/min; pneumo_pa Pa; vt and vte mL; mv L/min; rr breaths/min; period s",
         f"# channels,{js_json(m.channels).replace('#', 'no.')}",
         f"# processing,{js_json(to_dict(m.processing))}",
     ]
     if m.alarm_settings is not None:
         lines.append(f"# alarm_settings,{js_json(to_dict(m.alarm_settings))}")
+    if m.test is not None:
+        lines.append(f"# test,{js_json(to_dict(m.test))}")
     lines.append(",".join(COLUMNS))
     return "\n".join(lines) + "\n"
 
@@ -177,6 +191,8 @@ def format_row(
                 num(b.vt, 0) if b else "",
                 num(b.mv, 2) if b else "",
                 num(b.peak, 1) if b else "",
+                num(b.period, 3) if b else "",
+                num(b.vte, 0) if b else "",
                 b.quality if b else "",
                 ev,
             )
@@ -227,8 +243,27 @@ class BreathRec:
     vt: float
     mv: float
     peak: float
-    #: ok, noisy, artifact or outlier; "" if the file did not say (screened on load)
+    #: ok, noisy, artifact, outlier or excluded (taken out by hand); "" if the file
+    #: did not say (screened on load)
     quality: str = ""
+    #: the breath's own length, s, as the file gives it (NaN in files before v4)
+    period: float = NAN
+    #: expired volume, mL (NaN in files before v4)
+    vte: float = NAN
+    #: the length worked out from the time between breath rows, for files before v4
+    period_est: float = NAN
+
+    @property
+    def period_s(self) -> float:
+        return self.period if math.isfinite(self.period) else self.period_est
+
+    @property
+    def mv_breath(self) -> float:
+        """This breath's own minute ventilation, L/min: VT x 60 / its length."""
+        p = self.period_s
+        if not (math.isfinite(self.vt) and math.isfinite(p) and p > 0):
+            return NAN
+        return self.vt / 1000 * 60 / p
 
 
 @dataclass
@@ -379,6 +414,8 @@ class SessionParser:
                         _f(f[ix["mv_lpm"]]),
                         _f(f[ix["peak_insp_lpm"]]),
                         f[ix["breath_quality"]],
+                        _f(f[ix["period_s"]]),
+                        _f(f[ix["vte_ml"]]),
                     )
                 )
         ev = f[ix["event"]]
@@ -407,6 +444,30 @@ class SessionParser:
             q = screen_series([b.etco2 for b in self._breaths], [b.quality for b in self._breaths])
             for b, x in zip(self._breaths, q):
                 b.quality = x
+        # breaths taken out (or put back) by hand, in the order it was done
+        screened = {b.n: "ok" if b.quality == "excluded" else b.quality for b in self._breaths}
+        for e in self._events:
+            kind, _, rest = e.text.partition(" ")
+            if kind in ("BREATH_EXCLUDED", "BREATH_INCLUDED"):
+                try:
+                    b = by_n.get(float(rest.split()[0]))
+                except (IndexError, ValueError):
+                    continue
+                if b is not None:
+                    b.quality = "excluded" if kind == "BREATH_EXCLUDED" else screened[b.n]
+
+    def _fill_periods(self) -> None:
+        """Files before v4 have no period column: a breath runs from the end of the one
+        before it to its own end, so the time between breath rows is its length."""
+        prev = None
+        for b in self._breaths:
+            if not math.isfinite(b.period):
+                gap = b.time_s - prev if prev is not None else NAN
+                if math.isfinite(gap) and 0 < gap < 60:
+                    b.period_est = gap
+                elif math.isfinite(b.rr) and b.rr > 0:
+                    b.period_est = 60 / b.rr  # the first breath: the mean period it was given
+            prev = b.time_s
 
     def finish(self) -> ParsedSession:
         if self._rest:
@@ -421,6 +482,7 @@ class SessionParser:
             except ValueError:
                 channels = None
         self._apply_quality()
+        self._fill_periods()
         c = self._cols
         time_s = np.frombuffer(c["time_s"], dtype=np.float64).copy()
         last_event = self._events[-1].time_s if self._events else 0
@@ -484,8 +546,8 @@ def _safe_json(s: str | None):
 
 
 def export_session_parts(s: ParsedSession, rng: Range | None = None, app_version: str = "unknown") -> Iterable[str]:
-    """Rebuild a v2 session file from parsed data (optionally only a time range).
-    Also converts v1 files to v2. Yields the file in pieces."""
+    """Rebuild a session file in the current format from parsed data (optionally only
+    a time range). Also converts older files. Yields the file in pieces."""
 
     def wall(t: float) -> float:
         return s.started_ms + t * 1000
@@ -502,11 +564,12 @@ def export_session_parts(s: ParsedSession, rng: Range | None = None, app_version
             channels=s.channels if s.channels is not None else {},
             processing=_safe_json(s.meta.get("processing")),
             alarm_settings=_safe_json(s.meta["alarm_settings"]) if s.meta.get("alarm_settings") else None,
+            test=_safe_json(s.meta["test"]) if s.meta.get("test") else None,
         )
     )
     if rng is not None:
         head = re.sub(r"\n(?=time_s,)", f"\n# exported_range_s,{to_fixed(rng.t0, 3)}-{to_fixed(rng.t1, 3)}\n", head, count=1)
-    if s.version < 2:
+    if s.version < FORMAT_VERSION:
         head = re.sub(r"\n(?=time_s,)", f"\n# converted_from,v{s.version}\n", head, count=1)
     yield head
 
@@ -534,7 +597,7 @@ def export_session_parts(s: ParsedSession, rng: Range | None = None, app_version
         while bi < len(breaths) and breaths[bi].time_s <= t + 1e-9:
             b = breaths[bi]
             bi += 1
-            breath = BreathCells(b.n, b.etco2, b.fico2, b.rr, b.vt, b.mv, b.peak, b.quality or "ok")
+            breath = BreathCells(b.n, b.etco2, b.fico2, b.rr, b.vt, b.mv, b.peak, b.quality or "ok", b.period, b.vte)
         if not _in_range(t, rng):
             continue
         buf.append(format_row(t, wall(t), tm, sq, [a0, a1, a2], cm, cp, fl, pp, pl, breath, evs))
@@ -563,7 +626,7 @@ def clean_breaths(s: ParsedSession) -> list[BreathRec]:
 def breaths_csv(s: ParsedSession, rng: Range | None = None, clean_only: bool = False) -> str:
     """One row per breath: the table most analyses start from. ``quality`` says which
     breaths passed the noise screen; ``clean_only`` leaves the others out."""
-    rows = ["breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,quality"]
+    rows = ["breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,period_s,vte_ml,mv_breath_lpm,quality"]
     for b in s.breaths:
         if not _in_range(b.time_s, rng) or (clean_only and not is_clean(b)):
             continue
@@ -579,11 +642,38 @@ def breaths_csv(s: ParsedSession, rng: Range | None = None, clean_only: bool = F
                     num(b.vt, 0),
                     num(b.mv, 2),
                     num(b.peak, 1),
+                    num(b.period_s, 3),
+                    num(b.vte, 0),
+                    num(b.mv_breath, 2),
                     b.quality or "ok",
                 ]
             )
         )
     return "\n".join(rows) + "\n"
+
+
+def session_markers(events: Iterable[EventRec]) -> list[tuple[float, str]]:
+    """(time_s, label) of every event marker, with the label it ended up with.
+
+    A marker placed with the M key is written as ``MARK Event <n>`` and, once it is
+    labelled, ``MARK_RENAMED <n> <label>``; it counts from when it was placed."""
+    out: list[list] = []
+    by_id: dict[str, list] = {}
+    for e in events:
+        kind, _, rest = e.text.partition(" ")
+        if kind == "MARK":
+            m = [e.time_s, rest]
+            out.append(m)
+            if rest.startswith("Event ") and rest[6:].isdigit():
+                by_id[rest[6:]] = m
+        elif kind == "MARK_RENAMED":
+            mid, _, label = rest.partition(" ")
+            if mid in by_id:
+                by_id[mid][1] = label
+            else:
+                by_id[mid] = [e.time_s, label]
+                out.append(by_id[mid])
+    return [(t, label) for t, label in out]
 
 
 def event_type(text: str) -> str:

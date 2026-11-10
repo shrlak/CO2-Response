@@ -24,6 +24,15 @@ def save_text(parent: QWidget, name: str, text: str, kind: str = "CSV files (*.c
     return Path(path)
 
 
+def save_bytes(parent: QWidget, name: str, data: bytes, kind: str = "PDF files (*.pdf)") -> Path | None:
+    """Ask where to save a binary file, then write it. None if cancelled."""
+    path, _ = QFileDialog.getSaveFileName(parent, "Save as", str(downloads_dir() / name), f"{kind};;All files (*)")
+    if not path:
+        return None
+    Path(path).write_bytes(data)
+    return Path(path)
+
+
 class FlowGrid(QWidget):
     """Cards in as many columns as fit (each at least ``min_width`` wide)."""
 

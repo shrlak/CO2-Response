@@ -15,17 +15,23 @@ from co2response.processing.calibration import (
     syringe_k1,
     two_point_linear,
 )
-from co2response.processing.co2 import mmhg_to_pct, pct_to_mmhg
+from co2response.processing.co2 import btps_factor, gas_factor, mmhg_to_pct, pct_to_mmhg, water_vapor_mmhg
 from co2response.processing.filter import LowPass
 from co2response.processing.metrics import (
+    RespPoint,
+    TestWindow,
     co2_response,
     co2_response_summary,
     etco2_median,
     is_rebreathing_marker,
     linear_fit,
+    marker_kind,
     median,
     minute_ventilation,
+    normalized_slopes,
     respiratory_rate,
+    stability,
+    test_window,
 )
 from co2response.processing.pipeline import DEFAULT_PROCESSING, Pipeline
 from co2response.processing.quality import RailMonitor
@@ -190,7 +196,7 @@ def test_co2_response_fits_rebreathing_breaths_only_and_averages_the_baseline():
     # MV = 1.25 · (EtCO2 − 36) with alternating ±1 L/min scatter
     base = [(t, 43 + (t % 3), 6 + (t % 2) * 1.2) for t in range(10)]
     reb = [(100 + i, 47 + i, 1.25 * (47 + i - 36) + (1 if i % 2 else -1)) for i in range(18)]
-    res = co2_response(base + reb, rebreathing_start=100)
+    res = co2_response(base + reb, 100)
     assert res.split and len(res.baseline) == 10 and len(res.rebreathing) == 18
     assert res.baseline_etco2 == approx(sum(p[1] for p in base) / 10)
     assert res.baseline_mv == approx(sum(p[2] for p in base) / 10)
@@ -220,6 +226,103 @@ def test_recognises_rebreathing_markers():
     assert is_rebreathing_marker("CO2 rebreathing started")
     assert is_rebreathing_marker("REBREATH on")
     assert not is_rebreathing_marker("Event 3")
+    # an end marker is not a start, even when it mentions rebreathing
+    assert not is_rebreathing_marker("Rebreathing stopped")
+
+
+def test_recognises_the_markers_of_a_test():
+    kinds = {
+        "Baseline": "baseline",
+        "baseline start": "baseline",
+        "Rebreathing": "start",
+        "End of test": "end",
+        "Test ended": "end",
+        "Stop rebreathing": "end",
+        "End rebreathing": "end",
+        "Finished the test": "end",
+        "Event 3": None,
+        "Weekend": None,
+        "drug given": None,
+    }
+    assert {k: marker_kind(k) for k in kinds} == kinds
+
+
+def test_finds_the_latest_test_among_the_markers():
+    assert test_window([]) == TestWindow(None, None, None)
+    assert test_window([(5, "Rebreathing")]) == TestWindow(None, 5, None)
+    one = [(1, "Baseline"), (5, "Rebreathing"), (9, "End of test")]
+    assert test_window(one) == TestWindow(1, 5, 9)
+    # a second test: its baseline starts where the first one ended unless it is marked
+    assert test_window(one + [(15, "Rebreathing")]) == TestWindow(9, 15, None)
+    assert test_window(one + [(12, "Baseline"), (15, "Rebreathing"), (20, "Test ended")]) == TestWindow(12, 15, 20)
+    # a new baseline after a finished test opens the next one: no rebreathing yet
+    assert test_window(one + [(12, "Baseline")]) == TestWindow(12, None, None)
+    # an end marker before any start is ignored
+    assert test_window([(2, "End of test"), (5, "Rebreathing")]) == TestWindow(2, 5, None)
+
+
+def test_response_leaves_out_the_first_seconds_and_everything_after_the_end():
+    # 10 baseline breaths; 3 coached deep breaths with a huge MV; a clean response
+    # MV = 1.5 · (EtCO2 − 40); then recovery breaths with CO2 falling while MV is still high
+    base = [(t * 4, 42, 6) for t in range(10)]
+    deep = [(100 + i * 5, 44, 25) for i in range(3)]
+    reb = [(130 + i * 4, 46 + i, 1.5 * (46 + i - 40)) for i in range(15)]
+    rec = [(200 + i * 4, 58 - 3 * i, 26 - i) for i in range(5)]
+    pts = base + deep + reb + rec
+    res = co2_response(pts, TestWindow(None, 100, 200), skip_sec=30)
+    assert (len(res.baseline), len(res.rebreathing), len(res.skipped)) == (10, 15, 8)
+    assert res.slope == approx(1.5) and res.x_intercept == approx(40) and res.r == approx(1)
+    line = co2_response_summary(res, lambda v, d: f"{v:.{d}f}")
+    assert "n 15" in line and "8 outside the fit" in line
+    # without the skip and the end marker those breaths bend the line
+    loose = co2_response(pts, 100)
+    assert len(loose.rebreathing) == 23 and abs(loose.slope - 1.5) > 0.3
+    # too few breaths after the skip: say why
+    few = co2_response(base + deep, TestWindow(None, 100, None), skip_sec=30)
+    assert co2_response_summary(few, lambda v, d: f"{v:.{d}f}").startswith("MV vs EtCO2 · needs at least 3 rebreathing breaths after the first 30 s")
+
+
+def test_response_baseline_starts_at_its_marker_and_breaths_can_be_excluded_by_hand():
+    settle = [(t, 30, 12) for t in range(0, 20, 4)]  # hyperventilating while settling in
+    base = [(20 + t * 4, 42, 6, f"b{t}") for t in range(6)]
+    reb = [(100 + i * 4, 46 + i, 1.5 * (46 + i - 40), f"r{i}") for i in range(12)]
+    cough = (150, 50, 40, "cough")
+    pts = settle + base + reb + [cough]
+    res = co2_response(pts, TestWindow(20, 100, None))
+    assert len(res.baseline) == 6 and res.baseline_etco2 == approx(42) and res.baseline_mv == approx(6)
+    assert len(res.rebreathing) == 13 and abs(res.slope - 1.5) > 0.2
+    out = co2_response(pts, TestWindow(20, 100, None), excluded=lambda k: k in ("cough", "b0"))
+    assert out.slope == approx(1.5)
+    assert [p.key for p in out.excluded] == ["b0", "cough"] and len(out.baseline) == 5
+    assert "2 excluded by hand" in co2_response_summary(out, lambda v, d: f"{v:.{d}f}")
+    # every point carries its time and key, for drawing and for clicking on it
+    assert out.rebreathing[0] == RespPoint(46, 9, 100, "r0")
+
+
+def test_a_baseline_with_no_rebreathing_yet_shows_only_its_own_breaths():
+    old = [(t, 50 + t, 10 + t) for t in range(10)]  # an earlier test
+    base = [(100 + t * 4, 42, 6) for t in range(5)]
+    res = co2_response(old + base, TestWindow(100, None, None))
+    assert res.split and len(res.baseline) == 5 and res.rebreathing == [] and res.fit is None
+
+
+def test_baseline_stability():
+    steady = [(42 + 0.3 * (i % 3), 6 + 0.2 * (i % 2)) for i in range(10)]
+    ok, why = stability(steady)
+    assert ok and why.startswith("EtCO2 ±0.")
+    assert stability(steady[:4]) == (False, "4 of 6 breaths")
+    drifting = [(38 + i, 6) for i in range(10)]
+    assert stability(drifting)[0] is False
+    irregular = [(42, 3 + 6 * (i % 2)) for i in range(10)]
+    assert stability(irregular)[0] is False
+
+
+def test_slope_normalized_for_body_size():
+    n = normalized_slopes(1.2, 170, 60)
+    assert n["bsa_m2"] == approx(math.sqrt(170 * 60 / 3600))
+    assert n["per_kg_ml"] == approx(20) and n["per_m2"] == approx(1.2 / n["bsa_m2"])
+    none = normalized_slopes(1.2, None, None)
+    assert math.isnan(none["per_kg_ml"]) and math.isnan(none["per_m2"])
 
 
 # ------------------------------------------------------------------ rails
@@ -290,3 +393,82 @@ def test_keeps_co2_valid_at_0_pct_during_inspiration():
             if out is not None and not out.valid["co2"]:
                 invalid += 1
     assert invalid == 0
+
+
+def test_measures_expired_volume_and_each_breaths_own_minute_ventilation():
+    breaths, _ = run_sim("normal", 60)
+    b = breaths[-1]
+    assert b.vte_ml == approx(b.vt_ml, rel=0.03)  # what goes in comes out
+    assert b.mv_lpm == approx(b.vt_ml / 1000 * 60 / b.period_sec)
+    assert 7 < b.mv_lpm < 8  # 15 /min × 500 mL
+    # the capnogram rises about 0.3 s into expiration (the simulated dead-space washout)
+    assert 0.2 < b.co2_lag_sec < 0.4
+
+
+def run_lines(lines, **opts):
+    import dataclasses
+
+    p = Pipeline(clone_channels(DEFAULT_CHANNELS), dataclasses.replace(DEFAULT_PROCESSING, **opts))
+    breaths = []
+    for t_ms, volts in lines:
+        out = p.process(t_ms, volts, 0)
+        if out is not None and out.breath:
+            breaths.append(out.breath)
+    return breaths, p
+
+
+def sim_lines(seconds, co2_late=0, **params):
+    """Simulator samples as (t_ms, volts), with the CO2 channel ``co2_late`` samples late
+    (a sidestream analyser's sample line)."""
+    core = SimulatorCore(DEFAULT_ENCODERS, etco2=40, rr=15, vt_ml=500, **params)
+    rows = [parse_line(line) for _ in range(seconds * 100) for line in core.next_sample()]
+    rows = [d for d in rows if d.kind == "data"]
+    out = []
+    for i, d in enumerate(rows):
+        v = list(d.volts)
+        v[0] = rows[max(0, i - co2_late)].volts[0]
+        out.append((d.t_ms, v))
+    return out
+
+
+def test_co2_delay_setting_lines_a_late_capnogram_up_with_the_flow():
+    lines = sim_lines(60, co2_late=150)  # CO2 arrives 1.5 s late
+    truth, _ = run_lines(sim_lines(60))
+    late, _ = run_lines(lines)
+    fixed, pipe = run_lines(lines, co2_delay_ms=1500)
+    assert pipe.co2_delay_sec == approx(1.5)
+    # uncorrected: the plateau spills into the next inspiration, so inspired CO2 reads
+    # high and the lag shows the delay
+    assert late[-1].fico2 > 20 and late[-1].co2_lag_sec > 1.5
+    assert truth[-1].fico2 < 2
+    # corrected: the breaths read as they would with no delay
+    assert fixed[-1].fico2 == approx(truth[-1].fico2, abs=0.5)
+    assert fixed[-1].etco2 == approx(truth[-1].etco2, abs=0.3)
+    assert fixed[-1].co2_lag_sec == approx(truth[-1].co2_lag_sec, abs=0.03)
+    assert fixed[-1].vt_ml == approx(truth[-1].vt_ml, rel=0.01)
+
+
+def test_gas_condition_helpers():
+    assert water_vapor_mmhg(37) == approx(47, abs=0.2)
+    assert btps_factor(22, 760) == approx(1.091, abs=0.003)
+    assert btps_factor(37, 760) == approx(1, abs=0.001)
+    assert gas_factor(20.95) == approx(1)
+    assert gas_factor(100) == approx(0.90, abs=0.005)  # pure O2 is more viscous: the pneumotach over-reads
+    assert 0.9 < gas_factor(50, 7) < 1
+
+
+def test_btps_and_the_bag_gas_factor_scale_the_pneumotach_volumes():
+    lines = sim_lines(40)
+    plain, _ = run_lines(lines)
+    btps, pipe = run_lines(lines, volume_btps=True, ambient_temp_c=22)
+    assert pipe.flow_factor == approx(btps_factor(22, 760))
+    assert btps[-1].vt_ml == approx(plain[-1].vt_ml * btps_factor(22, 760), rel=0.005)
+    # the bag-gas factor applies only while rebreathing
+    import dataclasses
+
+    p = Pipeline(clone_channels(DEFAULT_CHANNELS), dataclasses.replace(DEFAULT_PROCESSING, rebreathing_gas_factor=0.9))
+    assert p.flow_factor == 1
+    p.rebreathing = True
+    assert p.flow_factor == approx(0.9)
+    vts = [out.breath.vt_ml for t, v in lines if (out := p.process(t, v, 0)) is not None and out.breath]
+    assert vts[-1] == approx(plain[-1].vt_ml * 0.9, rel=0.005)

@@ -371,7 +371,8 @@ class MonitorScreen(QWidget):
         for cid in ("flow", "pneumo"):
             sw[cid].set_options(-fs, fs, [-fs, 0, fs], True, None, st.sweep_sec, rate)
 
-        co2_alarm = next((a for a in s.alarms if a.id in ("co2High", "co2Low") and a.state == "active"), None)
+        # the list is in priority order, so the stop alarm comes before the warning
+        co2_alarm = next((a for a in s.alarms if a.id in ("co2Stop", "co2High", "co2Low") and a.state == "active"), None)
         apnea = next((a for a in s.alarms if a.id == "apnea" and a.state == "active"), None)
         tag = "FROZEN" if s.frozen else "SIMULATED" if s.source_kind == "simulator" else "REPLAY" if s.source_kind == "replay" else None
         sw["co2"].set_tag(tag, bool((co2_alarm and co2_alarm.priority == "high") or apnea))
@@ -396,7 +397,7 @@ class MonitorScreen(QWidget):
             stale=s.stale["co2"],
             alarm=("high" if co2_alarm.priority == "high" else "medium") if co2_alarm else None,
             flash=bool(co2_alarm and not co2_alarm.acknowledged and blink_fast),
-            limits=(lim(st.alarms.high_mm_hg), lim(st.alarms.low_mm_hg)),
+            limits=(lim(st.alarms.high_mm_hg) + (f" / {lim(st.alarms.stop_mm_hg)}" if st.alarms.stop_mm_hg is not None else ""), lim(st.alarms.low_mm_hg)),
             qualifier="no CO2 signal" if s.stale["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br: {fmt(disp(n.etco2_median), digits)}",
             raw=raw("co2"),
         )
@@ -404,8 +405,9 @@ class MonitorScreen(QWidget):
         t["fico2"].set(stale_val(s.stale["co2"], disp(n.fico2), digits), unit, stale=s.stale["co2"])
         t["flow"].set(stale_val(s.stale["flow"], n.flow), stale=s.stale["flow"], raw=raw("flow"))
         t["peak"].set(stale_val(s.stale["flow"], n.peak_flow), stale=s.stale["flow"])
-        t["vt"].set(stale_val(s.stale["pneumo"], n.vt), stale=s.stale["pneumo"], raw=raw("pneumo"), qualifier="" if s.stale["pneumo"] else f"flow {fmt(n.pneumo_flow)} L/min")
-        t["mv"].set(stale_val(s.stale["pneumo"], n.mv, 1), stale=s.stale["pneumo"])
+        exp = f"exp {fmt(n.vte)} mL · " if n.vte == n.vte else ""
+        t["vt"].set(stale_val(s.stale["pneumo"], n.vt), stale=s.stale["pneumo"], raw=raw("pneumo"), qualifier="" if s.stale["pneumo"] else f"{exp}flow {fmt(n.pneumo_flow)} L/min")
+        t["mv"].set(stale_val(s.stale["pneumo"], n.mv, 1), stale=s.stale["pneumo"], qualifier="" if s.stale["pneumo"] else "60 s average")
 
         disconnected = s.status in ("idle", "error")
         if disconnected and self.focus == "trend":
@@ -425,7 +427,8 @@ class MonitorScreen(QWidget):
         self.k_rec.set("■ Stop rec" if s.recording.active else "● Record", "finishes the CSV file" if s.recording.active else "one CSV per session", "rec" if s.recording.active else None, p)
         self.k_freeze.set("Unfreeze" if s.frozen else "Freeze", "waveforms only", "active" if s.frozen else None, p)
         low = f" · low {fmt(disp(a.low_mm_hg), digits)}" if a.low_mm_hg is not None else ""
-        self.k_limits.set("Alarm limits", f"high {fmt(disp(a.high_mm_hg), digits)}{low}", None, p)
+        stop = f" · stop {fmt(disp(a.stop_mm_hg), digits)}" if a.stop_mm_hg is not None else ""
+        self.k_limits.set("Alarm limits", f"{'warn' if stop else 'high'} {fmt(disp(a.high_mm_hg), digits)}{stop}{low}", None, p)
         sim_open = self.sim.isVisible()
         self.k_sim.set(
             "Simulation",
@@ -436,4 +439,4 @@ class MonitorScreen(QWidget):
         self.k_settings.set("Settings", "calibration, connection", None, p)
         self.sim.refresh(s)
         if self.drawer.isVisible():
-            self.drawer.form.refresh(a)
+            self.drawer.form.refresh(a, s)

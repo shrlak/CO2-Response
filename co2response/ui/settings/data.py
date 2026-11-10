@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
 import shutil
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QUrl
@@ -18,9 +20,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ... import __version__
 from ...engine.monitor import MonitorEngine, Snapshot
+from ...forms import TEST_FIELDS
 from ...storage.library import STATUS_LABELS, SessionRecord
-from ...storage.session_file import breaths_csv, events_csv
+from ...storage.report import build_report, report_pdf
+from ...storage.session_file import ParsedSession, breaths_csv, events_csv
+from ..spec_form import SpecForm
 from ..widgets import (
     Card,
     Form,
@@ -34,7 +40,16 @@ from ..widgets import (
     stamp,
     toggle,
 )
-from .common import FlowGrid, Page, downloads_dir, save_text
+from .common import FlowGrid, Page, downloads_dir, save_bytes, save_text
+
+
+def export_report(window, file_name: str, parsed: ParsedSession) -> None:
+    """Save a session's CO2 response report as a PDF the user picks a place for."""
+    base = file_name[:-4] if file_name.lower().endswith(".csv") else file_name
+    data = report_pdf(build_report(parsed, file_name, app_version=__version__, generated_ms=time.time() * 1000))
+    p = save_bytes(window, f"{base}_report.pdf", data)
+    if p:
+        window.toast(f"Saved {p.name}.")
 
 
 def export_session(window, engine: MonitorEngine, rec: SessionRecord, what: str) -> None:
@@ -47,6 +62,9 @@ def export_session(window, engine: MonitorEngine, rec: SessionRecord, what: str)
                 window.toast(f"Saved {Path(path).name}.")
             return
         parsed = engine.library.parse(rec.id)
+        if what == "report":
+            export_report(window, rec.file_name, parsed)
+            return
         base = rec.file_name[:-4] if rec.file_name.lower().endswith(".csv") else rec.file_name
         name = f"{base}_{'breaths' if what == 'breaths' else 'events'}.csv"
         p = save_text(window, name, breaths_csv(parsed) if what == "breaths" else events_csv(parsed))
@@ -86,13 +104,16 @@ class DataPage(Page):
         self.autorec = toggle(s.auto_record, lambda v: engine.update_settings(auto_record=v))
         f.add("auto", "Start recording when the Arduino connects", self.autorec, hint="Useful for overnight runs: connecting (or reconnecting after an unplug) starts a recording if none is running.")
         rec.add(f)
+        self.test_form = SpecForm(TEST_FIELDS, lambda: engine.settings.test, lambda patch: engine.update_settings(test=dataclasses.replace(engine.settings.test, **patch)))
+        rec.add(label("TEST AND SUBJECT", "h3"))
+        rec.add(self.test_form)
         self.rec_text = label("", "muted", wrap=True)
         rec.add(self.rec_text)
         self.rec_btn = button("Start recording", window.toggle_recording, kind="primary")
         rec.add(hbox(self.rec_btn, stretch_end=True))
         top.add(rec)
 
-        imp = Card("Import", ".csv session files, v1 or v2")
+        imp = Card("Import", ".csv session files, any version")
         imp.add(
             label(
                 "Bring a session back to review it, replay it through the monitor, or export parts of it. Choose files or drop them on this page. "
@@ -208,6 +229,7 @@ class DataPage(Page):
         m.addAction("Whole session (one .csv)", lambda: export_session(self.window, self.engine, rec, "session"))
         m.addAction("Breaths only (.csv)", lambda: export_session(self.window, self.engine, rec, "breaths"))
         m.addAction("Alarms & events only (.csv)", lambda: export_session(self.window, self.engine, rec, "events"))
+        m.addAction("CO2 response report (.pdf)", lambda: export_session(self.window, self.engine, rec, "report"))
         m.exec(anchor.mapToGlobal(anchor.rect().bottomLeft()))
 
     # ---------- refresh
@@ -217,6 +239,7 @@ class DataPage(Page):
         if not self.study.hasFocus() and self.study.text() != s.settings.study_code:
             self.study.setText(s.settings.study_code)
         self.study.setEnabled(not r.active)
+        self.test_form.refresh(s.settings.test, s)
         self.autorec.blockSignals(True)
         self.autorec.setChecked(s.settings.auto_record)
         self.autorec.blockSignals(False)

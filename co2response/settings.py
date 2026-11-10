@@ -23,6 +23,10 @@ def _camel(name: str) -> str:
     return head + "".join(p[:1].upper() + p[1:] for p in rest)
 
 
+#: number settings that may also be None ("off", or "not entered")
+NULLABLE = frozenset({"low_mm_hg", "stop_mm_hg", "height_cm", "weight_kg", "age_years"})
+
+
 def to_dict(obj: Any) -> Any:
     """Dataclass → plain dict with camelCase keys (recursively)."""
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
@@ -50,7 +54,11 @@ def from_dict(cls, d: Any):
         elif isinstance(cur, bool):
             if not isinstance(val, bool):
                 continue
-        elif isinstance(cur, (int, float)) and not (val is None and f.name == "low_mm_hg"):
+        elif f.name in NULLABLE:
+            # a number, or None for "off" / "not entered"
+            if val is not None and (isinstance(val, bool) or not isinstance(val, (int, float))):
+                continue
+        elif isinstance(cur, (int, float)):
             if isinstance(val, bool) or not isinstance(val, (int, float)):
                 continue
         elif isinstance(cur, str) and not isinstance(val, str):
@@ -74,13 +82,33 @@ class ProcessingOptions:
     despike: bool = True
     #: leave noisy, artifact and outlier breaths out of the numbers, graphs and EtCO2 alarms
     reject_bad_breaths: bool = True
+    #: how late the CO2 signal is behind the flow signals (sample-line transport and
+    #: analyser response), ms. The flow channels are delayed by this much so that
+    #: each breath's CO2 lines up with its flow. 0 for a mainstream sensor.
+    co2_delay_ms: float = 0
+    #: report pneumotach flow and volumes at body conditions (BTPS: 37 °C, saturated)
+    #: instead of as measured at room conditions (ATPS)
+    volume_btps: bool = False
+    #: room temperature for the BTPS correction, °C
+    ambient_temp_c: float = 22
+    #: pneumotach flow is multiplied by this between the Rebreathing and End-of-test
+    #: markers: a pneumotach calibrated in air reads differently in the bag's gas mix.
+    #: 1 = no correction
+    rebreathing_gas_factor: float = 1
 
 
 @dataclass
 class AlarmSettings:
     #: what the CO2 limits are compared against: 'etco2' (per breath) or 'live' (waveform)
     source: str = "etco2"
-    high_mm_hg: float = 50  # TODO: confirm default limits with the PI / clinicians
+    #: warning limit. TODO: confirm the default limits with the PI / clinicians (the
+    #: team's design is a warning near 60 mmHg and a stop alert at 65; CHOP ends the
+    #: test at 60-65)
+    high_mm_hg: float = 60
+    #: stop limit: a high-priority alarm as soon as CO2 stays at or above it for
+    #: ``stop_delay_sec`` (checked on every sample, not once per breath). None = off
+    stop_mm_hg: float | None = 65
+    stop_delay_sec: float = 0.5
     #: None = off
     low_mm_hg: float | None = None
     #: consecutive breaths beyond a limit before alarming (EtCO2 source)
@@ -94,6 +122,32 @@ class AlarmSettings:
     volume: float = 0.8
     #: no breath for this long raises a high-priority alarm; 0 = off
     apnea_sec: float = 20
+    #: rebreathing for longer than this raises a medium alarm; 0 = off
+    rebreathing_max_sec: float = 300
+    #: advisory when inspired and expired volume differ by more than this (a leak, or
+    #: a drifting pneumotach zero), % of inspired volume; 0 = off
+    leak_pct: float = 20
+    #: advisory when a real device is connected and a channel was calibrated longer
+    #: ago than this, or never, hours; 0 = off
+    calibration_max_age_h: float = 24
+
+
+@dataclass
+class TestSettings:
+    """The rebreathing test: how the response is analysed, and the subject's size.
+
+    Height, weight and age are written into the session header so the slope can be
+    normalized for body size afterwards. They are not identifiers, but never enter a
+    name, MRN or date of birth anywhere."""
+
+    __test__ = False  # not a pytest class
+
+    #: breaths in the first seconds after the Rebreathing marker (the coached deep
+    #: breaths, and the bag, lungs and blood coming to equilibrium) are not fitted
+    response_skip_sec: float = 30
+    height_cm: float | None = None
+    weight_kg: float | None = None
+    age_years: float | None = None
 
 
 @dataclass
@@ -147,8 +201,11 @@ class Settings:
     flow_scale_lpm: float = 60
     show_raw_volts: bool = False
     trend_minutes: float = 30
+    #: what the trend tab plots against time: 'etco2' | 'mv' | 'rr'
+    trend_series: str = "etco2"
     processing: ProcessingOptions = field(default_factory=ProcessingOptions)
     alarms: AlarmSettings = field(default_factory=AlarmSettings)
+    test: TestSettings = field(default_factory=TestSettings)
     study_code: str = "STUDY-01"
     baud_rate: int = 115200
     bridge_url: str = "ws://localhost:8765"
@@ -168,16 +225,21 @@ DEFAULT_ALARMS = AlarmSettings()
 DEFAULT_SETTINGS = Settings()
 
 
+def _clamp(v, lo, hi, d):
+    return min(hi, max(lo, v)) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else d
+
+
 def sanitize_alarms(a: AlarmSettings) -> AlarmSettings:
     """Enforce the safety limits on alarm settings regardless of what was stored."""
-
-    def clamp(v, lo, hi, d):
-        return min(hi, max(lo, v)) if isinstance(v, (int, float)) and math.isfinite(v) else d
-
+    clamp = _clamp
+    high = clamp(a.high_mm_hg, 5, 150, DEFAULT_ALARMS.high_mm_hg)
     return dataclasses.replace(
         a,
         source="live" if a.source == "live" else "etco2",
-        high_mm_hg=clamp(a.high_mm_hg, 5, 150, DEFAULT_ALARMS.high_mm_hg),
+        high_mm_hg=high,
+        # the stop limit is never below the warning limit
+        stop_mm_hg=None if a.stop_mm_hg is None else max(high, clamp(a.stop_mm_hg, 5, 150, 65)),
+        stop_delay_sec=clamp(a.stop_delay_sec, 0, 5, 0.5),
         low_mm_hg=None if a.low_mm_hg is None else clamp(a.low_mm_hg, 0, 100, 0),
         delay_breaths=int(round(clamp(a.delay_breaths, 1, 10, 2))),
         delay_sec=clamp(a.delay_sec, 0, 60, 5),
@@ -185,6 +247,31 @@ def sanitize_alarms(a: AlarmSettings) -> AlarmSettings:
         silence_sec=clamp(a.silence_sec, 10, 120, 120),
         volume=clamp(a.volume, 0.1, 1, 0.8),
         apnea_sec=clamp(a.apnea_sec, 0, 120, 20),
+        rebreathing_max_sec=clamp(a.rebreathing_max_sec, 0, 1800, 300),
+        leak_pct=clamp(a.leak_pct, 0, 100, 20),
+        calibration_max_age_h=clamp(a.calibration_max_age_h, 0, 24 * 365, 24),
+    )
+
+
+def sanitize_processing(p: ProcessingOptions) -> ProcessingOptions:
+    return dataclasses.replace(
+        p,
+        co2_delay_ms=_clamp(p.co2_delay_ms, 0, 5000, 0),
+        ambient_temp_c=_clamp(p.ambient_temp_c, 0, 40, 22),
+        rebreathing_gas_factor=_clamp(p.rebreathing_gas_factor, 0.5, 1.5, 1),
+    )
+
+
+def sanitize_test(t: TestSettings) -> TestSettings:
+    def opt(v, lo, hi):
+        return v if isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi else None
+
+    return dataclasses.replace(
+        t,
+        response_skip_sec=_clamp(t.response_skip_sec, 0, 300, 30),
+        height_cm=opt(t.height_cm, 30, 250),
+        weight_kg=opt(t.weight_kg, 1, 400),
+        age_years=opt(t.age_years, 0, 120),
     )
 
 
@@ -195,6 +282,9 @@ class SettingsStore:
         self.folder = Path(folder) if folder else data_dir()
         self.settings_path = self.folder / "settings.json"
         self.channels_path = self.folder / "channels.json"
+        #: why the last save failed (None when it worked): the monitor shows it, so a
+        #: calibration or limit that was not kept is never a silent surprise
+        self.save_error: str | None = None
 
     def _read(self, p: Path):
         try:
@@ -210,12 +300,18 @@ class SettingsStore:
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(value, f, indent=2)
             os.replace(tmp, p)
-        except OSError:
-            pass  # read-only or full disk: settings stay for this session only
+            self.save_error = None
+        except OSError as e:
+            # read-only or full disk: settings stay for this session only
+            self.save_error = f"{p.name}: {e.strerror or e}"
 
     def load_settings(self) -> Settings:
         s = from_dict(Settings, self._read(self.settings_path) or {})
         s.alarms = sanitize_alarms(s.alarms)
+        s.processing = sanitize_processing(s.processing)
+        s.test = sanitize_test(s.test)
+        if s.trend_series not in ("etco2", "mv", "rr"):
+            s.trend_series = "etco2"
         return s
 
     def save_settings(self, s: Settings) -> None:

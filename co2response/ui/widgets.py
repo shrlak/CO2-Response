@@ -267,10 +267,13 @@ class NumberEdit(QLineEdit):
     half-typed values never reach the engine. Out-of-range values are clamped."""
 
     committed = Signal(float)
+    #: emitted when a box that may be empty (``allow_blank``) is emptied
+    cleared = Signal()
 
-    def __init__(self, value: float | None = 0, lo: float = -math.inf, hi: float = math.inf, step: float = 1, width: int = 110) -> None:
+    def __init__(self, value: float | None = 0, lo: float = -math.inf, hi: float = math.inf, step: float = 1, width: int = 110, allow_blank: bool = False) -> None:
         super().__init__()
         self.lo, self.hi = lo, hi
+        self.allow_blank = allow_blank
         self._value = value
         self.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.setFixedWidth(width)
@@ -299,6 +302,11 @@ class NumberEdit(QLineEdit):
         except ValueError:
             n = math.nan
         if not math.isfinite(n):
+            if self.allow_blank and not t:
+                if self._value is not None:
+                    self._value = None
+                    self.cleared.emit()
+                return
             self.setText(self._text(self._value))
             return
         n = min(self.hi, max(self.lo, n))

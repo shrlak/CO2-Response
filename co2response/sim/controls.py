@@ -133,7 +133,7 @@ SITUATIONS: tuple[Situation, ...] = (
     Situation("normal", "Normal at rest", "Breathing patterns", "Adult at rest: RR 15 /min, VT 500 mL, EtCO2 38 mmHg.", {}),
     Situation("hyperventilation", "Hyperventilation", "Breathing patterns", "Fast, deep breathing washes CO2 out (anxiety, pain): EtCO2 about 26 mmHg.", {"rr": 24, "vt_ml": 750, "etco2": 26}),
     Situation(
-        "hypoventilation", "Hypoventilation", "Breathing patterns", "Slow, shallow breathing lets CO2 build up (sedation, opioids). EtCO2 crosses the 50 mmHg high alarm.", {"rr": 7, "vt_ml": 380, "etco2": 56}
+        "hypoventilation", "Hypoventilation", "Breathing patterns", "Slow, shallow breathing lets CO2 build up (sedation, opioids). EtCO2 crosses the 60 mmHg warning limit.", {"rr": 7, "vt_ml": 380, "etco2": 63}
     ),
     Situation("tachypnea", "Rapid shallow", "Breathing patterns", "RR 36 /min with small breaths: MV stays about normal while EtCO2 creeps up.", {"rr": 36, "vt_ml": 260, "etco2": 44}),
     Situation("bradypnea", "Slow deep", "Breathing patterns", "RR 6 /min with large breaths.", {"rr": 6, "vt_ml": 950, "etco2": 40}),

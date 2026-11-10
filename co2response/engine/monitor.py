@@ -28,11 +28,25 @@ from ..channels import (
     load_default_channels,
     validate_channels,
 )
-from ..jsfmt import iso_ms
+from ..jsfmt import iso_ms, parse_iso_ms
 from ..paths import default_sessions_dir
 from ..processing.breath import Breath
 from ..processing.calibration import invert_calibration
-from ..processing.metrics import CO2Response, co2_response, etco2_median, is_rebreathing_marker, minute_ventilation, respiratory_rate
+from ..processing.metrics import (
+    BASELINE_LABEL,
+    END_LABEL,
+    REBREATHING_LABEL,
+    CO2Response,
+    TestWindow,
+    co2_response,
+    etco2_median,
+    marker_kind,
+    median,
+    minute_ventilation,
+    respiratory_rate,
+    stability,
+    test_window,
+)
 from ..processing.pipeline import Pipeline, Processed
 from ..protocol import SeqTracker, parse_line
 from ..settings import (
@@ -40,11 +54,13 @@ from ..settings import (
     Settings,
     SettingsStore,
     sanitize_alarms,
+    sanitize_processing,
+    sanitize_test,
     to_dict,
 )
 from ..sim.controls import SITUATION_BY_ID, model_params, situation_settings, switch_patch
 from ..sim.core import Encoders
-from ..sources.base import Source, StatusEvent
+from ..sources.base import MarkerEvent, Source, StatusEvent
 from ..sources.bridge import BridgeSource
 from ..sources.replay import ReplaySource
 from ..sources.serial_source import PortInfo, SerialSource, list_ports
@@ -58,11 +74,25 @@ NAN = float("nan")
 MAX_TREND = 20000
 MAX_TRACE = 4 * 3600 * 2  # 4 h at 2 Hz
 MAX_WAVE = 6000
-TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum", "noisyBreaths")
+TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum", "noisyBreaths", "leak", "calibration", "testTime")
+#: breaths compared for the inspired-against-expired volume check
+LEAK_BREATHS = 5
+#: how often the host tells the device it is alive (firmware with a watchdog), ms
+HEARTBEAT_MS = 1000
 
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _mss(sec: float) -> str:
+    t = max(0, int(sec))
+    return f"{t // 60}:{t % 60:02d}"
+
+
+def _age(ms: float) -> str:
+    h = ms / 3600_000
+    return f"{h:.0f} h" if h < 48 else f"{h / 24:.0f} days"
 
 
 def simulator_encoders() -> Encoders:
@@ -109,6 +139,12 @@ class Numbers:
     volts: list[float] = field(default_factory=list)
     #: why the latest breath was left out of the numbers, if it was
     rejected: str = ""
+    #: expired volume of the latest breath, mL
+    vte: float = NAN
+    #: (inspired − expired) / inspired volume over the last few breaths, %
+    volume_mismatch_pct: float = NAN
+    #: how long after expiration begins the CO2 rises, s (median of recent breaths)
+    co2_lag_sec: float = NAN
 
 
 @dataclass
@@ -121,6 +157,14 @@ class TrendPoint:
     rr: float
     #: the breath's quality; only "ok" points are drawn (see processing/denoise.py)
     quality: str = "ok"
+    #: the breath's own minute ventilation (VT x 60 / period): what the response is fitted to
+    mv_breath: float = NAN
+    #: identifies the point (for taking it out of the response fit by hand)
+    key: int = 0
+    #: the breath's number in the recording, if one was running
+    rec_n: int | None = None
+    #: taken out of the response fit by hand
+    excluded: bool = False
 
 
 @dataclass
@@ -129,6 +173,39 @@ class Marker:
     #: wall clock, ms
     t: float
     label: str
+
+
+@dataclass
+class TestState:
+    """Where the rebreathing test stands, from its markers (see ``test_window``)."""
+
+    __test__ = False  # not a pytest class
+
+    #: 'idle' | 'baseline' | 'rebreathing' | 'ended'
+    phase: str
+    window: TestWindow
+    #: seconds in the current phase (rebreathing: since the valve was turned)
+    elapsed_sec: float = 0.0
+    #: the rebreathing time limit, s (0 = none)
+    limit_sec: float = 0.0
+    #: baseline only: is breathing steady enough to start, and why
+    stable: bool = False
+    stable_text: str = ""
+    #: one line for the screen
+    text: str = ""
+
+    # which of the three test keys make sense now
+    @property
+    def can_baseline(self) -> bool:
+        return self.phase != "rebreathing"
+
+    @property
+    def can_start(self) -> bool:
+        return self.phase != "rebreathing"
+
+    @property
+    def can_end(self) -> bool:
+        return self.phase == "rebreathing"
 
 
 @dataclass
@@ -182,6 +259,7 @@ class Snapshot:
     known_port: str | None
     awaiting_reconnect: bool
     i2c_scan: str | None
+    test: TestState = field(default_factory=lambda: TestState("idle", TestWindow(None, None, None)))
 
 
 @dataclass
@@ -316,6 +394,9 @@ class MonitorEngine:
         self._trace_start = 0.0
         self._connected_at = 0.0
         self._handshake_retried = False
+        self._last_heartbeat = 0.0
+        self._trend_key = 0
+        self._save_error_logged = False
 
         #: breaths on the device clock (cleared on every new connection), all of them
         self.breaths: list[Breath] = []
@@ -380,10 +461,20 @@ class MonitorEngine:
     def update_settings(self, **changes) -> None:
         """Change settings (attribute names of ``Settings``); applied and saved at once."""
         prev = self.settings
+        if changes.get("study_code", prev.study_code) != prev.study_code and "test" not in changes:
+            # a new study code is a new subject: the last one's size must not carry over
+            changes["test"] = dataclasses.replace(prev.test, height_cm=None, weight_kg=None, age_years=None)
         nxt = dataclasses.replace(prev, **changes)
         nxt.alarms = sanitize_alarms(nxt.alarms)
+        nxt.processing = sanitize_processing(nxt.processing)
+        nxt.test = sanitize_test(nxt.test)
         self.settings = nxt
         self.store.save_settings(nxt)
+        if self.store.save_error and not self._save_error_logged:
+            self._add_log(f"Settings could not be saved ({self.store.save_error})", "error")
+        self._save_error_logged = bool(self.store.save_error)
+        if nxt.test.response_skip_sec != prev.test.response_skip_sec:
+            self.trend_version += 1
         self.alarms.set_settings(nxt.alarms, self.clock())
         self.audio.volume = nxt.alarms.volume
         if nxt.processing != prev.processing:
@@ -436,7 +527,10 @@ class MonitorEngine:
         self.store.save_channels(self.channels)
         if self._file_channels is None:
             self.pipeline.set_channels(self.channels)
-        self._add_log("Calibration saved")
+        if self.store.save_error:
+            self._add_log(f"Calibration is in use but could not be saved ({self.store.save_error})", "error")
+        else:
+            self._add_log("Calibration saved")
         self.recorder.event(self.clock(), "CALIBRATION_CHANGED")
 
     def reset_channels(self) -> None:
@@ -529,6 +623,7 @@ class MonitorEngine:
         self._file_channels = session.channels if kind == "replay" and use_file_calibration and session is not None and session.channels else None
         self._info = None
         self.pipeline = Pipeline(self.effective_channels, self._processing_options())
+        self._sync_phase()
         self._seq.reset()
         self._bad_lines = 0
         self._bad_times.clear()
@@ -663,6 +758,8 @@ class MonitorEngine:
             self._use(pr, now)
         self._source = None
         try:
+            if src.kind in ("serial", "bridge") and self._has_watchdog():
+                src.send("HB OFF")  # a deliberate disconnect must not sound the device's buzzer
             if src.kind == "serial":
                 src.send("STOP")
             src.stop()
@@ -700,6 +797,8 @@ class MonitorEngine:
                     break
                 if isinstance(item, str):
                     self._on_line(item)
+                elif isinstance(item, MarkerEvent):
+                    self.add_marker(item.label)  # a replayed session's own markers
                 else:
                     self._on_source_status(item)
         self._run_timers()
@@ -822,7 +921,8 @@ class MonitorEngine:
             self._trace_max = -math.inf
         mv = minute_ventilation(self.good, b.t_end)
         rr = respiratory_rate(self.good)
-        tp = TrendPoint(now / 1000, b.etco2, mv, b.vt_ml, rr, b.quality)
+        self._trend_key += 1
+        tp = TrendPoint(now / 1000, b.etco2, mv, b.vt_ml, rr, b.quality, b.mv_lpm, self._trend_key)
         self.trend.append(tp)
         if len(self.trend) > MAX_TREND:
             del self.trend[:1000]
@@ -831,7 +931,7 @@ class MonitorEngine:
             del self._trend_of[next(iter(self._trend_of))]
         self.trend_version += 1
         # recorded on the sample that completed the breath (written right after this)
-        b.rec_n = self.recorder.breath(b.etco2, b.fico2, rr, b.vt_ml, mv, b.peak_insp_lpm, b.quality)
+        b.rec_n = tp.rec_n = self.recorder.breath(b.etco2, b.fico2, rr, b.vt_ml, mv, b.peak_insp_lpm, b.quality, b.period_sec, b.vte_ml)
         # a noisy or artifact breath would give false EtCO2 alarms; a run of them raises
         # the technical alarm in tick() instead, so the alarm system is never silently blind
         if b.quality == "ok":
@@ -913,6 +1013,29 @@ class MonitorEngine:
         noisy = connected and (bad >= 3 or (a.is_active("noisyBreaths") and bad > 1))
         a.set_condition("noisyBreaths", noisy, now, "medium", f"SIGNAL TOO NOISY: {bad} of the last {len(self._recent_quality)} breaths left out of EtCO2 and its alarms")
 
+        # the rebreathing time limit
+        ts = self.test_state(now)
+        over = connected and ts.phase == "rebreathing" and ts.limit_sec > 0 and ts.elapsed_sec >= ts.limit_sec
+        a.set_condition("testTime", over, now, "medium", f"REBREATHING TIME LIMIT: {_mss(ts.elapsed_sec)} since the valve was turned (limit {_mss(ts.limit_sec)}): end the test")
+
+        # inspired against expired volume: a leak, or a pneumotach zero that has drifted
+        mm = self.volume_mismatch_pct()
+        lim = self.settings.alarms.leak_pct
+        leak = connected and fresh and lim > 0 and math.isfinite(mm) and abs(mm) > (lim if not a.is_active("leak") else lim * 0.8)
+        a.set_condition(
+            "leak",
+            leak,
+            now,
+            "advisory",
+            f"VOLUME MISMATCH: expired volume {abs(mm):.0f} % {'below' if mm > 0 else 'above'} inspired over the last {LEAK_BREATHS} breaths: check for a leak, or zero the pneumotach" if leak else "",
+        )
+
+        # a real device on a calibration that is old, or was never done
+        stale = self.stale_calibrations(now) if connected and src.kind in ("serial", "bridge") else []
+        a.set_condition("calibration", bool(stale), now, "advisory", "CALIBRATION: " + "; ".join(stale) + ". See Settings > Calibration")
+        err = self.store.save_error
+        a.set_condition("settingsSave", bool(err), now, "advisory", f"SETTINGS NOT SAVED ({err}): changes last only until the app closes")
+
         a.tick(now)
 
         # audio: highest active priority, unless silenced
@@ -930,6 +1053,10 @@ class MonitorEngine:
             self._handshake_retried = True
             src.send("INFO")
             src.send("START")
+        # heartbeat: firmware with a watchdog sounds its own buzzer when this stops
+        if connected and src.kind in ("serial", "bridge") and self._has_watchdog() and now - self._last_heartbeat >= HEARTBEAT_MS:
+            self._last_heartbeat = now
+            src.send("HB")
 
         if src is None:
             self._refresh_known_port()
@@ -1005,22 +1132,124 @@ class MonitorEngine:
         self._marker_id += 1
         m = Marker(mid, self.clock(), (label or "").strip() or f"Event {mid}")
         self.markers.append(m)
+        if len(self.markers) > 2000:
+            del self.markers[:500]
         self.trend_version += 1
         self.recorder.event(m.t, f"MARK {m.label}")
         self._add_log(f"Marker: {m.label}")
+        self._sync_phase()
+        if marker_kind(m.label) != "start" and self.alarms.is_active("testTime"):
+            self.alarms.set_condition("testTime", False, m.t, "medium", "")
         return m
 
+    # ---------- the rebreathing test
+
+    def test_window(self) -> TestWindow:
+        """The latest test's baseline, rebreathing and end times (wall seconds)."""
+        return test_window((m.t / 1000, m.label) for m in self.markers)
+
     def rebreathing_start(self) -> float | None:
-        """Wall-clock seconds of the first marker labelled as the start of rebreathing
+        """Wall-clock seconds of the marker that started the latest rebreathing
         (e.g. "Rebreathing", "CO2 rebreathing started"), or None if there is none."""
-        ts = [m.t for m in self.markers if is_rebreathing_marker(m.label)]
-        return min(ts) / 1000 if ts else None
+        return self.test_window().start
+
+    def _sync_phase(self) -> None:
+        """Tell the pipeline whether the bag gas is in the pneumotach right now."""
+        w = self.test_window()
+        self.pipeline.rebreathing = w.start is not None and w.end is None
+
+    def test_state(self, now: float | None = None) -> TestState:
+        now = self.clock() if now is None else now
+        w = self.test_window()
+        t = now / 1000
+        limit = self.settings.alarms.rebreathing_max_sec
+        rec = "" if self.recorder.active else " · NOT RECORDING"
+        if w.start is None:
+            if w.baseline is None:
+                return TestState("idle", w, text="No test running. Press Start baseline once the subject is on the mouthpiece.")
+            recent = [(q.etco2, q.mv_breath) for q in self.trend if q.t >= max(w.baseline, t - 60) and q.quality == "ok" and not q.excluded]
+            ok, why = stability(recent)
+            el = t - w.baseline
+            text = f"BASELINE {_mss(el)} · {'steady' if ok else 'settling'} ({why} in the last minute){rec}"
+            return TestState("baseline", w, el, 0.0, ok, why, text)
+        if w.end is None:
+            el = t - w.start
+            lim = f" of {_mss(limit)}" if limit > 0 else ""
+            return TestState("rebreathing", w, el, limit, text=f"REBREATHING {_mss(el)}{lim}{rec}")
+        return TestState("ended", w, w.end - w.start, limit, text=f"TEST ENDED after {_mss(w.end - w.start)} of rebreathing")
+
+    def start_baseline(self) -> Marker:
+        """Baseline key: breaths from now until rebreathing starts are the baseline."""
+        return self.add_marker(BASELINE_LABEL)
+
+    def start_rebreathing(self) -> Marker:
+        """Rebreathing key: press it as the valve is turned to the bag."""
+        return self.add_marker(REBREATHING_LABEL)
+
+    def end_test(self) -> Marker:
+        """End key: press it as the valve is turned back to room air."""
+        return self.add_marker(END_LABEL)
 
     def co2_response(self, t0: float = float("-inf")) -> CO2Response:
-        """MV vs EtCO2 over accepted breaths from wall second ``t0``: baseline breaths
-        before the rebreathing marker, the line fitted to the rebreathing breaths."""
-        pts = ((q.t, q.etco2, q.mv) for q in self.trend if q.t >= t0 and q.quality == "ok")
-        return co2_response(pts, self.rebreathing_start())
+        """Each breath's own MV vs its EtCO2, over accepted breaths from wall second
+        ``t0``: baseline breaths before the rebreathing marker, the line fitted to the
+        rebreathing breaths (after the first seconds, before the end of the test, and
+        not taken out by hand)."""
+        by_key = {q.key: q for q in self.trend if q.t >= t0 and q.quality == "ok"}
+        pts = ((q.t, q.etco2, q.mv_breath, q.key) for q in by_key.values())
+        return co2_response(pts, self.test_window(), self.settings.test.response_skip_sec, lambda k: by_key[k].excluded)
+
+    def set_breath_excluded(self, key: int, on: bool = True) -> bool:
+        """Take a breath out of the response fit by hand (or put it back). The breath
+        stays in the recording, with a BREATH_EXCLUDED / BREATH_INCLUDED event."""
+        tp = next((q for q in reversed(self.trend) if q.key == key), None)
+        if tp is None or tp.excluded == on:
+            return False
+        tp.excluded = on
+        self.trend_version += 1
+        what = "excluded from" if on else "put back into"
+        self._add_log(f"Breath at {iso_ms(tp.t * 1000)} (EtCO2 {tp.etco2:.1f} mmHg) {what} the response fit by hand")
+        if tp.rec_n is not None:
+            self.recorder.event(self.clock(), f"BREATH_EXCLUDED {tp.rec_n} manual" if on else f"BREATH_INCLUDED {tp.rec_n}")
+        return True
+
+    def toggle_breath(self, key: int) -> bool:
+        tp = next((q for q in reversed(self.trend) if q.key == key), None)
+        return tp is not None and self.set_breath_excluded(key, not tp.excluded)
+
+    def volume_mismatch_pct(self) -> float:
+        """(inspired − expired) / inspired volume over the last few clean breaths, %."""
+        last = [b for b in self.good[-LEAK_BREATHS:] if math.isfinite(b.vt_ml) and math.isfinite(b.vte_ml)]
+        vi = sum(b.vt_ml for b in last)
+        if len(last) < LEAK_BREATHS or vi <= 0:
+            return NAN
+        return (vi - sum(b.vte_ml for b in last)) / vi * 100
+
+    def co2_lag_sec(self) -> float:
+        """How long after expiration begins the CO2 rises, s: the median of the last
+        10 clean breaths. Beyond the 0.1-0.3 s of dead-space washout, it is the CO2
+        sensor's delay that the CO2 delay setting should cancel."""
+        return median([b.co2_lag_sec for b in self.good[-10:]])
+
+    def stale_calibrations(self, now: float | None = None) -> list[str]:
+        """Channels whose calibration was never done, or is older than the limit."""
+        limit_h = self.settings.alarms.calibration_max_age_h
+        if limit_h <= 0:
+            return []
+        now = self.clock() if now is None else now
+        out = []
+        for cid in CHANNEL_IDS:
+            ch = self.effective_channels["channels"][cid]
+            at = parse_iso_ms(ch.get("calibratedAt") or "")
+            name = ch.get("label") or cid
+            if not math.isfinite(at):
+                out.append(f"{name} never calibrated (default values)")
+            elif now - at > limit_h * 3600_000:
+                out.append(f"{name} calibrated {_age(now - at)} ago")
+        return out
+
+    def _has_watchdog(self) -> bool:
+        return bool((self._info or {}).get("WD"))
 
     def rename_marker(self, mid: int, label: str) -> None:
         m = next((x for x in self.markers if x.id == mid), None)
@@ -1029,6 +1258,7 @@ class MonitorEngine:
         m.label = label.strip() or m.label
         self.trend_version += 1
         self.recorder.event(self.clock(), f"MARK_RENAMED {mid} {m.label}")
+        self._sync_phase()
 
     def start_recording(self) -> SessionRecord | None:
         src = self._source
@@ -1043,6 +1273,7 @@ class MonitorEngine:
                 channels=self.effective_channels,
                 processing=self._processing_options(),
                 alarm_settings=self.settings.alarms,
+                test=self.settings.test,
             )
         )
         where = "" if rec else f" (in memory: cannot write to {self.library.folder})"
@@ -1052,6 +1283,9 @@ class MonitorEngine:
         for r in self.alarms.list():
             if r.state == "active" and r.priority != "advisory":
                 self.recorder.event(now, f"ALARM_ACTIVE_AT_START {r.id} {r.priority} {r.message}")
+        if src is not None and src.kind in ("serial", "bridge"):
+            for text in self.stale_calibrations(now):
+                self.recorder.event(now, f"CALIBRATION_STALE {text}")
         self.library_changed()
         return rec
 
@@ -1135,8 +1369,11 @@ class MonitorEngine:
         def f(v: float, d: int) -> str:
             return f"{v:.{d}f}" if math.isfinite(v) else ""
 
-        rows = ["wall_time_iso,etco2_mmHg,rr_bpm,vt_ml,mv_lpm"]
-        rows += [",".join((iso_ms(p.t * 1000), f(p.etco2, 1), f(p.rr, 1), f(p.vt, 0), f(p.mv, 2))) for p in self.trend]
+        rows = ["wall_time_iso,etco2_mmHg,rr_bpm,vt_ml,mv_lpm,mv_breath_lpm,quality"]
+        rows += [
+            ",".join((iso_ms(p.t * 1000), f(p.etco2, 1), f(p.rr, 1), f(p.vt, 0), f(p.mv, 2), f(p.mv_breath, 2), "excluded" if p.excluded and p.quality == "ok" else p.quality))
+            for p in self.trend
+        ]
         return "\n".join(rows) + "\n"
 
     def log_text(self) -> str:
@@ -1188,6 +1425,9 @@ class MonitorEngine:
             mv=NAN if breath_stale or stale["pneumo"] or L is None else minute_ventilation(self.good, L.t_sec),
             volts=list(L.volts) if L else [],
             rejected=f"{last_any.quality}: {last_any.reason}" if connected and last_any is not None and last_any.quality != "ok" else "",
+            vte=NAN if breath_stale or stale["pneumo"] else last_b.vte_ml,
+            volume_mismatch_pct=NAN if breath_stale or stale["pneumo"] else self.volume_mismatch_pct(),
+            co2_lag_sec=NAN if breath_stale else self.co2_lag_sec(),
         )
         rec = self.recorder
         src = self._source
@@ -1221,6 +1461,7 @@ class MonitorEngine:
             known_port=self._known_port.label if self._known_port and src is None else None,
             awaiting_reconnect=self._awaiting_reconnect,
             i2c_scan=self._i2c_scan,
+            test=self.test_state(now),
         )
 
     def settings_json(self) -> dict:

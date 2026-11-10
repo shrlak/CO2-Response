@@ -7,7 +7,9 @@ import dataclasses
 from PySide6.QtWidgets import QVBoxLayout
 
 from ...engine.monitor import MonitorEngine, Snapshot
+from ...forms import PROCESSING_FIELDS
 from ..alarm_form import AlarmForm
+from ..spec_form import SpecForm
 from ..widgets import (
     Form,
     Seg,
@@ -15,7 +17,6 @@ from ..widgets import (
     combo,
     hbox,
     label,
-    number_field,
     set_combo,
     toggle,
 )
@@ -27,7 +28,6 @@ class DisplayPage(Page):
         super().__init__()
         self.engine = engine
         s = engine.settings
-        p = s.processing
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(8)
@@ -53,26 +53,12 @@ class DisplayPage(Page):
 
         lay.addSpacing(10)
         lay.addWidget(label("SIGNAL PROCESSING", "h3"))
-        g = Form()
-        self.pb = number_field(g, "pb", "Barometric pressure", p.barometric_mm_hg, lambda v: self._p(barometric_mm_hg=v), "mmHg",
-                               "Used to convert % CO2 to mmHg. Pittsburgh is typically about 735 mmHg; enter the lab's reading for accuracy.", 500, 800)
-        self.wv = toggle(p.water_vapor, lambda v: self._p(water_vapor=v))
-        g.add("wv", "Water-vapor correction (BTPS)", self.wv, hint="Subtracts 47 mmHg before converting % to mmHg.")
-        self.filt = toggle(p.filter_on, lambda v: self._p(filter_on=v))
-        g.add("filt", "Low-pass filter", self.filt, hint="2nd-order Butterworth on every channel.")
-        self.fhz = number_field(g, "fhz", "Filter cutoff", p.filter_hz, lambda v: self._p(filter_hz=v), "Hz", lo=1, hi=40)
-        self.db = number_field(g, "db", "Breath detection deadband", round(p.deadband_lpm / 60, 3), lambda v: self._p(deadband_lpm=v * 60), "L/s",
-                               "Flow must pass ± this to count as a new inspiration. Raise it if noise is counted as breaths.", 0.005, 0.5)
-        self.minb = number_field(g, "minb", "Minimum breath length", p.min_breath_sec, lambda v: self._p(min_breath_sec=v), "s", lo=0.3, hi=5)
-        self.despike = toggle(p.despike, lambda v: self._p(despike=v))
-        g.add("despike", "Remove spikes (Hampel filter)", self.despike, hint='Replaces single glitchy samples with the median of their neighbours before anything is calculated. Keeps real fast changes such as the capnogram upstroke. Adds 30 ms of delay.')
-        self.reject = toggle(p.reject_bad_breaths, lambda v: self._p(reject_bad_breaths=v))
-        g.add("reject", "Leave noisy breaths out", self.reject, hint=('Each breath is checked before it is used: too noisy (signal-to-noise below 8), a partial breath with no alveolar plateau, an impossible value, or an isolated EtCO2 jump. Those breaths are left out of the numbers, the EtCO2 trend, the response plot and the EtCO2 alarms, but stay in the recording, marked. A run of them raises a technical alarm.'))
+        g = SpecForm(PROCESSING_FIELDS, lambda: engine.settings.processing, self._p)
         lay.addWidget(g)
         self.proc_form = g
         lay.addStretch(1)
 
-    def _p(self, **patch) -> None:
+    def _p(self, patch: dict) -> None:
         self.engine.update_settings(processing=dataclasses.replace(self.engine.settings.processing, **patch))
 
     def refresh(self, s: Snapshot, force: bool = False) -> None:
@@ -83,11 +69,7 @@ class DisplayPage(Page):
         set_combo(self.sweep, st.sweep_sec)
         set_combo(self.co2scale, st.co2_scale_max_mm_hg)
         set_combo(self.flowscale, st.flow_scale_lpm)
-        self.pb.set(p.barometric_mm_hg)
-        self.fhz.set(p.filter_hz)
-        self.db.set(round(p.deadband_lpm / 60, 3))
-        self.minb.set(p.min_breath_sec)
-        self.proc_form.show_row("fhz", p.filter_on)
+        self.proc_form.refresh(p, s)
 
 
 class AlarmsPage(Page):
@@ -100,6 +82,7 @@ class AlarmsPage(Page):
         lay.setSpacing(8)
         lay.addWidget(label("Alarms", "h2"))
         lay.addWidget(label("CO2 limits, delays and audio. Changes apply immediately. Technical alarms (no data, sensor at rail, device disconnected) are always on.", "lead", wrap=True))
+        lay.addWidget(label("The warning limit tells the operator the end of the test is near; the stop limit says to turn the valve back to room air now.", "note", wrap=True))
         self.form = AlarmForm(engine)
         lay.addWidget(self.form)
         self.arm = button("Arm audio", lambda: engine.arm_audio(), kind="primary")
@@ -114,7 +97,7 @@ class AlarmsPage(Page):
         self.engine.test_alarm()
 
     def refresh(self, s: Snapshot, force: bool = False) -> None:
-        self.form.refresh(s.settings.alarms)
+        self.form.refresh(s.settings.alarms, s)
         self.arm.setText(f"Audio armed ({s.audio_backend})" if s.audio_armed else "Arm audio")
         a = self.engine.audio
         self.audio.setText(

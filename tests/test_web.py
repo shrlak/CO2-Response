@@ -197,7 +197,7 @@ def test_record_import_review_and_persistence(page, site_url, tmp_path):
     saved = tmp_path / "reimported.csv"
     d.save_as(saved)
     text = saved.read_text()
-    assert text.startswith("# CO2-Response session,v3") and "MARK Event 1" in text and "RECORDING_STOPPED" in text
+    assert text.startswith("# CO2-Response session,v4") and "MARK Event 1" in text and "RECORDING_STOPPED" in text
 
     page.locator('[data-act="open-settings"]').last.click()
     page.locator("#nav-data").click()

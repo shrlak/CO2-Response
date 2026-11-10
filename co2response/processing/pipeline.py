@@ -2,7 +2,8 @@
 
     raw volts ─► despike (Hampel) ─► calibrate ─► low-pass ─► CO2 units / pneumotach flow
                                          │                          │
-                                         └─► noise meters           └─► breath detection ─► breath screen
+                                         └─► noise meters           ├─► align CO2 with flow (CO2 delay)
+                                                                    └─► breath detection ─► breath screen
 
 Everything that is interpreted (breaths, EtCO2, RR, VT, MV, alarms, trend) comes after
 the cleaning. The raw volts travel alongside untouched, so recordings keep them and
@@ -11,6 +12,7 @@ can be re-analysed.
 
 from __future__ import annotations
 
+import collections
 import math
 from dataclasses import dataclass, field
 
@@ -18,7 +20,7 @@ from ..channels import CHANNEL_IDS, DEFAULT_FLOW_MODEL
 from ..settings import ProcessingOptions
 from .breath import Breath, BreathDetector, BreathOptions
 from .calibration import apply_calibration, pneumo_flow
-from .co2 import pct_to_mmhg
+from .co2 import btps_factor, pct_to_mmhg
 from .denoise import BreathScreen, Despiker, NoiseMeter
 from .filter import LowPass
 from .quality import RailMonitor, at_rail
@@ -69,6 +71,11 @@ class Pipeline:
         self.detector = BreathDetector(BreathOptions(self.opts.deadband_lpm, self.opts.min_breath_sec))
         self.screen = BreathScreen(self.opts.reject_bad_breaths)
         self.despiker: Despiker | None = None
+        #: True between the Rebreathing and End-of-test markers (set by the engine):
+        #: the bag's gas mix is in the pneumotach, so its gas factor applies
+        self.rebreathing = False
+        self._held: collections.deque = collections.deque()
+        self._hold = 0
         self._rebuild()
 
     def _rebuild(self) -> None:
@@ -85,6 +92,23 @@ class Pipeline:
         if (self.despiker.h if self.despiker else 0) != want:
             self.despiker = Despiker(want) if want else None
         self.noise = {"co2": NoiseMeter(), "flow": NoiseMeter()}
+        # CO2 arrives late (sample line, analyser): the flow channels wait for it
+        hold = max(0, round(o.co2_delay_ms / 1000 * o.sample_rate_hz))
+        if hold != self._hold:
+            self._hold = hold
+            self._held.clear()
+        self._btps = btps_factor(o.ambient_temp_c, o.barometric_mm_hg) if o.volume_btps else 1.0
+
+    @property
+    def flow_factor(self) -> float:
+        """What the pneumotach flow is multiplied by: gas conditions (BTPS) and, while
+        rebreathing, the bag gas."""
+        return self._btps * (self.opts.rebreathing_gas_factor if self.rebreathing else 1.0)
+
+    @property
+    def co2_delay_sec(self) -> float:
+        """The CO2 delay actually applied (a whole number of samples)."""
+        return self._hold / self.opts.sample_rate_hz
 
     def set_channels(self, c: dict) -> None:
         self.channels = c
@@ -150,9 +174,19 @@ class Pipeline:
         self.noise["co2"].push(pct_to_mmhg(unfiltered["co2"], p.barometric_mm_hg, p.water_vapor))
         self.noise["flow"].push(pneumo_flow(model, unfiltered["pneumo"]))
 
+        if self._hold:
+            # each CO2 sample is paired with the flow from co2_delay_ms earlier: the gas
+            # it measured left the airway then. Raw volts are recorded untouched.
+            self._held.append((val["flow"], val["pneumo"], valid["flow"], valid["pneumo"]))
+            if len(self._held) > self._hold:
+                val["flow"], val["pneumo"], valid["flow"], valid["pneumo"] = self._held.popleft()
+            else:
+                val["flow"] = val["pneumo"] = NAN
+                valid["flow"] = valid["pneumo"] = False
+
         co2_pct = val["co2"]
         co2_mmhg = pct_to_mmhg(co2_pct, p.barometric_mm_hg, p.water_vapor)
-        pneumo_lpm = pneumo_flow(model, val["pneumo"])
+        pneumo_lpm = pneumo_flow(model, val["pneumo"]) * self.flow_factor
         breath = self.detector.push(t_sec, pneumo_lpm, co2_mmhg)
         outlier = None
         if breath is not None:

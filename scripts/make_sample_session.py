@@ -1,7 +1,12 @@
-"""Write sample-data/synthetic_session.csv: 150 s recorded through the real monitor
-engine (the same path as the live app, noise removal included) on a simulated clock:
-60 s of breathing with artifacts (ADC spikes and partial breaths, which the noise
-removal takes out), then a CO2 ramp (rebreathing) that crosses the 50 mmHg limit.
+"""Write sample-data/synthetic_session.csv: 180 s recorded through the real monitor
+engine (the same path as the live app, noise removal included) on a simulated clock,
+laid out as a rebreathing test:
+
+- 60 s of quiet breathing with artifacts (ADC spikes and partial breaths, which the
+  noise removal takes out), with a "Baseline" marker at 20 s;
+- "CO2 rebreathing started" at 60 s: CO2 climbs 18 mmHg/min and breathing rises with
+  it, through the 60 mmHg warning to the 65 mmHg stop limit;
+- "End of test" at 170 s, then 10 s of recovery.
 
     python scripts/make_sample_session.py [output.csv]
 """
@@ -32,19 +37,25 @@ class _Clock:
         return self.t
 
 
-def make(out: Path, seconds: int = 150) -> int:
+def make(out: Path, seconds: int = 180) -> int:
     clock = _Clock(START)
     with tempfile.TemporaryDirectory() as tmp:
         e = MonitorEngine(store=SettingsStore(Path(tmp) / "cfg"), audio=SilentAudio(), clock=clock, sessions_dir=Path(tmp) / "s", prevent_sleep=False)
         e.update_settings(study_code="SAMPLE")
         e.set_sim(scenario="artifacts")
         e.connect("simulator")
-        e.source.core.model.set_params(ramp_mm_hg_per_min=12)
+        # a moderate response keeps the peak flows inside the pneumotach's range
+        e.source.core.model.set_params(ramp_mm_hg_per_min=18, ramp_max_mm_hg=67, drive=0.6)
         e.start_recording()
         for step in range(seconds * 50):
+            if step == 20 * 50:
+                e.start_baseline()
             if step == 60 * 50:
                 e.source.core.model.set_params(scenario="co2Ramp")
                 e.add_marker("CO2 rebreathing started")
+            if step == 170 * 50:
+                e.source.core.model.set_params(scenario="normal")
+                e.end_test()
             clock.t += 20
             e.poll()
             if step % 12 == 11:

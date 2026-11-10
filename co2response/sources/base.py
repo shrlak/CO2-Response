@@ -19,7 +19,14 @@ class StatusEvent:
     detail: str = ""
 
 
-SourceItem = Union[str, StatusEvent]
+@dataclass(frozen=True)
+class MarkerEvent:
+    """An event marker from a replayed recording, due now."""
+
+    label: str
+
+
+SourceItem = Union[str, StatusEvent, MarkerEvent]
 
 
 class Source:
