@@ -485,13 +485,33 @@ def test_valve_from_the_app_emergency_stop_and_the_spo2_tile(page, site_url):
     assert page.errors == []
 
 
+def labchart_export_of_the_sample() -> str:
+    """The sample session as a LabChart text export: flow in mL/s with inspiration
+    negative, CO2 in mmHg, a comment at each marker. Made with the standard library
+    only, because the job that runs these tests installs neither numpy nor the app."""
+    import csv
+
+    rows = [x for x in (ROOT / "sample-data" / "synthetic_session.csv").read_text(encoding="utf-8").splitlines() if not x.startswith("#")]
+    out = [
+        "Interval=\t0.01 s",
+        "ExcelDateTime=\t4.63312083333e+004\t11/05/26 05:00:00.000",
+        "TimeFormat=\tStartOfBlock",
+        "DateFormat=\t",
+        "ChannelTitle=\tFlow\tCO2",
+        "Range=\t10.000 V\t10.000 V",
+        "UnitName=\tmL/s\tmmHg",
+    ]
+    for row in csv.DictReader(rows):
+        if not row["pneumo_lpm"] or not row["co2_mmHg"]:
+            continue  # an event while no data was flowing
+        mark = next((e[5:] for e in row["event"].split(" | ") if e.startswith("MARK ")), "")
+        out.append(f"{float(row['time_s']):.4f}\t{-float(row['pneumo_lpm']) * 1000 / 60:.3f}\t{float(row['co2_mmHg']):.3f}" + (f"\t#* {mark}" if mark else ""))
+    return "\r\n".join(out) + "\r\n"
+
+
 def test_a_labchart_text_export_is_imported_as_a_session(page, site_url, tmp_path):
-    from test_labchart import export
-
-    from co2response.storage.session_file import read_session
-
     chart = tmp_path / "patient-x.txt"
-    chart.write_text(export(read_session(ROOT / "sample-data" / "synthetic_session.csv")), encoding="utf-8")
+    chart.write_text(labchart_export_of_the_sample(), encoding="utf-8", newline="")
     boot(page, site_url)
     page.locator('[data-act="open-settings"]').last.click()
     page.locator("#nav-data").click()
