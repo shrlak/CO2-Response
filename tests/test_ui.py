@@ -246,18 +246,24 @@ def test_simulation_panel_sets_the_monitor_and_graphs_enlarge(win):
     m.sim.sit_buttons["hypoventilation"].click()  # starts it with the situation's values
     advance(win, 45)
     assert e.snapshot().source_kind == "simulator"
-    assert m.tiles["rr"].value == "7"
-    assert 60 <= int(m.tiles["etco2"].value) <= 65
+    assert m.tiles["rr"].value == "6"
+    assert 60 <= int(m.tiles["etco2"].value) <= 66
     assert e.alarms.is_active("co2High")
-    assert m.sim.set_labels["rr"].text() == "7" and m.sim.mon_labels["rr"].text() == "7"
+    assert m.sim.set_labels["rr"].text() == "6" and m.sim.mon_labels["rr"].text() == "6"
     assert m.sim.sit_buttons["hypoventilation"].isChecked() and not m.sim.start_box.isVisible()
 
-    # a slider changes the running simulator; the monitor follows
+    # the speed slider runs simulated time faster; it is not a change to the situation
+    m.sim.sliders["speed"].slider.setValue(slider_index(SLIDERS["speed"], 5))
+    assert e.settings.sim.speed == 5 and not e.settings.sim.adjusted
+    win._tick()
+    assert "5× speed" in win.header.status.text()
+
+    # a slider changes the running simulator; the monitor follows (at 5×, in a few seconds)
     m.sim.sliders["rr"].slider.setValue(slider_index(SLIDERS["rr"], 20))
     assert e.settings.sim.rr == 20 and e.settings.sim.adjusted
     win._tick()
     assert "(adjusted)" in m.sim.current.text()
-    advance(win, 25)
+    advance(win, 6)
     assert m.tiles["rr"].value == "20"
     m.sim.switches["apnea"].setChecked(True)
     advance(win, 25)

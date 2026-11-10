@@ -319,7 +319,7 @@ The keys only place markers labelled **Baseline**, **Rebreathing** and **End of 
 | CO2 row | Capnogram (yellow, with the warning limit dashed), **EtCO2** (large, with its limits beside it: warning / stop, and low), RR, FiCO2 |
 | Flow row | Flow-sensor waveform (cyan), live flow, peak inspiratory flow |
 | Pneumotach row | Pneumotach flow (green), VT (with the expired volume under it), MV (the 60 s average) |
-| Bottom chart | The trend: EtCO2, MV or RR per breath (the drop-down beside **Window**) over 15 min to the whole session, with the warning limit dashed, the stop limit solid, and alarm and event markers. The **Ventilatory response** tab plots each breath's own MV against its EtCO2 (see above). |
+| Bottom chart | The trend: EtCO2, MV or RR per breath (the drop-down beside **Window**) over 5 min to the whole session, with the warning limit dashed, the stop limit solid, and alarm and event markers. The **Ventilatory response** tab plots each breath's own MV against its EtCO2 (see above). |
 
 A number shows `---` when its sensor has sent no valid data for 2 s.
 

@@ -15,6 +15,7 @@ from co2response.sim.controls import (
     GROUPS,
     SITUATIONS,
     SLIDERS,
+    SPEED,
     SWITCHES,
     fmt_value,
     model_params,
@@ -51,7 +52,8 @@ def test_every_control_is_a_simulator_setting_and_in_range():
         assert slider_value(s, slider_index(s, getattr(SimSettings(), key))) == pytest.approx(getattr(SimSettings(), key))
     for key in SWITCHES:
         assert getattr(SimSettings(), key) is False
-    assert sum(len(g.items) for g in GROUPS) == len(SLIDERS) + len(SWITCHES)
+    assert sum(len(g.items) for g in GROUPS) + 1 == len(SLIDERS) + len(SWITCHES)  # + the speed slider at the top
+    assert SLIDERS["speed"] is SPEED and "speed" not in model_params({"speed": 5})
     assert fmt_value(SLIDERS["ie_ratio"], 2) == "1:2.0"
     assert fmt_value(SLIDERS["rr"], 15) == "15 /min"
 
@@ -64,11 +66,51 @@ def test_every_situation_stays_within_the_slider_ranges():
 
 
 def test_default_settings_reproduce_the_original_model():
+    """The panel's defaults differ from the original model only in how fast EtCO2 reaches
+    a new value (``settle``); with the original pacing they reproduce it sample for sample,
+    through a change of EtCO2 too. (The sample session relies on this.)"""
     a = PhysioModel(seed=4)
-    b = PhysioModel(seed=4, **model_params(dataclasses.asdict(SimSettings())))
-    for _ in range(3000):
+    b = PhysioModel(seed=4, **model_params(dataclasses.asdict(SimSettings(settle=0.5))))
+    for i in range(6000):
+        if i == 2000:
+            a.set_params(etco2=55)
+            b.set_params(etco2=55)
         sa, sb = a.step(0.01), b.step(0.01)
         assert (sa.co2_pct, sa.flow_lpm, sa.pneumo_pa) == (sb.co2_pct, sb.flow_lpm, sb.pneumo_pa)
+
+
+def breath_peaks(m: PhysioModel, seconds: float) -> list[float]:
+    """Each whole breath's peak CO2 (mmHg), from the model's own breath timing."""
+    peaks, cur, last_start = [], -1.0, m._breath_start
+    for _ in range(int(seconds * 100)):
+        co2 = (m.step(0.01).co2_pct / 100) * 760
+        if m._breath_start != last_start:
+            peaks.append(cur)
+            cur, last_start = -1.0, m._breath_start
+        cur = max(cur, co2)
+    return peaks[1:]  # the first may have started before the change
+
+
+@pytest.mark.parametrize("phase", ["inspiration", "expiration"])
+def test_a_new_etco2_shows_on_the_next_breath(phase):
+    """The panel's default: a new EtCO2 is on the next breath, or on the breath being
+    drawn when it is still inspiring, instead of halving the gap breath by breath."""
+    fast = PhysioModel(noise=0, settle=1)
+    slow = PhysioModel(noise=0)
+    t = 4 * 3 + (0.5 if phase == "inspiration" else 2.5)  # 4 s breaths, 1.33 s inspiration
+    for m in (fast, slow):
+        co2_trace(m, t)
+        m.set_params(etco2=56)
+    assert fast.expected()["etco2"] == (56 if phase == "inspiration" else 38)
+    peaks = breath_peaks(fast, 13)
+    assert all(p == pytest.approx(56, abs=0.5) for p in peaks)
+    assert breath_peaks(slow, 13)[0] < 52  # the original model: halfway each breath
+
+    # no step in the trace where the inspiring breath takes the new value
+    m = PhysioModel(noise=0, settle=1)
+    before = co2_trace(m, 12.5)[-1]
+    m.set_params(etco2=56)
+    assert abs(co2_trace(m, 0.01)[0] - before) < 0.5
 
 
 def test_inspired_co2_raises_the_baseline():
@@ -207,6 +249,50 @@ def test_situations_change_the_running_simulator_in_place(tmp_path):
     e.apply_situation("rebreathing")
     assert [m.label for m in e.markers] == ["Rebreathing"]
     assert src.core.model.params.ramp
+
+
+@pytest.mark.parametrize("speed", [1, 5])
+def test_a_situation_reaches_the_monitor_quickly(tmp_path, speed):
+    """From a normal adult to hypoventilation (10 s breaths): the monitor's large EtCO2
+    (the median of 3 breaths) is there in about 22 s at real time, where the original
+    gradual approach took about 52 s, and five times sooner at 5×."""
+    e = make_engine(tmp_path)
+    e.set_sim(speed=speed)
+    e.apply_situation("normal")
+    run(e, 30)
+    e.apply_situation("hypoventilation")
+    seconds = 0.0
+    while abs(e.snapshot().numbers.etco2_median - 63) > 1.5 and seconds < 60:
+        run(e, 0.5)
+        seconds += 0.5
+    assert seconds <= (26 if speed == 1 else 6)
+
+
+def test_speed_runs_simulated_time_faster(tmp_path):
+    e = make_engine(tmp_path)
+    e.set_sim(speed=5)
+    assert not e.settings.sim.adjusted  # the speed is not a change to the situation
+    e.connect("simulator")
+    run(e, 12)
+    s = e.snapshot()
+    assert s.source_label == "Simulator (5× speed)"
+    # the device clock runs 5× (a minute of breathing in 12 s), and what is measured on it stays right
+    assert e._last.t_ms == pytest.approx(60_000, abs=500)
+    assert 13 <= len(e.good) <= 16
+    assert s.numbers.rr == pytest.approx(15, abs=0.5) and s.numbers.mv == pytest.approx(7.5, rel=0.05)
+    # choosing a situation keeps the speed; it can be changed while running, and a recording notes it
+    e.apply_situation("rebreathing")
+    assert e.settings.sim.speed == 5 and e.source.speed == 5
+    e.start_recording()
+    run(e, 1)
+    e.set_sim(speed=1)
+    assert e.source.speed == 1 and e.snapshot().source_label == "Simulator"
+    run(e, 1)
+    text = e.stop_recording().path.read_text(encoding="utf-8")  # session files are UTF-8 on every OS
+    assert "# source,Simulator (5× speed)" in text and "SIM_SPEED 1" in text
+    # a stored speed out of range runs at the nearest end
+    e.set_sim(speed=50)
+    assert e.source.run_speed == 10
 
 
 def test_the_panel_warns_when_flow_would_clip(tmp_path):

@@ -42,7 +42,9 @@ def make(out: Path, seconds: int = 180) -> int:
     with tempfile.TemporaryDirectory() as tmp:
         e = MonitorEngine(store=SettingsStore(Path(tmp) / "cfg"), audio=SilentAudio(), clock=clock, sessions_dir=Path(tmp) / "s", prevent_sleep=False)
         e.update_settings(study_code="SAMPLE")
-        e.set_sim(scenario="artifacts")
+        # settle=0.5: EtCO2 eases to each new value over a few breaths, as the simulator
+        # did when this file was made (the panel's default now gets there on the next breath)
+        e.set_sim(scenario="artifacts", settle=0.5)
         e.connect("simulator")
         # a moderate response keeps the peak flows inside the pneumotach's range
         e.source.core.model.set_params(ramp_mm_hg_per_min=18, ramp_max_mm_hg=67, drive=0.6)

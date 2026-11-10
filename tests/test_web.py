@@ -398,15 +398,19 @@ def test_simulation_panel_and_enlarged_graphs(page, site_url):
     sync_api.expect(page.locator("#simpanel")).to_be_visible()
     sync_api.expect(page.locator(".sp-start")).to_be_visible()  # not running yet
     page.locator('[data-act="sim-situation"][data-arg="hypoventilation"]').click()
-    sync_api.expect(tile(page, "rr")).to_have_text("7", timeout=60_000)
-    sync_api.expect(page.locator("#sp-mon-rr")).to_have_text("7")
-    sync_api.expect(page.locator("#sp-set-rr")).to_have_text("7")
+    sync_api.expect(tile(page, "rr")).to_have_text("6", timeout=60_000)
+    sync_api.expect(page.locator("#sp-mon-rr")).to_have_text("6")
+    sync_api.expect(page.locator("#sp-set-rr")).to_have_text("6")
     sync_api.expect(page.locator(".alarm-slot")).to_contain_text("EtCO2 HIGH", timeout=30_000)
-    # dragging a slider changes the running simulator
+    # the speed slider (at the top of the panel) runs simulated time faster
+    page.eval_on_selector("#sp-speed", "el => { el.value = 5; el.dispatchEvent(new Event('input', { bubbles: true })); }")
+    sync_api.expect(page.locator("#spv-speed")).to_have_text("5 ×")
+    sync_api.expect(page.locator("#sp-current")).not_to_contain_text("(adjusted)")
+    # dragging a slider changes the running simulator; at 5× the monitor follows in seconds
     page.eval_on_selector("#sp-rr", "el => { el.value = 20; el.dispatchEvent(new Event('input', { bubbles: true })); }")
     sync_api.expect(page.locator("#spv-rr")).to_have_text("20 /min")
     sync_api.expect(page.locator("#sp-current")).to_contain_text("(adjusted)")
-    sync_api.expect(tile(page, "rr")).to_have_text("20", timeout=40_000)
+    sync_api.expect(tile(page, "rr")).to_have_text("20", timeout=15_000)
     page.locator("#sp-apnea").check()
     sync_api.expect(page.locator("[data-testid=tile-rr]")).to_have_class(re.compile("alarm-high"), timeout=40_000)  # apnea
     # enlarge one graph, then go back with Esc

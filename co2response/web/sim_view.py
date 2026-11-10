@@ -15,11 +15,13 @@ from typing import TYPE_CHECKING
 from ..engine.monitor import Snapshot
 from ..sim.controls import (
     GROUPS,
+    MEASURED_NOTE,
     READBACK,
     SITUATION_BY_ID,
     SITUATION_GROUPS,
     SITUATIONS,
     SLIDERS,
+    SPEED,
     SWITCHES,
     Slider,
     fmt_value,
@@ -102,11 +104,13 @@ class SimPanel:
                 if x.group == g
             )
             sits += f'<div class="sp-gt">{esc(g)}</div><div class="sp-grid">{b}</div>'
-        out = head + start + now + readback + f'<details open class="sp-group"><summary>Situations</summary>{sits}</details>'
+        # how fast simulated time runs, above everything it speeds up
+        speed = self._slider(SPEED, float(sim.speed))
+        out = head + start + speed + now + readback + f'<details open class="sp-group"><summary>Situations</summary>{sits}</details>'
         for g in GROUPS:
             inner = "".join(self._slider(it, float(getattr(sim, it.key))) if isinstance(it, Slider) else self._switch(it.key, switch_on(sim, it.key)) for it in g.items)
             out += f'<details open class="sp-group"><summary>{esc(g.title)}</summary>{inner}</details>'
-        out += '<p class="note">The monitor measures its numbers from the simulated waveforms, as it would from real sensors, so they can differ a little from the values set here and take a few breaths to follow a change.</p>'
+        out += f'<p class="note">{esc(MEASURED_NOTE)}</p>'
         return out
 
     # ---------- refresh at 4 Hz

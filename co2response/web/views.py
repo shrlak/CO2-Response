@@ -227,7 +227,7 @@ class MonitorView:
             '<select id="trend-series" data-change="trend-series" aria-label="Trend of" title="What the trend tab plots against time">'
             '<option value="etco2">EtCO2</option><option value="mv">MV</option><option value="rr">RR</option></select>'
             '<label>Window <select id="trend-window" data-change="trend-window" aria-label="Trend window">'
-            '<option value="15">15 min</option><option value="30">30 min</option><option value="120">2 h</option><option value="0">All</option></select></label>'
+            '<option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="120">2 h</option><option value="0">All</option></select></label>'
             f"{expand_btn('trend', 'trend')}</span></div>"
             # the rebreathing test: three keys and where the test stands
             '<div class="testbar" id="testbar"></div>'
