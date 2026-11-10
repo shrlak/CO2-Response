@@ -93,6 +93,8 @@ AUTO_STOP = {"co2Stop": "stop limit", "apnea": "apnea", "spo2Low": "low SpO2"}
 LEAK_BREATHS = 5
 #: how often the host tells the device it is alive (firmware with a watchdog), ms
 HEARTBEAT_MS = 1000
+#: a valve command the board has not answered within this long was not heard, ms
+VALVE_ANSWER_MS = 2000
 
 
 def _now_ms() -> int:
@@ -431,6 +433,8 @@ class MonitorEngine:
         self._sim_test: dict | None = None
         #: the board's valve output as last commanded: True = to the bag
         self._valve = False
+        #: when each valve command not yet answered by the board was sent
+        self._valve_asked: collections.deque[float] = collections.deque()
         self._spo2_low_since: float | None = None
         self._spo2_valid_wall = 0.0
         self._save_error_logged = False
@@ -759,6 +763,7 @@ class MonitorEngine:
         self._file_channels = session.channels if kind == "replay" and use_file_calibration and session is not None and session.channels else None
         self._info = None
         self._valve = False  # a board starts (and restarts) on room air
+        self._valve_asked.clear()
         self.pipeline = Pipeline(self.effective_channels, self._processing_options(), self.settings.spo2)
         self._spo2_low_since = None
         self._spo2_valid_wall = self.clock()
@@ -897,9 +902,12 @@ class MonitorEngine:
             self._use(pr, now)
         self._source = None
         try:
-            if self._valve and (self._info or {}).get("VALVE"):
-                src.send("VALVE 0")  # never leave the valve on the bag behind
+            if (self._info or {}).get("VALVE"):
+                # never leave the valve on the bag behind. Sent whatever the app believes
+                # the valve is doing: a belief can be wrong, room air cannot.
+                src.send("VALVE 0")
             self._valve = False
+            self._valve_asked.clear()
             if src.kind in ("serial", "bridge") and self._has_watchdog():
                 src.send("HB OFF")  # a deliberate disconnect must not sound the device's buzzer
             if src.kind == "serial":
@@ -977,10 +985,8 @@ class MonitorEngine:
             self._add_log(f"Device error: {p.raw[2:]}", "error")
             self.recorder.event(now, f"DEVICE_ERROR {p.code}")
         elif kind == "ack":
-            if p.fields[:1] == ["VALVE"] and len(p.fields) > 1 and (p.fields[1] == "1") != self._valve:
-                # the board moved the valve itself (its watchdog), or refused the bag
-                self._valve = p.fields[1] == "1"
-                self.recorder.event(now, f"VALVE {'BAG' if self._valve else 'AIR'} (reported by the device)")
+            if p.fields[:1] == ["VALVE"] and len(p.fields) > 1:
+                self._valve_reported(p.fields[1] == "1", now)
             self._add_log(f"Device: {p.raw}")
         elif kind == "bad":
             self._bad_lines += 1
@@ -1409,12 +1415,30 @@ class MonitorEngine:
         w = self.test_window()
         return w.start is not None and w.end is None
 
+    def _valve_reported(self, to_bag: bool, now: float) -> None:
+        """The board says where its valve output is: its answer to a command, or a move
+        of its own (its watchdog returns the valve to room air). An answer to a command
+        that newer commands have already overtaken says nothing about where the valve
+        will end up, so it is not believed; the answer to the newest command is."""
+        while self._valve_asked and now - self._valve_asked[0] > VALVE_ANSWER_MS:
+            self._valve_asked.popleft()  # that answer was lost
+        if self._valve_asked:
+            self._valve_asked.popleft()
+        if self._valve_asked or to_bag == self._valve:
+            return
+        self._valve = to_bag
+        self.recorder.event(now, f"VALVE {'BAG' if to_bag else 'AIR'} (reported by the device)")
+
     def _set_valve(self, to_bag: bool, why: str = "") -> bool:
         """Command the valve output. Returns False when the device has none."""
         src = self._source
         if src is None or not self.valve_available():
             return False
         src.send(f"VALVE {1 if to_bag else 0}")
+        now = self.clock()
+        while self._valve_asked and now - self._valve_asked[0] > VALVE_ANSWER_MS:
+            self._valve_asked.popleft()
+        self._valve_asked.append(now)
         changed = self._valve != to_bag
         self._valve = to_bag
         if changed or why:

@@ -701,6 +701,48 @@ def test_valve_commands_reach_the_board_and_a_board_without_a_valve_is_left_alon
         plain.unplug()
 
 
+def test_a_late_answer_to_an_earlier_valve_command_is_not_mistaken_for_the_valve_moving(tmp_path):
+    """End then Start again before the board's answers are read: the answer to the End
+    arrives after the app has sent the valve to the bag. Believing it would show the
+    valve on room air while it is on the bag."""
+    e = make_engine(tmp_path)
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, auto_valve=True))
+    e.connect("simulator")
+    run(e, 5)
+    events: list[str] = []
+    record = e.recorder.event
+    e.recorder.event = lambda t, text: (events.append(text), record(t, text))[1]
+    e.start_rebreathing()
+    e.end_test()
+    e.start_rebreathing()  # three answers are now waiting: bag, air, bag
+    seen = []
+    on_line = e._on_line
+    e._on_line = lambda line: (on_line(line), seen.append((line, e.snapshot().valve)))[0]
+    run(e, 0.1)
+    assert [v for line, v in seen if line.startswith("A,VALVE")] == ["bag", "bag", "bag"]
+    assert not any("reported by the device" in x for x in events)
+    # the board moving the valve by itself (its watchdog) is still believed
+    e._on_line("A,VALVE,0")
+    assert e.snapshot().valve == "air" and "VALVE AIR (reported by the device)" in events
+    # and so is a refusal: asked for the bag, the board answers room air
+    e.start_rebreathing()
+    e.source._out.clear()
+    e._on_line("A,VALVE,0")
+    assert e.snapshot().valve == "air"
+    # an answer that never came does not make the next report unbelievable for ever
+    e.start_rebreathing()
+    e.source._out.clear()
+    run(e, 3)
+    e._on_line("A,VALVE,0")
+    assert e.snapshot().valve == "air"
+    # disconnecting sends the valve to room air whatever the app believes
+    e.start_rebreathing()
+    core = e.source.core
+    e._valve = False
+    e.disconnect()
+    assert core.valve_to_bag is False
+
+
 # ------------------------------------------------------------------ SpO2 (the safety channel)
 
 
