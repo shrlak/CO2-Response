@@ -59,6 +59,13 @@ def _friendly(port: str, e: Exception) -> str:
     return f"Could not open {port}: {msg}"
 
 
+def _quietly(fn) -> None:
+    try:
+        fn()
+    except Exception:  # the port is already gone
+        pass
+
+
 class SerialSource(ThreadedSource):
     kind = "serial"
 
@@ -112,6 +119,12 @@ class SerialSource(ThreadedSource):
         self._closing = True
         ser = self._ser
         if ser is not None:
+            # let the last commands (HB OFF, STOP) leave before the port closes: closing
+            # can discard what is still waiting to be sent. Bounded, in case the device
+            # has gone and the port never drains.
+            drain = threading.Thread(target=_quietly, args=(ser.flush,), daemon=True)
+            drain.start()
+            drain.join(timeout=0.5)
             try:
                 ser.cancel_read()
             except Exception:

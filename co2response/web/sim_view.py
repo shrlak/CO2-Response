@@ -17,6 +17,7 @@ from ..sim.controls import (
     GROUPS,
     MEASURED_NOTE,
     READBACK,
+    RECORD_TESTS,
     SITUATION_BY_ID,
     SITUATION_GROUPS,
     SITUATIONS,
@@ -91,7 +92,7 @@ class SimPanel:
             )
         now = (
             '<div class="sp-now"><div><span class="k">Situation</span> <b id="sp-current"></b></div>'
-            '<p class="note" id="sp-desc"></p><p class="warn" id="sp-warn" hidden></p></div>'
+            '<p class="note" id="sp-desc"></p><p class="warn" id="sp-progress" hidden></p><p class="warn" id="sp-warn" hidden></p></div>'
         )
         rows = "".join(f'<tr><th>{esc(label)} <span class="u">{esc(unit)}</span></th><td id="sp-set-{k}">--</td><td id="sp-mon-{k}">--</td></tr>' for k, label, unit, _ in READBACK)
         readback = f'<table class="sp-readback"><thead><tr><th></th><th>Set</th><th>Monitor</th></tr></thead><tbody>{rows}</tbody></table>'
@@ -105,7 +106,7 @@ class SimPanel:
             )
             sits += f'<div class="sp-gt">{esc(g)}</div><div class="sp-grid">{b}</div>'
         # how fast simulated time runs, above everything it speeds up
-        speed = self._slider(SPEED, float(sim.speed))
+        speed = self._slider(SPEED, float(sim.speed)) + self._switch(RECORD_TESTS.key, sim.record_tests)
         out = head + start + speed + now + readback + f'<details open class="sp-group"><summary>Situations</summary>{sits}</details>'
         for g in GROUPS:
             inner = "".join(self._slider(it, float(getattr(sim, it.key))) if isinstance(it, Slider) else self._switch(it.key, switch_on(sim, it.key)) for it in g.items)
@@ -137,6 +138,12 @@ class SimPanel:
             set_text(f"sp-set-{k}", _num(exp.get(k), d) if exp else "--")
             set_text(f"sp-mon-{k}", "---" if self._stale(s, k) else _num(mon[k], d))
         warn = " ".join(x for x in (clipping_text(exp.get("clipping", []) if exp else []), scenario_note(sim)) if x)
+        prog = self.app.engine.sim_test_text()
+        pr = byid("sp-progress")
+        if pr is not None:
+            pr.hidden = not prog
+            if pr.textContent != prog:
+                pr.textContent = prog
         w = byid("sp-warn")
         if w is not None:
             w.hidden = not warn

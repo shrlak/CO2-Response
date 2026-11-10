@@ -39,6 +39,7 @@ from ..processing.metrics import (
     CO2Response,
     TestWindow,
     co2_response,
+    co2_response_summary,
     etco2_median,
     marker_kind,
     median,
@@ -58,7 +59,15 @@ from ..settings import (
     sanitize_test,
     to_dict,
 )
-from ..sim.controls import SITUATION_BY_ID, model_params, situation_settings, switch_patch
+from ..sim.controls import (
+    SITUATION_BY_ID,
+    TEST_BASELINE_SEC,
+    TEST_REACTION_SEC,
+    TEST_RECOVERY_SEC,
+    model_params,
+    situation_settings,
+    switch_patch,
+)
 from ..sim.core import Encoders
 from ..sources.base import MarkerEvent, Source, StatusEvent
 from ..sources.bridge import BridgeSource
@@ -396,6 +405,8 @@ class MonitorEngine:
         self._handshake_retried = False
         self._last_heartbeat = 0.0
         self._trend_key = 0
+        #: a whole simulated test in progress (see ``_start_sim_test``)
+        self._sim_test: dict | None = None
         self._save_error_logged = False
 
         #: breaths on the device clock (cleared on every new connection), all of them
@@ -486,7 +497,7 @@ class MonitorEngine:
 
     def set_sim(self, **patch) -> None:
         """Change simulator settings; a running simulator follows at once."""
-        if "preset" not in patch and set(patch) - {"speed"}:  # the speed is not part of a situation
+        if "preset" not in patch and set(patch) - {"speed", "record_tests"}:  # these are not part of a situation
             patch.setdefault("adjusted", True)
         self.update_settings(sim=dataclasses.replace(self.settings.sim, **patch))
         if isinstance(self._source, SimulatorSource):
@@ -504,17 +515,100 @@ class MonitorEngine:
     def apply_situation(self, sid: str, start: bool = True) -> None:
         """Set every simulator value for a ready-made situation. Starts the simulator
         (when ``start``) or changes the running one in place, without a gap in the data."""
-        sim = dataclasses.replace(situation_settings(sid), speed=self.settings.sim.speed)
+        sit = SITUATION_BY_ID[sid]
+        self._end_sim_test("another situation was chosen")
+        sim = dataclasses.replace(situation_settings(sid), speed=self.settings.sim.speed, record_tests=self.settings.sim.record_tests)
         self.update_settings(sim=sim)
         running = isinstance(self._source, SimulatorSource)
         if running:
             self._source.core.model.set_params(**model_params(dataclasses.asdict(sim)))
         elif start:
             self.connect("simulator")
-        marker = SITUATION_BY_ID[sid].marker
-        if marker and isinstance(self._source, SimulatorSource):
-            self.add_marker(marker)
-        self._add_log(f"Simulation: {SITUATION_BY_ID[sid].label}")
+        if sit.marker and isinstance(self._source, SimulatorSource):
+            self.add_marker(sit.marker)
+        self._add_log(f"Simulation: {sit.label}")
+        if sit.test and isinstance(self._source, SimulatorSource):
+            self._start_sim_test()
+
+    # ---------- a whole simulated test: the simulation presses the test keys itself
+
+    def _start_sim_test(self) -> None:
+        """Baseline now; ``_run_sim_test`` turns the "valve", ends the test at the stop
+        alarm (or when the CO2 stops rising) and stops after the recovery. Everything is
+        timed on the simulated clock, so it runs faster with the simulation's speed."""
+        own = self.settings.sim.record_tests and not self.recorder.active
+        if own:
+            self.start_recording()
+        self.start_baseline()
+        self._sim_test = {"step": "baseline", "t": None, "due": None, "own_recording": own}
+
+    def _sim_patch(self, **patch) -> None:
+        """Change the running simulation as part of a whole test (it stays "not adjusted")."""
+        self.set_sim(preset=self.settings.sim.preset, **patch)
+
+    def _end_sim_test(self, why: str = "") -> None:
+        st, self._sim_test = self._sim_test, None
+        if st is None:
+            return
+        if st["own_recording"] and self.recorder.active:
+            self.stop_recording()
+        if why:
+            self._add_log(f"Simulated test stopped: {why}")
+
+    def _run_sim_test(self) -> None:
+        st = self._sim_test
+        if st is None:
+            return
+        src = self._source
+        if not isinstance(src, SimulatorSource) or self._last is None:
+            if src is None or not isinstance(src, SimulatorSource):
+                self._end_sim_test("the simulator is no longer running")
+            return
+        t = self._last.t_sec  # simulated seconds
+        if st["t"] is None:
+            st["t"] = t
+        phase = self.test_window()
+        rebreathing = phase.start is not None and phase.end is None
+        if st["step"] == "baseline":
+            if rebreathing:  # the operator pressed Start rebreathing first
+                st.update(step="rebreathing", t=t, due=None)
+                self._sim_patch(ramp=True)
+            elif t - st["t"] >= TEST_BASELINE_SEC:
+                self.start_rebreathing()
+                self._sim_patch(ramp=True)
+                st.update(step="rebreathing", t=t, due=None)
+        elif st["step"] == "rebreathing":
+            if not rebreathing:  # the operator pressed End test
+                self._sim_patch(ramp=False)
+                st.update(step="recovery", t=t)
+                return
+            p = src.core.model.params
+            done = self.alarms.is_active("co2Stop") or self.alarms.is_active("testTime") or src.core.model.target_etco2 >= p.ramp_max_mm_hg - 0.01
+            if done and st["due"] is None:
+                # the "operator" takes a moment to turn the valve back (a few breaths at the top
+                # when it is the CO2 itself that stopped rising)
+                st["due"] = t + (TEST_REACTION_SEC if self.alarms.is_active("co2Stop") else 4 * TEST_REACTION_SEC)
+            if st["due"] is not None and t >= st["due"]:
+                self.end_test()
+                self._sim_patch(ramp=False)
+                st.update(step="recovery", t=t)
+        elif st["step"] == "recovery" and t - st["t"] >= TEST_RECOVERY_SEC:
+            res = self.co2_response()
+            self._add_log("Simulated test finished: " + co2_response_summary(res, lambda v, d: f"{v:.{d}f}"))
+            self._end_sim_test()
+
+    def sim_test_text(self) -> str:
+        """Where a whole simulated test stands, for the simulation panel ("" if none runs)."""
+        st = self._sim_test
+        if st is None:
+            return ""
+        el = self._last.t_sec - st["t"] if self._last is not None and st["t"] is not None else 0.0
+        rec = " · recording" if st["own_recording"] else ""
+        if st["step"] == "baseline":
+            return f"Whole test: baseline {_mss(el)} of {_mss(TEST_BASELINE_SEC)}, then the valve is turned{rec}"
+        if st["step"] == "rebreathing":
+            return f"Whole test: rebreathing {_mss(el)}, until the stop alarm{rec}"
+        return f"Whole test: ended; recovery {_mss(el)} of {_mss(TEST_RECOVERY_SEC)}{rec}"
 
     def sim_expected(self) -> dict[str, float] | None:
         """What the running simulator is producing now (for comparing with the
@@ -1043,6 +1137,7 @@ class MonitorEngine:
         a.set_condition("settingsSave", bool(err), now, "advisory", f"SETTINGS NOT SAVED ({err}): changes last only until the app closes")
 
         a.tick(now)
+        self._run_sim_test()
 
         # audio: highest active priority, unless silenced
         pri = a.active_priority()
@@ -1164,25 +1259,39 @@ class MonitorEngine:
         w = self.test_window()
         self.pipeline.rebreathing = w.start is not None and w.end is None
 
+    def time_scale(self) -> float:
+        """Seconds of the subject's time per second on the wall clock: 1 for a live
+        device; the speed of a simulation or a replay running faster than real time.
+        The test's own times (the baseline minute, the seconds left out of the fit,
+        the rebreathing timer and its limit) are in the subject's time."""
+        src = self._source
+        if isinstance(src, SimulatorSource):
+            return src.run_speed
+        if isinstance(src, ReplaySource):
+            return max(1e-6, float(src.speed))
+        return 1.0
+
     def test_state(self, now: float | None = None) -> TestState:
         now = self.clock() if now is None else now
         w = self.test_window()
         t = now / 1000
+        k = self.time_scale()
         limit = self.settings.alarms.rebreathing_max_sec
         rec = "" if self.recorder.active else " · NOT RECORDING"
         if w.start is None:
             if w.baseline is None:
                 return TestState("idle", w, text="No test running. Press Start baseline once the subject is on the mouthpiece.")
-            recent = [(q.etco2, q.mv_breath) for q in self.trend if q.t >= max(w.baseline, t - 60) and q.quality == "ok" and not q.excluded]
+            recent = [(q.etco2, q.mv_breath) for q in self.trend if q.t >= max(w.baseline, t - 60 / k) and q.quality == "ok" and not q.excluded]
             ok, why = stability(recent)
-            el = t - w.baseline
+            el = (t - w.baseline) * k
             text = f"BASELINE {_mss(el)} · {'steady' if ok else 'settling'} ({why} in the last minute){rec}"
             return TestState("baseline", w, el, 0.0, ok, why, text)
         if w.end is None:
-            el = t - w.start
+            el = (t - w.start) * k
             lim = f" of {_mss(limit)}" if limit > 0 else ""
             return TestState("rebreathing", w, el, limit, text=f"REBREATHING {_mss(el)}{lim}{rec}")
-        return TestState("ended", w, w.end - w.start, limit, text=f"TEST ENDED after {_mss(w.end - w.start)} of rebreathing")
+        el = (w.end - w.start) * k
+        return TestState("ended", w, el, limit, text=f"TEST ENDED after {_mss(el)} of rebreathing")
 
     def start_baseline(self) -> Marker:
         """Baseline key: breaths from now until rebreathing starts are the baseline."""
@@ -1203,7 +1312,12 @@ class MonitorEngine:
         not taken out by hand)."""
         by_key = {q.key: q for q in self.trend if q.t >= t0 and q.quality == "ok"}
         pts = ((q.t, q.etco2, q.mv_breath, q.key) for q in by_key.values())
-        return co2_response(pts, self.test_window(), self.settings.test.response_skip_sec, lambda k: by_key[k].excluded)
+        # the trend is on the wall clock: at 10x speed, 30 s of the subject's time is 3 s of it
+        skip = self.settings.test.response_skip_sec
+        res = co2_response(pts, self.test_window(), skip / self.time_scale(), lambda k: by_key[k].excluded)
+        if res.skip_sec:
+            res.skip_sec = skip  # reported in the subject's seconds
+        return res
 
     def set_breath_excluded(self, key: int, on: bool = True) -> bool:
         """Take a breath out of the response fit by hand (or put it back). The breath

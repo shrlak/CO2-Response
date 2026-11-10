@@ -189,6 +189,9 @@ class SimSettings:
     settle: float = 1
     #: simulated seconds per real second (1 = real time). Not part of a situation.
     speed: float = 1
+    #: record a whole simulated test as a session, so the review charts and the PDF
+    #: report can be made from it too. Not part of a situation.
+    record_tests: bool = False
     #: the situation last chosen in the simulation panel, and whether a value was changed since
     preset: str = "normal"
     adjusted: bool = False
@@ -200,8 +203,8 @@ class Settings:
     co2_unit: str = "mmHg"  # 'mmHg' | '%'
     #: seconds per screen for the sweep
     sweep_sec: float = 12
-    #: capnogram full scale, mmHg
-    co2_scale_max_mm_hg: float = 60
+    #: capnogram full scale, mmHg (the default shows the 60 mmHg warning and 65 mmHg stop limits)
+    co2_scale_max_mm_hg: float = 80
     #: flow panels ± full scale, L/min
     flow_scale_lpm: float = 60
     show_raw_volts: bool = False

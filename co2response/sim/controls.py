@@ -112,8 +112,15 @@ MEASURED_NOTE = (
     "and MV the last minute, so those take a little longer (raise Speed to get there sooner)."
 )
 
+#: next to Speed: whether a whole simulated test is also saved as a session
+RECORD_TESTS = Switch(
+    "record_tests",
+    "Record whole simulated tests",
+    "Also saves a whole simulated test as a session (marked Simulator), so the review charts and the PDF report can be made from it too.",
+)
+
 SLIDERS: dict[str, Slider] = {SPEED.key: SPEED, **{it.key: it for g in GROUPS for it in g.items if isinstance(it, Slider)}}
-SWITCHES: dict[str, Switch] = {it.key: it for g in GROUPS for it in g.items if isinstance(it, Switch)}
+SWITCHES: dict[str, Switch] = {RECORD_TESTS.key: RECORD_TESTS, **{it.key: it for g in GROUPS for it in g.items if isinstance(it, Switch)}}
 
 
 def fmt_value(s: Slider, v: float) -> str:
@@ -146,9 +153,50 @@ class Situation:
     values: dict
     #: an event marker placed when the situation is chosen (e.g. "Rebreathing")
     marker: str | None = None
+    #: a whole test that runs by itself: baseline, then the CO2 rise with these values,
+    #: then the end of the test and recovery (see ``MonitorEngine.apply_situation``)
+    test: bool = False
 
+
+#: a whole simulated test, in simulated seconds: the baseline before the valve is
+#: "turned", how long the "operator" takes to end the test once the stop alarm sounds
+#: (or the CO2 stops rising), and the recovery that is still simulated afterwards
+TEST_BASELINE_SEC = 30.0
+TEST_REACTION_SEC = 3.0
+TEST_RECOVERY_SEC = 20.0
+WHOLE_TEST = "Whole test (runs by itself)"
+_WHOLE = (
+    " Runs the whole test by itself: 30 s of baseline, then the valve is “turned” and CO2 rises until the stop alarm, then the end of the test and "
+    "20 s of recovery. Every graph fills in from it: the waveforms, the EtCO2, MV and RR trends and the response plot with its baseline and fitted line. "
+    "Set Speed to 10× to see it all in about 20 s."
+)
 
 SITUATIONS: tuple[Situation, ...] = (
+    # whole tests: the simulation presses the test keys itself
+    Situation(
+        "test_normal",
+        "Whole rebreathing test",
+        WHOLE_TEST,
+        "A normal response: breathing rises steadily as CO2 climbs 12 mmHg/min to the 65 mmHg stop limit." + _WHOLE,
+        {"ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 67, "drive": 0.8},
+        test=True,
+    ),
+    Situation(
+        "test_blunted",
+        "Whole test: blunted response",
+        WHOLE_TEST,
+        "Breathing hardly responds to the CO2 (opioids, sleep, CCHS): an almost flat response line." + _WHOLE,
+        {"ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 67, "drive": 0.1, "rr": 12},
+        test=True,
+    ),
+    Situation(
+        "test_brisk",
+        "Whole test: brisk response",
+        WHOLE_TEST,
+        "A strong response: a steep line. The CO2 rise stops at 52 mmHg, before the limits, and the test ends there." + _WHOLE,
+        {"ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 52, "drive": 2, "vt_ml": 400},
+        test=True,
+    ),
     # breathing patterns
     Situation("normal", "Normal at rest", "Breathing patterns", "Adult at rest: RR 15 /min, VT 500 mL, EtCO2 38 mmHg.", {}),
     Situation("hyperventilation", "Hyperventilation", "Breathing patterns", "Fast, deep breathing washes CO2 out (anxiety, pain): EtCO2 drops to about 20 mmHg.", {"rr": 28, "vt_ml": 650, "etco2": 20}),
@@ -236,7 +284,7 @@ def model_params(values: dict) -> dict:
     """SimSettings fields (all or some) → PhysioModel parameters."""
     out = {}
     for k, v in values.items():
-        if k in ("preset", "adjusted", "speed"):  # speed belongs to the source, not the model
+        if k in ("preset", "adjusted", "speed", "record_tests"):  # these belong to the source and the engine, not the model
             continue
         if k == "ie_ratio":
             out["insp_fraction"] = 1 / (1 + v)

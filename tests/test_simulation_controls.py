@@ -52,7 +52,7 @@ def test_every_control_is_a_simulator_setting_and_in_range():
         assert slider_value(s, slider_index(s, getattr(SimSettings(), key))) == pytest.approx(getattr(SimSettings(), key))
     for key in SWITCHES:
         assert getattr(SimSettings(), key) is False
-    assert sum(len(g.items) for g in GROUPS) + 1 == len(SLIDERS) + len(SWITCHES)  # + the speed slider at the top
+    assert sum(len(g.items) for g in GROUPS) + 2 == len(SLIDERS) + len(SWITCHES)  # + the speed slider and the record switch at the top
     assert SLIDERS["speed"] is SPEED and "speed" not in model_params({"speed": 5})
     assert fmt_value(SLIDERS["ie_ratio"], 2) == "1:2.0"
     assert fmt_value(SLIDERS["rr"], 15) == "15 /min"
@@ -196,7 +196,10 @@ def test_switches_follow_the_old_scenarios():
 # ------------------------------------------------------------------ through the engine
 
 
-@pytest.mark.parametrize("sit", SITUATIONS, ids=[s.id for s in SITUATIONS])
+STEADY = [s for s in SITUATIONS if not s.test]  # the whole tests change as they run: tested below
+
+
+@pytest.mark.parametrize("sit", STEADY, ids=[s.id for s in STEADY])
 def test_each_situation_reaches_the_monitor(tmp_path, sit):
     """The monitor measures what the situation sets: every number within a few %."""
     e = make_engine(tmp_path)
@@ -304,3 +307,111 @@ def test_the_panel_warns_when_flow_would_clip(tmp_path):
     e.set_sim(vt_ml=500, rr=15)
     run(e, 10)
     assert e.sim_expected()["clipping"] == []
+
+
+# ------------------------------------------------------------------ whole simulated tests
+
+
+def run_whole_test(e, limit_s: float = 400) -> float:
+    """Run until the whole simulated test has finished; returns the real seconds it took."""
+    seconds = 0.0
+    while e._sim_test is not None and seconds < limit_s:
+        run(e, 1)
+        seconds += 1
+    assert e._sim_test is None, e.sim_test_text()
+    return seconds
+
+
+def test_a_whole_simulated_test_fills_every_graph(tmp_path):
+    """The simulation presses the test keys itself: baseline, rebreathing to the stop
+    alarm, end, recovery. Afterwards the trends and the response plot are all there."""
+    e = make_engine(tmp_path)
+    e.set_sim(speed=10)
+    e.apply_situation("test_normal")
+    assert e.snapshot().test.phase == "baseline" and e.sim_test_text().startswith("Whole test: baseline")
+    assert not e.source.core.model.params.ramp  # CO2 does not rise during the baseline
+    took = run_whole_test(e)
+    assert took < 40  # about 3.5 simulated minutes at 10x
+    assert [m.label for m in e.markers] == ["Baseline", "Rebreathing", "End of test"]
+    w = e.test_window()
+    assert w.start - w.baseline == pytest.approx(30 / 10, abs=0.6)  # 30 simulated seconds of baseline
+    # it ended because the stop alarm sounded
+    assert any("START co2Stop" in line.text for line in e.log) and any("START co2High" in line.text for line in e.log)
+    assert any(line.text.startswith("Simulated test finished: slope") for line in e.log)
+    # the response plot: baseline, fitted line, breaths outside the fit
+    res = e.co2_response()
+    assert len(res.baseline) >= 6 and len(res.rebreathing) >= 20 and len(res.skipped) >= 5
+    assert res.baseline_etco2 == pytest.approx(38, abs=1) and res.baseline_mv == pytest.approx(7.5, rel=0.06)
+    assert 0.2 < res.slope < 0.6 and res.r > 0.97
+    assert max(p.etco2 for p in res.rebreathing) > 63
+    # the trends: EtCO2, MV and RR all rise through the test
+    pts = [q for q in e.trend if q.quality == "ok"]
+    top = max(pts, key=lambda q: q.etco2)
+    assert top.etco2 > 64 and top.mv > 1.5 * pts[3].mv and top.rr > pts[3].rr + 2
+    # and it is back to quiet breathing with the CO2 rise off, still "not adjusted"
+    assert not e.source.core.model.params.ramp and not e.settings.sim.adjusted and e.settings.sim.preset == "test_normal"
+    assert e.snapshot().test.phase == "ended"
+    assert e.sim_test_text() == ""
+
+
+def test_blunted_and_brisk_whole_tests_give_flat_and_steep_lines(tmp_path):
+    slopes = {}
+    for sid in ("test_blunted", "test_normal", "test_brisk"):
+        e = make_engine(tmp_path / sid)
+        e.set_sim(speed=10)
+        e.apply_situation(sid)
+        run_whole_test(e)
+        res = e.co2_response()
+        assert res.fit is not None and len(res.baseline) >= 4, sid
+        slopes[sid] = res.slope
+    assert slopes["test_blunted"] < 0.1 < slopes["test_normal"] < slopes["test_brisk"]
+    # the brisk test ends where its CO2 stops rising (52 mmHg), without reaching the limits
+    assert not any("co2Stop" in line.text for line in e.log) and max(q.etco2 for q in e.trend) < 55
+
+
+def test_a_whole_simulated_test_can_be_recorded_for_the_review_and_the_report(tmp_path):
+    from co2response.storage.report import build_report, result_lines
+    from co2response.storage.session_file import session_markers
+
+    e = make_engine(tmp_path)
+    e.set_sim(speed=10, record_tests=True)
+    assert not e.settings.sim.adjusted  # like the speed, not part of a situation
+    e.apply_situation("test_normal")
+    assert e.recorder.active and "recording" in e.sim_test_text()
+    run_whole_test(e)
+    assert not e.recorder.active  # it stops the recording it started
+    rec = e.library.list()[0]
+    parsed = e.library.parse(rec.id)
+    assert [label for _, label in session_markers(parsed.events)] == ["Baseline", "Rebreathing", "End of test"]
+    lines = dict(result_lines(build_report(parsed, rec.file_name)))
+    assert lines["Response slope"].endswith("L/min per mmHg") and "baseline from" in lines["Test phases"] and "ended at" in lines["Test phases"]
+    assert e.settings.sim.record_tests  # choosing a situation keeps the switch
+    # a recording that was already running is left running
+    e.start_recording()
+    e.apply_situation("test_blunted")
+    run_whole_test(e)
+    assert e.recorder.active
+
+
+def test_the_operator_can_take_over_a_whole_simulated_test(tmp_path):
+    e = make_engine(tmp_path)
+    e.set_sim(speed=5)
+    e.apply_situation("test_normal")
+    run(e, 2)
+    e.start_rebreathing()  # before the 30 s of baseline are up
+    run(e, 0.5)
+    assert e.source.core.model.params.ramp and e.sim_test_text().startswith("Whole test: rebreathing")
+    run(e, 8)
+    e.end_test()  # before the stop alarm
+    run(e, 0.5)
+    assert not e.source.core.model.params.ramp and "recovery" in e.sim_test_text()
+    # choosing another situation stops the script
+    e.apply_situation("test_normal")
+    run(e, 1)
+    e.apply_situation("normal")
+    assert e._sim_test is None and any(line.text == "Simulated test stopped: another situation was chosen" for line in e.log)
+    # and so does stopping the simulator
+    e.apply_situation("test_normal")
+    e.disconnect()
+    e.tick()
+    assert e._sim_test is None

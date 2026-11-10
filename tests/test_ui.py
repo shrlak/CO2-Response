@@ -425,3 +425,43 @@ def test_a_long_recording_opens_in_steps_while_the_monitor_keeps_running(win, qt
     win.open_review(rec.id)
     qtbot.wait(300)
     assert win.review.parsed is None and not hasattr(win.review, "plots")
+
+
+def test_a_whole_simulated_test_from_the_panel_fills_the_trends_and_the_response_plot(win):
+    m, e = win.monitor, win.engine
+    win._tick()
+    m.k_sim.click()
+    m.sim.sliders["speed"].slider.setValue(10 - 1)  # 10x: the slider counts from 1
+    assert e.settings.sim.speed == 10
+    m.sim.switches["record_tests"].setChecked(True)
+    assert e.settings.sim.record_tests and not e.settings.sim.adjusted
+    m.sim.sit_buttons["test_normal"].click()
+    advance(win, 1)
+    assert m.sim.progress.isVisible() and m.sim.progress.text().startswith("Whole test: baseline")
+    assert m.trend.test_text.toolTip().startswith("BASELINE 0:1")  # the test's timer runs on the simulated clock
+    for _ in range(60):
+        advance(win, 1)
+        if e._sim_test is None:
+            break
+    assert e._sim_test is None and not m.sim.progress.isVisible()
+    tr = m.trend
+    assert tr.test_text.toolTip().startswith("TEST ENDED after")
+    # every graph has the test in it: the three trends, and the response plot with its line
+    for series, top in (("etco2", 64), ("mv", 12), ("rr", 18)):
+        e.update_settings(trend_series=series)
+        advance(win, 0.3)
+        assert max(tr.points.getData()[1]) > top, series
+    assert len(tr.marker_lines) == 3
+    tr.tabs.button(1).click()
+    advance(win, 0.3)
+    assert tr.resp_points.data.size >= 20 and tr.resp_base.data.size >= 6 and tr.resp_skip.data.size >= 5
+    assert len(tr.resp_fit.getData()[0]) == 2 and "slope 0." in tr.meta.toolTip()
+    # recorded, so the review and the report have it too
+    rec = e.library.list()[0]
+    assert rec.status == "complete" and rec.stats["markers"] == 3
+    win.open_review(rec.id)
+    from co2response.ui.widgets import Stat
+
+    stats = {st.k.text(): st.v.text() for st in win.review.findChildren(Stat)}
+    assert stats["CO2 RESPONSE"].startswith("slope 0.")
+    win.grab()

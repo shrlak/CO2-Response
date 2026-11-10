@@ -29,6 +29,7 @@ from ..sim.controls import (
     GROUPS,
     MEASURED_NOTE,
     READBACK,
+    RECORD_TESTS,
     SITUATION_BY_ID,
     SITUATION_GROUPS,
     SITUATIONS,
@@ -143,6 +144,13 @@ class SimPanel(QFrame):
         # how fast simulated time runs, above everything it speeds up
         self.sliders: dict[str, SliderRow] = {SPEED.key: SliderRow(SPEED, set_value)}
         lay.addWidget(self.sliders[SPEED.key])
+        self.switches: dict[str, QCheckBox] = {}
+        rec = QCheckBox(RECORD_TESTS.label)
+        rec.setStyleSheet("font-weight:600;")
+        rec.setToolTip(RECORD_TESTS.hint)
+        rec.toggled.connect(lambda on: engine.set_sim(record_tests=on))
+        self.switches[RECORD_TESTS.key] = rec
+        lay.addWidget(rec)
 
         self.current = QLabel()
         self.current.setStyleSheet("font-size:17px; font-weight:700;")
@@ -150,7 +158,10 @@ class SimPanel(QFrame):
         self.warn = label("", "warn", wrap=True)
         lay.addWidget(label("SITUATION", "k"))
         lay.addWidget(self.current)
+        #: where a whole simulated test stands
+        self.progress = label("", "warn", wrap=True)
         lay.addWidget(self.desc)
+        lay.addWidget(self.progress)
         lay.addWidget(self.warn)
 
         rb = QGridLayout()
@@ -194,7 +205,6 @@ class SimPanel(QFrame):
                 grid.addWidget(b, i // 2, i % 2)
             lay.addLayout(grid)
 
-        self.switches: dict[str, QCheckBox] = {}
         for g in GROUPS:
             lay.addWidget(self._section(g.title.upper()))
             for it in g.items:
@@ -259,4 +269,7 @@ class SimPanel(QFrame):
         warn = " ".join(x for x in (clipping_text(exp.get("clipping", []) if exp else []), scenario_note(sim)) if x)
         self.warn.setText(warn)
         self.warn.setVisible(bool(warn))
+        prog = self.engine.sim_test_text()
+        self.progress.setText(prog)
+        self.progress.setVisible(bool(prog))
         set_prop(self, "running", s.source_kind == "simulator")
