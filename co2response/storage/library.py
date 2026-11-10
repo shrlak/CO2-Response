@@ -124,6 +124,27 @@ class SessionLibrary:
         rec.last_write_at = self.clock()
         self.put(rec)
 
+    def _ends_with_newline(self, rec: SessionRecord) -> bool:
+        try:
+            with open(self.path(rec), "rb") as f:
+                f.seek(-1, os.SEEK_END)
+                return f.read(1) == b"\n"
+        except OSError:  # an empty file
+            return True
+
+    def append_row(self, sid: str, row: str) -> None:
+        """Add a row to a finished session (a breath excluded by hand in the review).
+        Raises ValueError for a session that is still being recorded."""
+        rec = self.get(sid)
+        if rec is None:
+            raise ValueError("This session is no longer in the library.")
+        if rec.status == "recording":
+            raise ValueError("This session is still being recorded.")
+        last_write = rec.last_write_at
+        self.append(rec, row if self._ends_with_newline(rec) else "\n" + row)
+        rec.last_write_at = last_write  # when it was recorded, not when it was annotated
+        self.put(rec)
+
     # ---------- reading ----------
 
     def read_chunks(self, sid: str, size: int = 1 << 20):
@@ -277,6 +298,13 @@ class ChunkedSessionLibrary(SessionLibrary):
         self.path(rec).mkdir(parents=True, exist_ok=True)
         self.put(rec)
         return rec
+
+    def _ends_with_newline(self, rec: SessionRecord) -> bool:
+        parts = self._parts(rec)
+        if not parts:
+            return True
+        data = parts[-1].read_bytes()
+        return not data or data.endswith(b"\n")
 
     def _write(self, rec: SessionRecord, text: str) -> None:
         """Append text, starting a new part whenever the current one is full."""

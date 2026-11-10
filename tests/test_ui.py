@@ -400,6 +400,19 @@ def test_review_shows_the_response_and_saves_the_report(win, tmp_path, monkeypat
     monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(out), ""))
     from co2response.ui.settings.data import export_report
 
+    # a click on a fitted breath takes it out of the fit and saves that in the session file
+    n_fit = rv.resp.fitted.data.size
+    assert n_fit >= 15 and rv.resp.base.data.size >= 6 and "Click a breath" in rv.resp_note.text()
+    key = rv.resp.fitted.points()[2].data()
+    rv.resp.point_clicked(rv.resp.fitted, rv.resp.fitted.points()[2:3])
+    assert rv.resp.fitted.data.size == n_fit - 1 and rv.resp.out.data.size == 1
+    assert f"BREATH_EXCLUDED {key:g} manual" in e.library.text(rec.id).splitlines()[-1]
+    assert "1 excluded by hand" in rv.resp_note.text() and f"(n {n_fit - 1})" in {st.k.text(): st.v.text() for st in rv.findChildren(Stat)}["CO2 RESPONSE"]
+    win.open_review(rec.id)  # it is still out when the session is opened again
+    rv = win.review
+    assert rv.resp.out.data.size == 1
+    rv.resp.point_clicked(rv.resp.out, rv.resp.out.points()[:1])  # and a click on its cross puts it back
+    assert rv.resp.out.data.size == 0 and "BREATH_INCLUDED" in e.library.text(rec.id).splitlines()[-1]
     export_report(win, rec.file_name, rv.parsed)
     pdf = pypdf.PdfReader(str(out))
     text = pdf.pages[0].extract_text()

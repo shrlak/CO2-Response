@@ -675,6 +675,22 @@ def session_markers(events: Iterable[EventRec]) -> list[tuple[float, str]]:
     return [(t, label) for t, label in out]
 
 
+def exclude_breath(s: ParsedSession, n: float, on: bool = True) -> str | None:
+    """Take breath ``n`` of a parsed session out of the response fit by hand, or put
+    it back. Returns the row to append to the session file so the choice is kept
+    (None if nothing changed: no such breath, a breath the noise screen rejected, or
+    already in that state). The change is an event at the end of the file; the
+    breath's own row is never rewritten."""
+    b = next((x for x in s.breaths if x.n == n), None)
+    if b is None or (b.quality or "ok") not in ("ok", "excluded") or ((b.quality == "excluded") == on):
+        return None
+    b.quality = "excluded" if on else "ok"
+    text = f"BREATH_EXCLUDED {js_num(n)} manual" if on else f"BREATH_INCLUDED {js_num(n)}"
+    t = max(s.duration_s, s.events[-1].time_s if s.events else 0.0)
+    s.events.append(EventRec(t, text))
+    return format_row(t, s.started_ms + t * 1000, events=[text])
+
+
 def event_type(text: str) -> str:
     m = re.match(r"[A-Z_]+", text)
     return m.group(0) if m else "NOTE"

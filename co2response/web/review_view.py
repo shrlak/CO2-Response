@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .. import __version__
+from ..processing.metrics import co2_response_summary
 from ..storage.report import response_stats, session_response
-from ..storage.session_file import ParsedSession, Range, breaths_csv, clean_breaths, event_type, events_csv, export_session_parts, summarize
-from .charts import ReviewChart, elapsed
+from ..storage.session_file import ParsedSession, Range, breaths_csv, clean_breaths, event_type, events_csv, exclude_breath, export_session_parts, summarize
+from .charts import ResponseChart, ReviewChart, elapsed
 from .dom import actions, btn, byid, css_var, data, download, esc, run, set_html, set_text, stat
 from .views import duration, fmt, stamp
 
@@ -27,6 +28,7 @@ class ReviewView:
         self.error = ""
         self.zoom: Range | None = None
         self.charts: list[ReviewChart] = []
+        self.resp: ResponseChart | None = None
         self.opening = False
 
     def open(self, sid: str) -> None:
@@ -91,9 +93,8 @@ class ReviewView:
                 ("Markers", str(summ.markers)),
                 ("Samples", f"{summ.samples:,} at {summ.rate_hz} Hz"),
                 ("Dropped samples", str(summ.dropped)),
-                *response_stats(session_response(s)),
             ]
-        )
+        ) + "".join(stat(k, v, live="stat-" + k.lower().replace(" ", "-")) for k, v in response_stats(session_response(s)))
 
         def legend(items):
             return '<div class="legend">' + "".join(f'<span><i style="background:var({v})"></i>{t}</span>' for t, v in items) + "</div>"
@@ -107,6 +108,8 @@ class ReviewView:
             f'<p class="note">Study {esc(s.study_code or "—")} · started {stamp(s.started_ms)} · {esc(s.meta.get("source", "unknown source"))} · firmware {esc(s.meta.get("firmware", "?"))} · file format v{s.version}{conv}</p></div></div>'
             f'<div class="stats">{stats}</div>'
             f'<div class="row-actions" style="margin:4px 0 10px"><span class="note" id="zoom-note"></span>{btn("Show whole session", "review-whole", "btn small", id="review-whole")}</div>'
+            '<h3>Ventilatory response</h3><p class="note" id="review-resp-note"></p>'
+            '<div class="review-chart" style="height:260px"><canvas id="rc-resp" data-act="review-resp-click"></canvas></div>'
             f'<h3>EtCO2 and RR per breath</h3>{legend([("EtCO2 (left)", "--co2"), ("RR (right)", "--text")])}<div class="review-chart"><canvas id="rc-0"></canvas></div>'
             f'<h3>Tidal volume and minute ventilation</h3>{legend([("VT (left)", "--pneumo"), ("MV (right)", "--flow")])}<div class="review-chart" style="height:180px"><canvas id="rc-1"></canvas></div>'
             f'<h3 id="wave-title">Waveforms</h3>{legend([("CO2 mmHg (left)", "--co2"), ("Flow (right)", "--flow"), ("Pneumotach (right)", "--pneumo")])}<div class="review-chart" style="height:230px"><canvas id="rc-2"></canvas></div>'
@@ -130,6 +133,8 @@ class ReviewView:
         def arr(xs):
             return np.asarray(xs, float)
 
+        self.resp = ResponseChart(byid("rc-resp"))
+        self.show_response()
         self.charts = [ReviewChart(byid(f"rc-{i}"), self._on_zoom) for i in range(3)]
         c0, c1, c2 = self.charts
         c0.series = [(bt, arr([x.etco2 for x in b]), css_var("--co2"), False, True), (bt, arr([x.rr for x in b]), css_var("--text"), True, False)]
@@ -142,6 +147,35 @@ class ReviewView:
         for c in self.charts:
             c.events = ev
         self.set_zoom(None)
+
+    def show_response(self) -> None:
+        """The response plot and its numbers. A click on a breath takes it out of the fit."""
+        res = session_response(self.parsed)
+        self.resp.draw(res)
+        can = self.rec.status != "recording"
+        hint = " Click a breath to take it out of the fit, or its cross to put it back; the choice is saved with the session." if can else " (Still recording: breaths cannot be taken out here yet.)"
+        set_text("review-resp-note", co2_response_summary(res, fmt) + "." + hint)
+        for key, value in response_stats(res):
+            set_text("stat-" + key.lower().replace(" ", "-"), value)
+
+    def toggle_breath(self, client_x: float, client_y: float) -> bool:
+        if self.parsed is None or self.resp is None:
+            return False
+        n = self.resp.hit(client_x, client_y)
+        b = next((x for x in self.parsed.breaths if x.n == n), None)
+        if b is None:
+            return False
+        lib = self.app.engine.library
+        if self.rec.status == "recording":
+            raise ValueError("This session is still being recorded.")
+        row = exclude_breath(self.parsed, n, b.quality != "excluded")
+        if row is None:
+            return False
+        lib.append_row(self.sid, row)
+        self.app.engine.library_changed()
+        self.app.storage.sync()
+        self.show_response()
+        return True
 
     def _on_zoom(self, a: float, b: float) -> None:
         f = self.full
@@ -166,6 +200,8 @@ class ReviewView:
     def redraw(self) -> None:
         for c in self.charts:
             c.draw()
+        if self.resp is not None and self.parsed is not None:
+            self.resp.draw(session_response(self.parsed))
 
     def _base(self) -> str:
         n = self.rec.file_name
@@ -189,6 +225,14 @@ def install_review_actions(app: "WebApp") -> None:
         t = float(data(el, "arg"))
         rv.set_zoom(Range(max(0, t - 30), min(rv.full.t1, t + 30)))
 
+    def resp_click(el):
+        from . import dom
+
+        try:
+            rv.toggle_breath(dom.last_click[0], dom.last_click[1])
+        except (OSError, ValueError) as ex:
+            dom.toast(f"Could not save the change: {ex}", 6000)
+
     def replay(el):
         app.engine.connect("replay", session=rv.parsed, file_name=rv.rec.file_name, speed=1, use_file_calibration=True)
         app.show("monitor")
@@ -201,6 +245,7 @@ def install_review_actions(app: "WebApp") -> None:
             "review-range": range_export,
             "review-event": event,
             "review-replay": replay,
+            "review-resp-click": resp_click,
         }
     )
 

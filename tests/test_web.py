@@ -278,10 +278,23 @@ def test_record_import_review_and_persistence(page, site_url, tmp_path):
     sync_api.expect(page.locator(".review")).to_contain_text("reimported.csv")
     sync_api.expect(page.locator(".review .stats")).to_contain_text("Breaths")
     sync_api.expect(page.locator(".review .loglist")).to_contain_text("MARK Event 1")
-    assert page.locator(".review-chart canvas").count() == 3
+    assert page.locator(".review-chart canvas").count() == 4  # the response plot and three time charts
     with page.expect_download() as dl2:
         page.get_by_role("button", name="Breaths (.csv)", exact=True).click()
     assert dl2.value.suggested_filename == "reimported_breaths.csv"
+    # the response plot of a saved session: a click on a breath takes it out of the fit
+    sync_api.expect(page.locator("#review-resp-note")).to_contain_text("Click a breath")
+    page.locator("#rc-resp").scroll_into_view_if_needed()
+    spot = page.evaluate("""() => {
+        const c = document.getElementById('rc-resp');
+        const [x, y] = c.dataset.points.split(';')[0].split(',').map(Number);
+        const r = c.getBoundingClientRect();
+        return [r.left + x, r.top + y];
+    }""")
+    page.mouse.click(spot[0], spot[1])
+    sync_api.expect(page.locator("#review-resp-note")).to_contain_text("1 excluded by hand")
+    page.mouse.click(spot[0], spot[1])
+    sync_api.expect(page.locator("#review-resp-note")).not_to_contain_text("excluded by hand")
     # the test report, as a PDF made in the browser
     sync_api.expect(page.locator(".review .stats")).to_contain_text("CO2 response")
     with page.expect_download() as dl3:

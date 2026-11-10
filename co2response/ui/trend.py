@@ -27,25 +27,12 @@ from ..processing.co2 import mmhg_to_pct
 from ..processing.metrics import co2_response_summary
 from . import theme
 from .monitor_widgets import expand_button
+from .response_plot import ResponsePlot, style_plot
 from .theme import ui_font
 from .widgets import button, fmt, label, set_combo, set_prop
 
 #: what the trend tab can plot against time: setting value → (tab text, axis label)
 SERIES = {"etco2": ("ETCO2 TREND", "EtCO2"), "mv": ("MV TREND", "MV (L/min, 60 s average)"), "rr": ("RR TREND", "RR (/min)")}
-
-
-def style_plot(pw: pg.PlotWidget) -> None:
-    p = theme.current
-    pw.setBackground(p.panel)
-    pi = pw.getPlotItem()
-    pi.hideButtons()
-    pi.setMenuEnabled(False)
-    for name in ("left", "bottom", "right"):
-        ax = pi.getAxis(name)
-        ax.setPen(pg.mkPen(p.grid))
-        ax.setTextPen(pg.mkPen(p.muted))
-        ax.setStyle(tickFont=ui_font(15, QFont.Weight.DemiBold), tickLength=-5)
-    pi.showGrid(x=True, y=True, alpha=0.35)
 
 
 class TrendPanel(QFrame):
@@ -116,10 +103,10 @@ class TrendPanel(QFrame):
 
         self.stack = QStackedWidget()
         self.trend = pg.PlotWidget(axisItems={"bottom": pg.DateAxisItem(orientation="bottom")})
-        self.resp = pg.PlotWidget()
+        self.resp = ResponsePlot(self._toggle_breath)
+        self.trend.getPlotItem().setMouseEnabled(False, False)
+        self.trend.getPlotItem().getViewBox().setMouseEnabled(False, False)
         for pw in (self.trend, self.resp):
-            pw.getPlotItem().setMouseEnabled(False, False)
-            pw.getPlotItem().getViewBox().setMouseEnabled(False, False)
             self.stack.addWidget(pw)
         lay.addWidget(self.stack, 1)
 
@@ -137,21 +124,8 @@ class TrendPanel(QFrame):
         for it in (self.high_band, self.low_band, self.trace, self.joined, self.high_line, self.stop_line, self.low_line, self.points, self.alarm_marks):
             ti.addItem(it)
         self.marker_lines: list[pg.InfiniteLine] = []
-        ri = self.resp.getPlotItem()
-        self.resp_points = pg.ScatterPlotItem(size=10)
-        # baseline breaths (before the rebreathing marker): hollow, not fitted
-        self.resp_base = pg.ScatterPlotItem(size=11)
-        # the first seconds of rebreathing and the breaths after the end: faint, not fitted
-        self.resp_skip = pg.ScatterPlotItem(size=7)
-        # breaths taken out by hand: crosses
-        self.resp_out = pg.ScatterPlotItem(size=12, symbol="x")
-        self.resp_fit = pg.PlotCurveItem()
-        for it in (self.resp_skip, self.resp_base, self.resp_points, self.resp_out, self.resp_fit):
-            ri.addItem(it)
-        for it in (self.resp_base, self.resp_points, self.resp_out):
-            it.sigClicked.connect(self._point_clicked)
-        ri.setLabel("bottom", "EtCO2 (mmHg)")
-        ri.setLabel("left", "MV of each breath (L/min)")
+        # the response plot's items, by the names the rest of the panel uses
+        self.resp_points, self.resp_base, self.resp_skip, self.resp_out, self.resp_fit = self.resp.fitted, self.resp.base, self.resp.skip, self.resp.out, self.resp.fit
         self._key = None
         self.apply_theme()
 
@@ -170,17 +144,18 @@ class TrendPanel(QFrame):
         self.stack.setCurrentIndex(i)
         self._key = None
 
-    def _point_clicked(self, _item, points, _ev=None) -> None:
+    def _toggle_breath(self, key) -> None:
         """A click on a breath in the response plot takes it out of the fit, or puts it back."""
-        for pt in points[:1]:
-            key = pt.data()
-            if key is not None and self.engine.toggle_breath(int(key)):
-                self._key = None
+        if self.engine.toggle_breath(int(key)):
+            self._key = None
+
+    def _point_clicked(self, item, points, ev=None) -> None:
+        self.resp.point_clicked(item, points, ev)
 
     def apply_theme(self) -> None:
         p = theme.current
-        for pw in (self.trend, self.resp):
-            style_plot(pw)
+        style_plot(self.trend)
+        self.resp.apply_theme()
         for band, color in ((self.high_band, p.alarm_high), (self.low_band, p.alarm_med)):
             c = QColor(color)
             c.setAlphaF(0.1)
@@ -198,22 +173,6 @@ class TrendPanel(QFrame):
         self.trace.setPen(pg.mkPen(c, width=1.5))
         self.points.setBrush(pg.mkBrush(p.co2))
         self.points.setPen(pg.mkPen(p.co2))
-        self.resp_points.setBrush(pg.mkBrush(p.pneumo))
-        self.resp_points.setPen(pg.mkPen(p.pneumo))
-        self.resp_base.setBrush(pg.mkBrush(None))
-        self.resp_base.setPen(pg.mkPen(p.muted, width=2))
-        self.resp_skip.setBrush(pg.mkBrush(None))
-        faint = QColor(p.muted)
-        faint.setAlphaF(0.55)
-        self.resp_skip.setPen(pg.mkPen(faint, width=1.5))
-        self.resp_out.setBrush(pg.mkBrush(p.alarm_high))
-        self.resp_out.setPen(pg.mkPen(p.alarm_high))
-        self.resp_fit.setPen(pg.mkPen(p.text, width=3))
-        for pw in (self.resp,):
-            for ax in ("left", "bottom"):
-                lab = pw.getPlotItem().getAxis(ax).label
-                lab.setDefaultTextColor(QColor(p.muted))
-                lab.setFont(ui_font(14, QFont.Weight.DemiBold))
         self._key = None
 
     def _refresh_test(self, s: Snapshot) -> None:
@@ -330,28 +289,6 @@ class TrendPanel(QFrame):
         else:
             # Read's method: baseline breaths averaged, the line fitted to rebreathing only
             res = e.co2_response(t0)
-            fit = res.fit
-
-            def put(item, pts_):
-                item.setData(x=[q.etco2 for q in pts_], y=[q.mv for q in pts_], data=[q.key for q in pts_])
-
-            put(self.resp_points, res.rebreathing)
-            put(self.resp_base, res.baseline)
-            put(self.resp_skip, res.skipped)
-            put(self.resp_out, res.excluded)
-            pi = self.resp.getPlotItem()
-            rx = [q.etco2 for q in res.rebreathing]
-            if fit:
-                ends = [min(rx), max(rx)]
-                self.resp_fit.setData(ends, [fit.slope * x + fit.intercept for x in ends])
-            else:
-                self.resp_fit.setData([], [])
+            self.resp.set_response(res)
             hint = " · click a point to leave it out" if res.baseline or res.rebreathing else ""
-            self.set_meta(co2_response_summary(res, fmt) + (removed if fit else "") + hint)
-            every = res.baseline + res.rebreathing + res.skipped + res.excluded
-            xs = [q.etco2 for q in every]
-            ys = [q.mv for q in every]
-            lo = math.floor((min(xs) if xs else 30) - 2)
-            hi = math.ceil((max(xs) if xs else 50) + 2)
-            pi.setXRange(lo, hi, padding=0)
-            pi.setYRange(0, max(10, math.ceil((max(ys) if ys else 10) * 1.2)), padding=0)
+            self.set_meta(co2_response_summary(res, fmt) + (removed if res.fit else "") + hint)

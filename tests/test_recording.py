@@ -411,3 +411,45 @@ def test_dropped_samples_are_counted_like_the_live_tracker():
     assert live.dropped > 50
     assert dropped_samples(np.array(seq, dtype=np.int32), np.array(t, dtype=float)) == live.dropped
     assert dropped_samples(np.array([], dtype=np.int32), np.array([])) == 0
+
+
+@pytest.mark.parametrize("chunked", [False, True])
+def test_a_breath_excluded_in_the_review_is_saved_in_the_session_file(tmp_path, chunked):
+    """Taking a breath out of the fit after the recording appends an event to the file;
+    the breath's own row is never rewritten."""
+    from conftest import ROOT
+
+    from co2response.storage.library import ChunkedSessionLibrary
+    from co2response.storage.report import session_response
+    from co2response.storage.session_file import exclude_breath
+
+    lib = (ChunkedSessionLibrary if chunked else SessionLibrary)(tmp_path / "lib")
+    rec, parsed = lib.import_file(ROOT / "sample-data" / "synthetic_session.csv")
+    before = lib.text(rec.id)
+    res = session_response(parsed)
+    n = res.rebreathing[3].key
+    row = exclude_breath(parsed, n)
+    assert row is not None and row.rstrip("\n").endswith(f"BREATH_EXCLUDED {n:g} manual")
+    lib.append_row(rec.id, row)
+    assert exclude_breath(parsed, n) is None  # already out
+    after = lib.text(rec.id)
+    assert after.startswith(before) and after[len(before) :] == row  # only an event was added
+    again = lib.parse(rec.id)
+    assert next(b for b in again.breaths if b.n == n).quality == "excluded"
+    out = session_response(again)
+    assert [p.key for p in out.excluded] == [n] and len(out.rebreathing) == len(res.rebreathing) - 1
+    # put it back
+    lib.append_row(rec.id, exclude_breath(again, n, False))
+    assert session_response(lib.parse(rec.id)).excluded == []
+    # a breath the noise screen rejected cannot be put in or taken out by hand, and no breath 999
+    bad = next(b.n for b in parsed.breaths if b.quality == "artifact")
+    assert exclude_breath(parsed, bad) is None and exclude_breath(parsed, 999) is None
+    # a session still being recorded is not edited
+    live = lib.create("live.csv", "X", 0, "Simulator")
+    with pytest.raises(ValueError, match="still being recorded"):
+        lib.append_row(live.id, row)
+    # a file that does not end in a newline gets one first
+    if not chunked:
+        lib.path(rec).write_text(lib.path(rec).read_text().rstrip("\n"))
+        lib.append_row(rec.id, exclude_breath(lib.parse(rec.id), n))
+        assert next(b for b in lib.parse(rec.id).breaths if b.n == n).quality == "excluded"

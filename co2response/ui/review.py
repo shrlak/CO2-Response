@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from .. import __version__
 from ..engine.monitor import MonitorEngine
+from ..processing.metrics import co2_response_summary
 from ..storage.report import response_stats, session_response
 from ..storage.session_file import (
     ParsedSession,
@@ -29,10 +30,12 @@ from ..storage.session_file import (
     clean_breaths,
     event_type,
     events_csv,
+    exclude_breath,
     summarize,
     write_session,
 )
 from . import theme
+from .response_plot import ResponsePlot
 from .settings.common import downloads_dir, parse_then, save_text
 from .settings.data import export_report, export_session
 from .theme import ui_font
@@ -228,6 +231,16 @@ class ReviewScreen(QFrame):
             ]
         )
         lay.addWidget(stats)
+        self.stats = stats
+
+        # the response plot: click a breath to take it out of the fit; the choice is kept in the file
+        lay.addWidget(label("VENTILATORY RESPONSE", "h3"))
+        self.resp_note = label("", "note", wrap=True)
+        lay.addWidget(self.resp_note)
+        self.resp = ResponsePlot(self.toggle_breath)
+        self.resp.setFixedHeight(300)
+        lay.addWidget(self.resp)
+        self._show_response()
         self.zoom_note = label("", "note")
         self.whole_btn = button("Show whole session", lambda: self.set_zoom(None), small=True)
         lay.addLayout(hbox(self.zoom_note, self.whole_btn, stretch_end=True))
@@ -290,6 +303,35 @@ class ReviewScreen(QFrame):
         lay.addStretch(1)
         self.set_zoom(None)
 
+    # ---------- the response, and taking a breath out of it by hand
+
+    def _show_response(self) -> None:
+        res = session_response(self.parsed)
+        self.resp.set_response(res)
+        can = self.rec.status != "recording"
+        hint = " Click a breath to take it out of the fit, or its cross to put it back; the choice is saved in the session file." if can else " (Still recording: breaths cannot be taken out here yet.)"
+        self.resp_note.setText(co2_response_summary(res, fmt) + "." + hint)
+        for key, value in response_stats(res):
+            self.stats.set(key, value)
+
+    def toggle_breath(self, n) -> None:
+        b = next((x for x in self.parsed.breaths if x.n == n), None)
+        if b is None:
+            return
+        try:
+            if self.rec.status == "recording":
+                raise ValueError("This session is still being recorded.")
+            row = exclude_breath(self.parsed, n, b.quality != "excluded")
+            if row is None:
+                return
+            self.engine.library.append_row(self.sid, row)
+        except (OSError, ValueError) as e:
+            self.window.toast(f"Could not save the change: {e}", 6000)
+            return
+        self.engine.library_changed()
+        self._show_response()
+        self.events.addItem(f"{elapsed(self.parsed.events[-1].time_s)}   {self.parsed.events[-1].text}")
+
     # ---------- zoom
 
     def _on_zoom(self, a: float, b: float) -> None:
@@ -316,6 +358,8 @@ class ReviewScreen(QFrame):
     def apply_theme(self) -> None:
         for pl in getattr(self, "plots", ()):
             pl.style()
+        if hasattr(self, "resp"):
+            self.resp.apply_theme()
 
     # ---------- exports
 
