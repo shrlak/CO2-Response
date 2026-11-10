@@ -39,7 +39,9 @@ def test_firmware_and_protocol_document_agree_on_the_watchdog():
     version = re.search(r'#define FW_VERSION "([\d.]+)"', config).group(1)
     timeout = re.search(r"#define WATCHDOG_TIMEOUT_MS (\d+)", config).group(1)
     protocol = (ROOT / "docs" / "protocol.md").read_text(encoding="utf-8")
-    assert f"I,FW,{version},ADC,ADS1115,CH,3,RATE,100,BAUD,115200,ADDR,0x48,FSR,6.144,WD,{timeout}" in protocol
+    assert f"I,FW,{version},ADC,ADS1115,CH,3,RATE,100,BAUD,115200,ADDR,0x48,FSR,6.144,WD,{timeout},VALVE,1" in protocol
     sketch = (ROOT / "firmware" / "CO2Response" / "CO2Response.ino").read_text(encoding="utf-8")
-    for token in ('"HB"', '"HB OFF"', "E,HOST_LOST", ",WD,"):
+    for token in ('"HB"', '"HB OFF"', "E,HOST_LOST", ",WD,", '"VALVE 1"', '"VALVE 0"', ",VALVE,1", "A,VALVE,0"):
         assert token in sketch
+    pin = re.search(r"#define VALVE_PIN (-?\d+)", config).group(1)
+    assert f"pin {pin} by default" in protocol

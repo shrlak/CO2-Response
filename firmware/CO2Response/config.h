@@ -1,7 +1,7 @@
 // CO2-Response firmware configuration. Everything you might need to change is here.
 #pragma once
 
-#define FW_VERSION "1.1.0"
+#define FW_VERSION "1.2.0"
 
 // ---- serial link (must match the dashboard's baud setting) ----
 #define BAUD_RATE 115200
@@ -23,6 +23,17 @@
 #define BUZZER_PIN 8              // piezo buzzer between this pin and GND; -1 = no buzzer
 #define BUZZER_HZ 2700
 #define ALARM_LED_PIN LED_BUILTIN // blinks with the buzzer
+
+// ---- valve output (automatic stop) ----
+// A digital output for a valve driver (a relay or MOSFET module switching a solenoid or
+// motorised two-way valve). The pin is HIGH only while the subject should breathe from
+// the bag: the monitor app sends "VALVE 1" when rebreathing starts and "VALVE 0" when the
+// test ends, at the stop alarm or at an emergency stop. Wire the valve so that it is on
+// ROOM AIR when the pin is LOW or the board has no power. The board itself drops the pin
+// LOW at power-up, at reset and when the host's heartbeat is lost, so a stopped app or
+// an unplugged cable can never leave the subject on the bag.
+// -1 = no valve output (the operator turns a manual valve; the app only alarms).
+#define VALVE_PIN 7
 
 // ---- ADC (default: ADS1115 over I2C) ----
 // TODO: confirm the ADC board. To use another ADC, add a driver like

@@ -18,7 +18,7 @@ class Encoders(NamedTuple):
     pneumo: Callable[[float], float]
 
 
-FIRMWARE_INFO = "I,FW,sim-1.0.0,ADC,SIMULATED,CH,3,RATE,"
+FIRMWARE_INFO = "I,FW,sim-1.2.0,ADC,SIMULATED,CH,3,VALVE,1,RATE,"
 
 
 class SimulatorCore:
@@ -32,6 +32,8 @@ class SimulatorCore:
         self._rand = mulberry32(params.get("seed", 1) + 99)
         self._rail_low_v = rail_low_v
         self._rail_high_v = rail_high_v
+        #: the emulated valve output: True = to the bag (the host's VALVE command)
+        self.valve_to_bag = False
 
     def _clamp(self, v: float) -> float:
         return min(self._rail_high_v, max(self._rail_low_v, v))
@@ -81,6 +83,11 @@ class SimulatorCore:
         if name == "HB":
             # the host's heartbeat (firmware with a watchdog): no reply unless it is switched off
             return ["A,HB,OFF"] if arg == "OFF" else []
+        if name == "VALVE":
+            if arg not in ("0", "1"):
+                return ["E,UNKNOWN_CMD"]
+            self.valve_to_bag = arg == "1"
+            return [f"A,VALVE,{arg}"]
         if name == "INFO":
             return [FIRMWARE_INFO + str(self.rate_hz)]
         if name == "START":

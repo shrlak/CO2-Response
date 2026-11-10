@@ -578,3 +578,124 @@ def test_heartbeat_is_sent_to_firmware_with_a_watchdog_and_switched_off_on_disco
         e_old.shutdown()
         ard.unplug()
         old.unplug()
+
+
+# ------------------------------------------------------------------ the valve output
+
+
+def valve_events(e) -> list[str]:
+    return [line.text for line in e.log if line.text.startswith(("Valve to", "EMERGENCY STOP", "Marker: End"))]
+
+
+def test_app_switches_the_valve_and_the_stop_alarm_turns_it_back(tmp_path):
+    """With the valve switched from the app: to the bag at Start rebreathing, and back to
+    room air by itself, with an end-of-test marker, as soon as the stop alarm starts."""
+    e = make_engine(tmp_path)
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, auto_valve=True))
+    e.connect("simulator")
+    run(e, 20)
+    s = e.snapshot()
+    assert s.valve == "air" and e.source.core.valve_to_bag is False
+    e.start_recording()
+    e.start_baseline()
+    run(e, 5)
+    e.set_sim(ramp_mm_hg_per_min=30, ramp_max_mm_hg=70, drive=0.5)
+    e.start_rebreathing()
+    run(e, 0.1)
+    # the simulated valve is on the bag, and in the simulation that is what makes CO2 rise
+    assert e.source.core.valve_to_bag and e.snapshot().valve == "bag" and e.settings.sim.ramp
+    assert "valve to the bag" in e.snapshot().test.text
+    stopped_at = None
+    for _ in range(1200):
+        run(e, 0.1)
+        if e.alarms.get("co2Stop") is not None:
+            stopped_at = e.clock.t
+            break
+    assert stopped_at is not None
+    # within one pass of the alarm: valve to room air, test ended, CO2 no longer rising
+    assert not e.source.core.valve_to_bag and e.snapshot().valve == "air" and not e.settings.sim.ramp
+    run(e, 0.1)
+    assert e.snapshot().test.phase == "ended" and e.markers[-1].label == "End of test (stop limit)"
+    assert e.markers[-1].t - stopped_at <= 100
+    assert valve_events(e) == ["Valve to the bag", "Valve to room air: automatic stop: stop limit", "Marker: End of test (stop limit)"]
+    text = e.stop_recording().path.read_text(encoding="utf-8")
+    assert "VALVE BAG" in text and "VALVE AIR (automatic stop: stop limit)" in text and "MARK End of test (stop limit)" in text
+    run(e, 30)
+    assert e.alarms.get("co2Stop").state == "resolved"  # CO2 came back down
+
+
+def test_without_the_setting_the_app_never_moves_the_valve_but_emergency_stop_does(tmp_path):
+    e = make_engine(tmp_path)
+    e.connect("simulator")
+    run(e, 5)
+    assert not e.settings.alarms.auto_valve
+    e.start_rebreathing()
+    run(e, 1)
+    assert not e.source.core.valve_to_bag and valve_events(e) == []
+    assert e.snapshot().test.can_emergency
+    # someone moved the valve output by another route: the emergency stop still returns it to room air
+    e.source.send("VALVE 1")
+    run(e, 0.5)
+    assert e.source.core.valve_to_bag and e.snapshot().valve == "bag"
+    e.emergency_stop()
+    run(e, 0.2)
+    assert not e.source.core.valve_to_bag and e.snapshot().test.phase == "ended" and not e.snapshot().test.can_emergency
+    assert e.markers[-1].label == "End of test (emergency stop)"
+    assert valve_events(e)[-3:] == ["Valve to room air: emergency stop", "EMERGENCY STOP: valve to room air", "Marker: End of test (emergency stop)"]
+
+
+def test_apnea_and_disconnecting_return_the_valve_to_room_air(tmp_path):
+    e = make_engine(tmp_path)
+    e.update_settings(alarms=dataclasses.replace(e.settings.alarms, auto_valve=True))
+    e.connect("simulator")
+    run(e, 10)
+    e.start_rebreathing()
+    run(e, 5)
+    e.set_sim_switch("apnea", True)
+    run(e, 26)
+    assert e.alarms.is_active("apnea") and not e.source.core.valve_to_bag
+    assert e.markers[-1].label == "End of test (apnea)"
+    # a deliberate disconnect never leaves the valve on the bag
+    e.set_sim_switch("apnea", False)
+    e.start_rebreathing()
+    core = e.source.core
+    assert core.valve_to_bag
+    e.disconnect()
+    assert not core.valve_to_bag
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="needs a pseudo-terminal")
+def test_valve_commands_reach_the_board_and_a_board_without_a_valve_is_left_alone(tmp_path):
+    ard = FakeArduino(info=INFO.rstrip() + b",WD,3000,VALVE,1\n")
+    plain = FakeArduino()
+
+    def engine(dev, folder):
+        ports = [PortInfo(dev.device, "Arduino Uno", 0x2341, 0x0043, "A1")]
+        e = MonitorEngine(store=SettingsStore(tmp_path / folder), audio=SilentAudio(), port_lister=lambda: ports, sessions_dir=tmp_path / "s", prevent_sleep=False)
+        e.update_settings(alarms=dataclasses.replace(e.settings.alarms, auto_valve=True))
+        return e
+
+    e, e_plain = engine(ard, "a"), engine(plain, "b")
+    try:
+        assert e.connect("serial", port=ard.device) and e_plain.connect("serial", port=plain.device)
+        assert run_real(e, 8, lambda: e.valve_available()) and e.snapshot().valve == "air"
+        run_real(e_plain, 2)
+        assert not e_plain.valve_available() and e_plain.snapshot().valve is None
+        e.start_rebreathing()
+        e_plain.start_rebreathing()
+        assert run_real(e, 3, lambda: "VALVE 1" in ard.commands)
+        e.end_test()
+        assert run_real(e, 3, lambda: "VALVE 0" in ard.commands)
+        e.start_rebreathing()
+        assert run_real(e, 3, lambda: ard.commands.count("VALVE 1") == 2)
+        e.disconnect()  # room air first, then the heartbeat is switched off
+        time.sleep(0.3)
+        assert [c for c in ard.commands if c != "HB"][-3:] == ["VALVE 0", "HB OFF", "STOP"]
+        run_real(e_plain, 0.5)
+        assert not any(c.startswith("VALVE") for c in plain.commands)
+        assert e_plain.emergency_stop() is not None  # still ends the test in the record
+    finally:
+        e.shutdown()
+        e_plain.shutdown()
+        ard.unplug()
+        plain.unplug()

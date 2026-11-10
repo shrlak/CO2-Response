@@ -34,6 +34,7 @@ from ..processing.breath import Breath
 from ..processing.calibration import invert_calibration
 from ..processing.metrics import (
     BASELINE_LABEL,
+    EMERGENCY_LABEL,
     END_LABEL,
     REBREATHING_LABEL,
     CO2Response,
@@ -84,6 +85,8 @@ MAX_TREND = 20000
 MAX_TRACE = 4 * 3600 * 2  # 4 h at 2 Hz
 MAX_WAVE = 6000
 TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum", "noisyBreaths", "leak", "calibration", "testTime")
+#: the alarms that turn the valve back to room air when the app switches the valve
+AUTO_STOP = {"co2Stop": "stop limit", "apnea": "apnea"}
 #: breaths compared for the inspired-against-expired volume check
 LEAK_BREATHS = 5
 #: how often the host tells the device it is alive (firmware with a watchdog), ms
@@ -216,6 +219,10 @@ class TestState:
     def can_end(self) -> bool:
         return self.phase == "rebreathing"
 
+    @property
+    def can_emergency(self) -> bool:
+        return self.phase == "rebreathing"
+
 
 @dataclass
 class LogLine:
@@ -269,6 +276,8 @@ class Snapshot:
     awaiting_reconnect: bool
     i2c_scan: str | None
     test: TestState = field(default_factory=lambda: TestState("idle", TestWindow(None, None, None)))
+    #: where the board's valve output stands: 'bag', 'air', or None if the device has none
+    valve: str | None = None
 
 
 @dataclass
@@ -407,6 +416,8 @@ class MonitorEngine:
         self._trend_key = 0
         #: a whole simulated test in progress (see ``_start_sim_test``)
         self._sim_test: dict | None = None
+        #: the board's valve output as last commanded: True = to the bag
+        self._valve = False
         self._save_error_logged = False
 
         #: breaths on the device clock (cleared on every new connection), all of them
@@ -722,6 +733,7 @@ class MonitorEngine:
         kind = src.kind
         self._file_channels = session.channels if kind == "replay" and use_file_calibration and session is not None and session.channels else None
         self._info = None
+        self._valve = False  # a board starts (and restarts) on room air
         self.pipeline = Pipeline(self.effective_channels, self._processing_options())
         self._sync_phase()
         self._seq.reset()
@@ -858,6 +870,9 @@ class MonitorEngine:
             self._use(pr, now)
         self._source = None
         try:
+            if self._valve and (self._info or {}).get("VALVE"):
+                src.send("VALVE 0")  # never leave the valve on the bag behind
+            self._valve = False
             if src.kind in ("serial", "bridge") and self._has_watchdog():
                 src.send("HB OFF")  # a deliberate disconnect must not sound the device's buzzer
             if src.kind == "serial":
@@ -935,6 +950,10 @@ class MonitorEngine:
             self._add_log(f"Device error: {p.raw[2:]}", "error")
             self.recorder.event(now, f"DEVICE_ERROR {p.code}")
         elif kind == "ack":
+            if p.fields[:1] == ["VALVE"] and len(p.fields) > 1 and (p.fields[1] == "1") != self._valve:
+                # the board moved the valve itself (its watchdog), or refused the bag
+                self._valve = p.fields[1] == "1"
+                self.recorder.event(now, f"VALVE {'BAG' if self._valve else 'AIR'} (reported by the device)")
             self._add_log(f"Device: {p.raw}")
         elif kind == "bad":
             self._bad_lines += 1
@@ -1190,6 +1209,12 @@ class MonitorEngine:
             if len(self.alarm_starts) > 2000:
                 del self.alarm_starts[:500]
             self.trend_version += 1
+        if e.kind == "start" and e.id in AUTO_STOP and self.settings.alarms.auto_valve and self._valve and self.valve_available():
+            # automatic stop: the valve goes back to room air at once; the end-of-test
+            # marker follows on the next pass (not from inside the alarm check)
+            self._set_valve(False, f"automatic stop: {AUTO_STOP[e.id]}")
+            label = f"End of test ({AUTO_STOP[e.id]})"
+            self.call_later(0, lambda: self.add_marker(label) if self._rebreathing() else None)
         if e.kind == "start":
             # sound the new alarm right away rather than waiting for the repeat interval
             if e.priority == "high":
@@ -1289,7 +1314,10 @@ class MonitorEngine:
         if w.end is None:
             el = (t - w.start) * k
             lim = f" of {_mss(limit)}" if limit > 0 else ""
-            return TestState("rebreathing", w, el, limit, text=f"REBREATHING {_mss(el)}{lim}{rec}")
+            valve = ""
+            if self.valve_available() and self.settings.alarms.auto_valve:
+                valve = " · valve to the bag" if self._valve else " · VALVE ON ROOM AIR"
+            return TestState("rebreathing", w, el, limit, text=f"REBREATHING {_mss(el)}{lim}{valve}{rec}")
         el = (w.end - w.start) * k
         return TestState("ended", w, el, limit, text=f"TEST ENDED after {_mss(el)} of rebreathing")
 
@@ -1298,12 +1326,53 @@ class MonitorEngine:
         return self.add_marker(BASELINE_LABEL)
 
     def start_rebreathing(self) -> Marker:
-        """Rebreathing key: press it as the valve is turned to the bag."""
+        """Rebreathing key: press it as the valve is turned to the bag (with the valve
+        switched from the app, this turns it)."""
+        if self.settings.alarms.auto_valve:
+            self._set_valve(True)
         return self.add_marker(REBREATHING_LABEL)
 
     def end_test(self) -> Marker:
-        """End key: press it as the valve is turned back to room air."""
+        """End key: press it as the valve is turned back to room air (with the valve
+        switched from the app, this turns it)."""
+        if self.settings.alarms.auto_valve:
+            self._set_valve(False)
         return self.add_marker(END_LABEL)
+
+    def emergency_stop(self) -> Marker | None:
+        """Emergency stop key: the valve output goes to room air at once (whether or not
+        the app normally switches it) and the test is ended. Without a valve output it
+        ends the test in the record; the operator turns the valve."""
+        now = self.clock()
+        sent = self._set_valve(False, "emergency stop")
+        self._add_log("EMERGENCY STOP" + (": valve to room air" if sent else ": turn the valve to room air"), "alarm")
+        self.recorder.event(now, "EMERGENCY_STOP")
+        return self.add_marker(EMERGENCY_LABEL) if self._rebreathing() else None
+
+    # ---------- the board's valve output
+
+    def valve_available(self) -> bool:
+        return self._source is not None and bool((self._info or {}).get("VALVE"))
+
+    def _rebreathing(self) -> bool:
+        w = self.test_window()
+        return w.start is not None and w.end is None
+
+    def _set_valve(self, to_bag: bool, why: str = "") -> bool:
+        """Command the valve output. Returns False when the device has none."""
+        src = self._source
+        if src is None or not self.valve_available():
+            return False
+        src.send(f"VALVE {1 if to_bag else 0}")
+        changed = self._valve != to_bag
+        self._valve = to_bag
+        if changed or why:
+            text = f"VALVE {'BAG' if to_bag else 'AIR'}" + (f" ({why})" if why else "")
+            self._add_log(f"Valve to {'the bag' if to_bag else 'room air'}" + (f": {why}" if why else ""))
+            self.recorder.event(self.clock(), text)
+        if isinstance(src, SimulatorSource) and self.settings.sim.ramp != to_bag:
+            self._sim_patch(ramp=to_bag)  # in the simulation the valve decides whether CO2 rises
+        return True
 
     def co2_response(self, t0: float = float("-inf")) -> CO2Response:
         """Each breath's own MV vs its EtCO2, over accepted breaths from wall second
@@ -1582,6 +1651,7 @@ class MonitorEngine:
             awaiting_reconnect=self._awaiting_reconnect,
             i2c_scan=self._i2c_scan,
             test=self.test_state(now),
+            valve=("bag" if self._valve else "air") if self.valve_available() else None,
         )
 
     def settings_json(self) -> dict:

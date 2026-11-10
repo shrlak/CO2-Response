@@ -446,6 +446,7 @@ class MonitorView:
             key("Start baseline", "test-baseline", ts.can_baseline, ts.phase == "baseline", "Breaths from now until rebreathing starts are the baseline")
             + key("Start rebreathing", "test-start", ts.can_start, ts.phase == "rebreathing", "Press as the valve is turned to the bag")
             + key("End test", "test-end", ts.can_end, False, "Press as the valve is turned back to room air")
+            + btn("Emergency stop", "test-emergency", "btn small danger", disabled=not ts.can_emergency, title="Ends the test now. With a valve output on the board, the valve goes to room air at once")
             + f'<span class="test-text" id="test-text" title="{esc(ts.text)}">{esc(ts.text)}</span>',
         )
 
@@ -588,6 +589,7 @@ def install_monitor_actions(app: "WebApp") -> None:
             "test-baseline": lambda el: (e.start_baseline(), app.refresh()),
             "test-start": lambda el: (e.start_rebreathing(), app.refresh()),
             "test-end": lambda el: (e.end_test(), app.refresh()),
+            "test-emergency": lambda el: (e.emergency_stop(), toast("Emergency stop: the test is ended." + ("" if e.valve_available() else " Turn the valve to room air."), 6000), app.refresh()),
             "focus": lambda el: (mv.set_focus(None if mv.focus == data(el, "arg") else data(el, "arg")), app.refresh()),
         },
     )

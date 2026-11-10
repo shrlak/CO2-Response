@@ -130,6 +130,15 @@ ALARM_FIELDS: tuple[Field, ...] = (
         id="low",
     ),
     Field(
+        "auto_valve",
+        "Switch the valve from the app",
+        "toggle",
+        hint="With a valve driver on the board's valve output: to the bag at Start rebreathing, and back to room air at End test, at the stop alarm, "
+        "on apnea and at an emergency stop. The board also returns the valve to room air by itself if the app stops. Off: the operator turns a manual valve.",
+        id="autovalve",
+        live=lambda s: " The connected device has no valve output." if getattr(s, "status", "") == "connected" and getattr(s, "valve", None) is None else "",
+    ),
+    Field(
         "delay_breaths",
         "Trigger delay",
         unit="breaths",

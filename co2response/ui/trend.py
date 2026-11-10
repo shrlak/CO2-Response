@@ -93,7 +93,10 @@ class TrendPanel(QFrame):
         self.k_baseline = button("Start baseline", engine.start_baseline, small=True, tooltip="Breaths from now until rebreathing starts are the baseline")
         self.k_start = button("Start rebreathing", engine.start_rebreathing, small=True, tooltip="Press as the valve is turned to the bag")
         self.k_end = button("End test", engine.end_test, small=True, tooltip="Press as the valve is turned back to room air")
-        for b in (self.k_baseline, self.k_start, self.k_end):
+        self.k_emergency = button(
+            "EMERGENCY STOP", engine.emergency_stop, small=True, kind="danger", tooltip="Ends the test now. With a valve output on the board, the valve goes to room air at once"
+        )
+        for b in (self.k_baseline, self.k_start, self.k_end, self.k_emergency):
             test.addWidget(b)
         self.test_text = label("", "muted")
         self.test_text.setStyleSheet("font-size:15px; font-weight:600;")
@@ -181,6 +184,8 @@ class TrendPanel(QFrame):
             if b.isEnabled() != on:
                 b.setEnabled(on)
             set_prop(b, "kind", "primary" if active else "")
+        if self.k_emergency.isEnabled() != ts.can_emergency:
+            self.k_emergency.setEnabled(ts.can_emergency)
         if self.test_text.toolTip() != ts.text:
             self.test_text.setToolTip(ts.text)
         self.test_text.setText(self.test_text.fontMetrics().elidedText(ts.text, Qt.TextElideMode.ElideRight, max(40, self.test_text.width())))

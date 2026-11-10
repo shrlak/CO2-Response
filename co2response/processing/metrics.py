@@ -94,6 +94,7 @@ REBREATHING_WORD = "rebreath"
 BASELINE_LABEL = "Baseline"
 REBREATHING_LABEL = "Rebreathing"
 END_LABEL = "End of test"
+EMERGENCY_LABEL = "End of test (emergency stop)"
 
 _WORD = re.compile(r"[a-z]+")
 

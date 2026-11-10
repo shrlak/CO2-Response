@@ -127,6 +127,10 @@ class AlarmSettings:
     #: advisory when inspired and expired volume differ by more than this (a leak, or
     #: a drifting pneumotach zero), % of inspired volume; 0 = off
     leak_pct: float = 20
+    #: let the app switch the valve through the board's valve output: to the bag at
+    #: Start rebreathing, back to room air at End test, at the stop alarm, on apnea and
+    #: at an emergency stop. Off: the operator turns a manual valve.
+    auto_valve: bool = False
     #: advisory when a real device is connected and a channel was calibrated longer
     #: ago than this, or never, hours; 0 = off
     calibration_max_age_h: float = 24

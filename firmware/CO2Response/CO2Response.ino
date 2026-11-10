@@ -43,6 +43,16 @@ static bool buzzing = false;
 static uint32_t lastHbMs = 0;
 static uint32_t lastLostMs = 0;
 
+// valve output (see config.h): true = to the bag (rebreathing), false = room air
+static bool valveToBag = false;
+
+static void setValve(bool toBag) {
+  valveToBag = toBag;
+#if VALVE_PIN >= 0
+  digitalWrite(VALVE_PIN, toBag ? HIGH : LOW);
+#endif
+}
+
 static void alarmOutput(bool on) {
   if (on == buzzing) return;
   buzzing = on;
@@ -57,7 +67,13 @@ static void alarmOutput(bool on) {
 static void serviceWatchdog() {
 #if WATCHDOG_TIMEOUT_MS > 0
   uint32_t now = millis();
-  if (wdArmed && !hostLost && now - lastHbMs > WATCHDOG_TIMEOUT_MS) hostLost = true;
+  if (wdArmed && !hostLost && now - lastHbMs > WATCHDOG_TIMEOUT_MS) {
+    hostLost = true;
+    if (valveToBag) {  // nothing is watching the CO2 any more: back to room air
+      setValve(false);
+      Serial.println(F("A,VALVE,0"));
+    }
+  }
   if (!hostLost) return;
   alarmOutput(((now / 250) & 1) == 0);
   if (now - lastLostMs >= 1000) {
@@ -97,6 +113,9 @@ static void sendInfo() {
   Serial.print(F(",WD,"));  // tells the host to send heartbeats
   Serial.print(WATCHDOG_TIMEOUT_MS);
 #endif
+#if VALVE_PIN >= 0
+  Serial.print(F(",VALVE,1"));  // this board has a valve output
+#endif
   Serial.println();
 }
 
@@ -132,6 +151,15 @@ static void handleCommand(char* c) {
   } else if (strcmp(c, "HB OFF") == 0) {
     heartbeat(false);  // the host is disconnecting on purpose
     Serial.println(F("A,HB,OFF"));
+  } else if (strcmp(c, "VALVE 1") == 0 || strcmp(c, "VALVE 0") == 0) {
+#if VALVE_PIN >= 0
+    // to the bag only while the host is known to be alive
+    bool toBag = c[6] == '1' && !hostLost;
+    setValve(toBag);
+    Serial.println(toBag ? F("A,VALVE,1") : F("A,VALVE,0"));
+#else
+    Serial.println(F("E,NO_VALVE"));
+#endif
   } else if (strcmp(c, "INFO") == 0) {
     sendInfo();
   } else if (strcmp(c, "START") == 0) {
@@ -169,6 +197,10 @@ static void pollSerial() {
 }
 
 void setup() {
+#if VALVE_PIN >= 0
+  pinMode(VALVE_PIN, OUTPUT);
+  digitalWrite(VALVE_PIN, LOW);  // room air until the host says otherwise
+#endif
   pinMode(ALARM_LED_PIN, OUTPUT);
 #if BUZZER_PIN >= 0
   pinMode(BUZZER_PIN, OUTPUT);
