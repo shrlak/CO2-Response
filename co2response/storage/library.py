@@ -16,6 +16,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from .labchart import labchart_to_session, looks_like_labchart
 from .session_file import ParsedSession, SessionParser, summarize
 
 STATUS_LABELS = {"recording": "Recording", "complete": "Recorded", "interrupted": "Recovered", "imported": "Imported"}
@@ -200,6 +201,9 @@ class SessionLibrary:
         read; a file that is not a session is rejected and nothing is kept."""
         src = Path(src)
         self.folder.mkdir(parents=True, exist_ok=True)
+        converted = _labchart_session(src, file_name)
+        if converted is not None:
+            return self._import_converted(*converted)
         in_place = src.resolve().parent == self.folder.resolve() and not any(r.file_name == src.name for r in self._load().values())
         name = src.name if in_place else self._unique_name(file_name or src.name)
         rec = SessionRecord(new_id(), name, "", self.clock(), None, "imported", "Imported file", 0, self.clock(), {})
@@ -235,6 +239,19 @@ class SessionLibrary:
         self.put(rec)
         return rec, parsed
 
+    def _import_converted(self, text: str, file_name: str) -> tuple[SessionRecord, ParsedSession]:
+        """Store a session made from another program's export (LabChart)."""
+        parser = SessionParser()
+        parser.push(text)
+        parsed = parser.finish()
+        rec = self.create(file_name, parsed.study_code, parsed.started_ms or self.clock(), "", status="imported")
+        self.append(rec, text)
+        rec.ended_at = rec.started_at + parsed.duration_s * 1000
+        rec.source = f"Imported · {parsed.meta.get('source', 'unknown source')}"
+        rec.stats = summarize(parsed).as_stats()
+        self.put(rec)
+        return rec, parsed
+
     def recover_interrupted(self, now: float | None = None) -> Records:
         """Recordings left in 'recording' state by an app that closed or crashed.
         Anything not written to for 15 s is marked interrupted; its data is kept."""
@@ -257,6 +274,29 @@ class SessionLibrary:
             return used, free
         except OSError:
             return None
+
+
+def _as_session_text(text: str, file_name: str) -> tuple[str, str]:
+    """A LabChart text export becomes a session file's text (and a .csv name); a
+    session file is returned as it is."""
+    if not looks_like_labchart(text):
+        return text, file_name
+    from .. import __version__
+
+    return labchart_to_session(text, file_name, __version__), str(Path(file_name).with_suffix(".csv"))
+
+
+def _labchart_session(src: Path, file_name: str | None) -> tuple[str, str] | None:
+    """(session text, name) if ``src`` is a LabChart text export, else None."""
+    try:
+        with open(src, encoding="utf-8", errors="replace", newline="") as f:
+            head = f.read(4000)
+            if not looks_like_labchart(head):
+                return None
+            text = head + f.read()
+    except OSError:
+        return None
+    return _as_session_text(text, file_name or src.name)
 
 
 class ChunkedSessionLibrary(SessionLibrary):
@@ -346,6 +386,7 @@ class ChunkedSessionLibrary(SessionLibrary):
 
     def import_text(self, text: str, file_name: str) -> tuple[SessionRecord, ParsedSession]:
         """Store a session file given as text (the browser reads uploads as text)."""
+        text, file_name = _as_session_text(text, file_name)  # a LabChart export is converted first
         parser = SessionParser()
         parser.push(text)
         parsed = parser.finish()  # raises before anything is stored if it is not a session

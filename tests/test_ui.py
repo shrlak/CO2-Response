@@ -535,3 +535,25 @@ def test_emergency_stop_key_ends_the_test(win):
     tr.k_end.click()
     advance(win, 1)
     assert not e.source.core.valve_to_bag
+
+
+def test_a_labchart_export_is_imported_from_the_data_page(win, tmp_path):
+    import sys
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    from test_labchart import export
+
+    from co2response.storage.session_file import read_session
+    from co2response.ui.widgets import Stat
+
+    src = tmp_path / "chop-patient-x.txt"
+    src.write_text(export(read_session(ROOT / "sample-data" / "synthetic_session.csv")), encoding="utf-8")
+    win.open_settings("data")
+    page = win.settings_screen.pages["data"]
+    page.import_files([src])
+    rec = win.engine.library.list()[0]
+    assert rec.file_name == "chop-patient-x.csv" and rec.source.startswith("Imported · LabChart import")
+    win.open_review(rec.id)
+    stats = {st.k.text(): st.v.text() for st in win.review.findChildren(Stat)}
+    assert stats["CO2 RESPONSE"].startswith("slope 0.") and stats["BASELINE"].startswith("EtCO2 38.")
+    assert win.review.resp.fitted.data.size >= 15

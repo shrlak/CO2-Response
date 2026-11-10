@@ -460,9 +460,9 @@ class SettingsView:
             + f'{status}<div class="row-actions">{btn("Stop and save file" if r.active else "Start recording", "record", "btn danger" if r.active else "btn primary")}</div></section>'
         )
         out += (
-            '<section class="card"><div class="card-head"><h3>Import</h3><span class="meta">.csv session files, any version</span></div>'
-            '<p class="note">Bring a session back to review it, replay it through the monitor, or export parts of it. Files made by older versions of this app are converted when you export them.</p>'
-            '<div class="row-actions"><label class="btn primary" style="display:inline-flex;align-items:center">Import session files…<input type="file" accept=".csv,text/csv" multiple hidden data-change="import-files"></label></div></section></div>'
+            '<section class="card"><div class="card-head"><h3>Import</h3><span class="meta">.csv session files, or LabChart .txt exports</span></div>'
+            '<p class="note">Bring a session back to review it, replay it through the monitor, or export parts of it. Files made by older versions of this app are converted when you export them. A LabChart (PowerLab) text export with a flow and a CO2 channel is turned into a session: its breaths, response and report are worked out here.</p>'
+            '<div class="row-actions"><label class="btn primary" style="display:inline-flex;align-items:center">Import session files…<input type="file" accept=".csv,.txt,text/csv,text/plain" multiple hidden data-change="import-files"></label></div></section></div>'
         )
         u = self.usage
         meta = f"{size_text(u[0])} used of {size_text(u[1])} available in this browser" if u else ""

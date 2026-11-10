@@ -123,11 +123,12 @@ class DataPage(Page):
         rec.add(hbox(self.rec_btn, stretch_end=True))
         top.add(rec)
 
-        imp = Card("Import", ".csv session files, any version")
+        imp = Card("Import", ".csv session files, or LabChart .txt exports")
         imp.add(
             label(
                 "Bring a session back to review it, replay it through the monitor, or export parts of it. Choose files or drop them on this page. "
-                "Files made by older versions of this app are converted when you export them.",
+                "Files made by older versions of this app are converted when you export them. A LabChart (PowerLab) text export with a flow and a CO2 channel "
+                "is turned into a session: its breaths, response and report are worked out here.",
                 "note",
                 wrap=True,
             )
@@ -180,7 +181,7 @@ class DataPage(Page):
     # ---------- actions
 
     def _import_dialog(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(self, "Import session files", str(downloads_dir()), "Session files (*.csv);;All files (*)")
+        paths, _ = QFileDialog.getOpenFileNames(self, "Import session files", str(downloads_dir()), "Session files and LabChart text exports (*.csv *.txt);;All files (*)")
         self.import_files([Path(p) for p in paths])
 
     def import_files(self, paths: list[Path]) -> None:
