@@ -2,6 +2,8 @@
 
 This guide takes you from a box of parts to a running session: wiring the sensors to the ADC board and the Arduino, loading the firmware, connecting to the computer, checking and calibrating the setup, and running and saving a session.
 
+> **Which board?** This guide covers the ADC board (an ADS1115 reading analog sensors). For the current build, the **Arduino Uno R4 Minima with the SFM3304-D flow sensor and the SprintIR-6S CO2 sensor**, wire it from [docs/wiring.md](docs/wiring.md#uno-r4-board-digital-sensors), upload `firmware/CO2ResponseR4/CO2ResponseR4.ino` (Arduino IDE, board "Arduino UNO R4 Minima", no extra libraries), and install the app with `scripts/install.sh` or `scripts/install.ps1` ([README §1](README.md#in-a-terminal-any-computer)). From step 5 on (connect, check, alarms, the test) this guide applies to both; that board needs no volts-to-units calibration, only a 3 L syringe check of the flow and a calibration-gas check of the CO2.
+
 > **Research use only.** CO2-Response is not a medical device. On a person or animal, a certified CO2 monitor must always be the primary alarm. Read [docs/safety.md](docs/safety.md) before any live use, and go through the Cook Lab / CMU safety process first.
 
 **Contents**
