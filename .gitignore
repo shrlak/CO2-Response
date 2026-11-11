@@ -14,6 +14,7 @@ htmlcov/
 
 # PlatformIO
 firmware/.pio/
+firmware/r4/.pio/
 firmware/.vscode/
 
 # OS / editors

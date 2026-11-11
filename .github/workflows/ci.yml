@@ -140,8 +140,10 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.platformio
-          key: pio-${{ hashFiles('firmware/platformio.ini') }}
+          key: pio-${{ hashFiles('firmware/platformio.ini', 'firmware/r4/platformio.ini') }}
       - run: pip install platformio==6.2.0
       - name: Native line-format test
         run: g++ -std=c++11 -Wall -Wextra -Werror -I CO2Response test/test_line_format.cpp -o line_test && ./line_test
       - run: pio run -e uno -e mega -e nano
+      - name: Uno R4 Minima firmware (SFM3304-D flow + SprintIR CO2)
+        run: pio run -d r4
