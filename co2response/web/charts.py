@@ -569,11 +569,26 @@ class ResponseChart(Plot):
             bx = self.px(min(p.etco2 for p in base)) - 6 * d
             above = self.py(max(p.mv for p in base)) - 46 * d
             below = self.py(min(p.mv for p in base)) + 10 * d
-            # above the baseline breaths if that leaves the slope label clear, else below them
-            by = above if above >= y_t + 64 * d or below + 38 * d > self.py(0) else below
+            # above the baseline breaths if that leaves the slope label clear, else below
+            # them; on a short plot with room for neither, beside the slope label
+            bx = max(x_l + 4 * d, bx)
+            if above >= y_t + 64 * d:
+                by = above
+            elif below + 38 * d <= self.py(0):
+                by = below
+            else:
+                g.font = f"700 {15 * d}px {FONT}"
+                widest = max((g.measureText(part).width for part in (fit_text.split(" · ") if fit_text else [])), default=0)
+                bx, by = x_l + 12 * d + widest + 28 * d, y_t + 24 * d
             for i, part in enumerate(base_text.split(" · ")):
                 g.font = f"{700 if i == 0 else 500} {15 * d}px {FONT}"
-                g.fillText(part, max(x_l + 4 * d, bx), by + 19 * i * d)
+                g.fillText(part, bx, by + 19 * i * d)
+        from ..processing.metrics import breath_path, lowess_curve
+
+        # the breaths joined in the order they were taken
+        px_, py_ = breath_path(res)
+        if len(px_) > 1:
+            self.stroke(path_d([self.px(v) for v in px_], [self.py(v) for v in py_]), css_var("--pneumo"), 1.5, 0.45)
         rings(skip, 3.5, 1.5, 0.55)
         rings(base, 5, 2, 1)
         self.dots([self.px(p.etco2) for p in reb], [self.py(p.mv) for p in reb], css_var("--pneumo"), 5)
@@ -582,8 +597,13 @@ class ResponseChart(Plot):
             path = "".join(f"M{self.px(p.etco2) - r} {self.py(p.mv) - r}l{2 * r} {2 * r}m{-2 * r} 0l{2 * r} {-2 * r}" for p in out)
             self.stroke(path, css_var("--alarm-high"), 2.5)
         if fit:
+            # the least-squares line the slope comes from, faint and dashed, and over it the
+            # curve (LOWESS), which may bend where the response does
             a, b = min(p.etco2 for p in reb), max(p.etco2 for p in reb)
-            self.stroke(f"M{self.px(a)} {self.py(fit.slope * a + fit.intercept)}L{self.px(b)} {self.py(fit.slope * b + fit.intercept)}", css_var("--text"), 3)
+            self.stroke(f"M{self.px(a)} {self.py(fit.slope * a + fit.intercept)}L{self.px(b)} {self.py(fit.slope * b + fit.intercept)}", css_var("--text"), 1.5, 0.5, (6, 5))
+            cx, cy = lowess_curve([p.etco2 for p in reb], [p.mv for p in reb])
+            if cx:
+                self.stroke(path_d([self.px(v) for v in cx], [self.py(v) for v in cy]), css_var("--text"), 3)
         g.restore()
         self.axis_titles("etCO2 (mmHg)", "MV (liters/min)")
         self._hits = [(self.px(p.etco2), self.py(p.mv), p.key) for p in reb + base + out if p.key is not None]

@@ -113,6 +113,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .pill.audio-off { border-color: var(--advisory); color: var(--advisory); }
 .pill.armed { border-color: var(--ok); color: var(--ok); }
 .clock { font-size: 24px; font-weight: 600; min-width: 5.4em; text-align: right; }
+.fullscreen { background: none; border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-size: 18px; line-height: 1; padding: 4px 8px; margin-left: 10px; cursor: pointer; }
+.fullscreen:hover { border-color: var(--muted); }
 
 /* ---------- alarm slot (fixed height so nothing moves) ---------- */
 .alarm-slot {
@@ -196,7 +198,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 /* one flow sensor (the Uno R4 board): the Flow row is twice as tall and carries VT and MV */
 .monitor.single { grid-template-rows: minmax(0, 1.3fr) minmax(0, 2fr); }
 .monitor.single .row.flow .nums, .monitor.single .row.flow .nums:has(#t-spo2 > .tile) { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
-.monitor.single .row.flow .nums:has(#t-spo2 > .tile) { grid-template-rows: 1fr 1fr 1fr; }
+/* no empty cell: without the SpO2 tile, MV takes the whole width under Flow and VT */
+.monitor.single .row.flow .nums:not(:has(#t-spo2 > .tile)) #t-mv > .tile { grid-column: 1 / -1; }
 .tile { background: var(--panel); border-radius: var(--radius); padding: 6px 12px; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
 .tile.big { grid-row: auto; }
 .tlabel { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; font-size: 14px; }

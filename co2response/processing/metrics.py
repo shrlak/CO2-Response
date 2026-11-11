@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, NamedTuple, Sequence
 
+import numpy as np
+
 from ..jsfmt import naive_sum
 from .breath import Breath
 
@@ -328,3 +330,52 @@ def response_labels(res: CO2Response) -> tuple[str, str]:
     fit = f"Response slope = {res.slope:.3f} (L/min)/mmHg · r = {res.r:.3f}" if res.fit else ""
     base = f"Baseline Ave = {res.baseline_etco2:.2f} mmHg · MV = {res.baseline_mv:.2f} L/min" if res.baseline else ""
     return fit, base
+
+
+def lowess_curve(xs: Sequence[float], ys: Sequence[float], frac: float = 0.6, iters: int = 2, n_out: int = 48) -> tuple[list[float], list[float]]:
+    """A curve through the points that may bend: LOWESS (locally weighted scatterplot
+    smoothing, Cleveland 1979). Around each point a straight line is fitted by weighted
+    least squares to the nearest ``frac`` of the points (tricube weights), and ``iters``
+    robust passes down-weight points far from the curve (bisquare weights), so a single
+    erratic breath does not drag it. Returns the curve at ``n_out`` EtCO2 values across
+    the points' range; empty when there are fewer than 4 points or no spread in EtCO2."""
+    pts = [(float(x), float(y)) for x, y in zip(xs, ys) if math.isfinite(x) and math.isfinite(y)]
+    if len(pts) < 4:
+        return [], []
+    pts.sort()
+    x = np.array([p[0] for p in pts])
+    y = np.array([p[1] for p in pts])
+    if x[-1] - x[0] < 1e-6:
+        return [], []
+    n = len(x)
+    r = min(n, max(4, math.ceil(frac * n)))
+    robust = np.ones(n)
+
+    def at(x0: float) -> float:
+        d = np.abs(x - x0)
+        h = max(float(np.sort(d)[r - 1]), 1e-9)
+        w = np.clip(1 - (d / h) ** 3, 0, None) ** 3 * robust
+        sw = w.sum()
+        if sw <= 0:
+            return math.nan
+        mx, my = (w * x).sum() / sw, (w * y).sum() / sw
+        sxx = (w * (x - mx) ** 2).sum()
+        b = (w * (x - mx) * (y - my)).sum() / sxx if sxx > 1e-12 else 0.0
+        return my + b * (x0 - mx)
+
+    for _ in range(iters):
+        res = y - np.array([at(v) for v in x])
+        s = float(np.median(np.abs(res)))
+        if s <= 1e-12:
+            break
+        u = np.clip(res / (6 * s), -1, 1)
+        robust = (1 - u**2) ** 2
+    grid = np.linspace(x[0], x[-1], n_out)
+    return grid.tolist(), [at(v) for v in grid]
+
+
+def breath_path(res: CO2Response) -> tuple[list[float], list[float]]:
+    """Every plotted breath (baseline, rebreathing, outside the fit, taken out by hand)
+    in the order they were taken, for joining the dots."""
+    every = sorted(res.baseline + res.rebreathing + res.skipped + res.excluded, key=lambda p: p.t if math.isfinite(p.t) else 0.0)
+    return [p.etco2 for p in every], [p.mv for p in every]

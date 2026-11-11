@@ -63,6 +63,18 @@ def size_text(b: float) -> str:
 # ------------------------------------------------------------------ header and alarm strip
 
 
+def toggle_fullscreen() -> None:
+    """The whole screen for the monitor, as a bedside monitor has it (the browser's
+    Fullscreen API; Esc or the button again leaves it)."""
+    try:
+        if js.document.fullscreenElement:
+            js.document.exitFullscreen()
+        else:
+            js.document.documentElement.requestFullscreen()
+    except Exception:  # noqa: BLE001  (a browser without it, or inside a frame that forbids it)
+        toast("This browser does not allow full screen here. Use its own full-screen key (F11, or Ctrl+Cmd+F on a Mac).", 6000)
+
+
 def header_html(s: Snapshot) -> str:
     connected = s.status == "connected"
     any_active = any(a.state == "active" and a.priority != "advisory" for a in s.alarms)
@@ -92,6 +104,7 @@ def header_html(s: Snapshot) -> str:
         f'<span class="hgroup">Study <b>{esc(s.settings.study_code or "—")}</b></span>'
         f'<span class="hgroup" title="{esc(s.status_detail)}"><span class="dot {s.status}"></span><b>{status}</b>{extra}</span>'
         f'<span class="hspacer"></span>{rec}<span class="pill {pill[0]}">{pill[1]}</span><span class="clock">{hms(s.now)}</span>'
+        '<button type="button" class="fullscreen" data-act="fullscreen" title="Full screen (F); Esc leaves it" aria-label="Full screen">⛶</button>'
     )
 
 
@@ -617,6 +630,7 @@ def install_monitor_actions(app: "WebApp") -> None:
             "test-end": lambda el: (e.end_test(), app.refresh()),
             "test-emergency": lambda el: (e.emergency_stop(), toast("Emergency stop: the test is ended." + ("" if e.valve_available() else " Turn the valve to room air."), 6000), app.refresh()),
             "focus": lambda el: (mv.set_focus(None if mv.focus == data(el, "arg") else data(el, "arg")), app.refresh()),
+            "fullscreen": lambda el: toggle_fullscreen(),
         },
     )
     app.hotkey_mark = mark
