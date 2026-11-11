@@ -155,6 +155,28 @@ class Spo2Settings:
 
 
 @dataclass
+class CapnoSettings:
+    """A Medtronic Capnostream 35 as the CO2 source: its CO2 waveform (20 Hz, Microstream
+    sidestream sampling) replaces the board's own CO2 sensor, and is lined up with the
+    Arduino's flow. See ``co2response/sources/capnostream.py`` and docs/capnostream.md."""
+
+    enabled: bool = False
+    #: where it is: a serial port (COM4, /dev/ttyUSB0), a network address
+    #: (socket://192.168.1.50:4001) or "sim" for a simulated Capnostream
+    port: str = ""
+    baud: int = 9600
+    #: how its ASCII lines are laid out: "" = find KEY=value pairs by themselves, or the
+    #: fields in order, e.g. "time,co2,etco2,fico2,rr,spo2,pr" (co2 = a waveform sample,
+    #: co2* = every remaining field is a waveform sample, skip = ignore that field)
+    fields: str = ""
+    #: the unit its CO2 values are in: 'mmHg' | '%' | 'kPa'
+    units: str = "mmHg"
+    #: the gas reaches its sensor this long after leaving the airway (sample line and
+    #: analyser; about 2.5–3 s for Microstream), ms. The flow is delayed to match.
+    delay_ms: float = 2700
+
+
+@dataclass
 class TestSettings:
     """The rebreathing test: how the response is analysed, and the subject's size.
 
@@ -253,6 +275,7 @@ class Settings:
     alarms: AlarmSettings = field(default_factory=AlarmSettings)
     test: TestSettings = field(default_factory=TestSettings)
     spo2: Spo2Settings = field(default_factory=Spo2Settings)
+    capno: CapnoSettings = field(default_factory=CapnoSettings)
     study_code: str = "STUDY-01"
     baud_rate: int = 115200
     bridge_url: str = "ws://localhost:8765"
@@ -320,6 +343,20 @@ def sanitize_spo2(o: Spo2Settings) -> Spo2Settings:
     )
 
 
+CAPNO_UNITS = ("mmHg", "%", "kPa")
+
+
+def sanitize_capno(c: CapnoSettings) -> CapnoSettings:
+    return dataclasses.replace(
+        c,
+        baud=int(_clamp(c.baud, 300, 921600, 9600)),
+        units=c.units if c.units in CAPNO_UNITS else "mmHg",
+        delay_ms=_clamp(c.delay_ms, 0, 10000, 2700),
+        port=str(c.port or "").strip(),
+        fields=str(c.fields or "").strip(),
+    )
+
+
 def sanitize_test(t: TestSettings) -> TestSettings:
     def opt(v, lo, hi):
         return v if isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi else None
@@ -371,6 +408,7 @@ class SettingsStore:
         s.processing = sanitize_processing(s.processing)
         s.test = sanitize_test(s.test)
         s.spo2 = sanitize_spo2(s.spo2)
+        s.capno = sanitize_capno(s.capno)
         if s.trend_series not in ("etco2", "mv", "rr"):
             s.trend_series = "etco2"
         if s.hardware not in HARDWARE:

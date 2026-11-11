@@ -32,6 +32,10 @@ SIM_FIELDS = [
     ("vt_ml", "Tidal volume", "mL", 100, 1500, 10),
 ]
 
+#: a Capnostream 35's serial speeds (docs/capnostream.md); --capture finds the right one
+CAPNO_BAUDS = [9600, 19200, 38400, 57600, 115200]
+CAPNO_UNITS = [("mmHg", "mmHg"), ("%", "%"), ("kPa", "kPa")]
+
 REPLAY_SPEEDS = [(1, "1×"), (2, "2×"), (5, "5×"), (10, "10×")]
 FILE_CAL_LABEL = "Use the calibration saved in the file"
 FILE_CAL_HINT = "On: replays exactly as recorded. Off: re-processes the raw volts with the current calibration."

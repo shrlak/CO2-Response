@@ -116,6 +116,14 @@ class NumbersPanel(Panel):
         row("MV", "L/min", "---" if s.stale["pneumo"] else fmt(n.mv, 1), COLOR["pneumo"], "this breath")
         if st.spo2.enabled:
             row("SpO2", "%", fmt(n.spo2), "white", f"low {fmt(st.spo2.low_pct)}" if st.spo2.low_pct > 0 else "")
+        if s.capno is not None:
+            c = s.capno
+            out.append("\nCapnostream 35 says\n", "bold grey70")
+            if c:
+                parts = [f"EtCO2 {fmt(c.get('etco2', math.nan))}", f"RR {fmt(c.get('rr', math.nan))}", f"SpO2 {fmt(c.get('spo2', math.nan))}", f"PR {fmt(c.get('pr', math.nan))}"]
+                out.append(" " + " · ".join(parts) + "\n", "grey70")
+            else:
+                out.append(" no numbers from it yet\n", "grey50")
         lines = out.split("\n")[:h]
         self.update(Text("\n").join(lines))
 
@@ -131,6 +139,8 @@ class StatusBar(Static):
             t.append(s.source_label, "bold")
             t.append(f" · {s.measured_rate_hz:.0f} Hz · {s.dropped} dropped", "grey62")
             t.append(f" · {'Uno R4, digital sensors' if s.hardware == 'digital' else 'ADC board'}", "grey62")
+            if s.capno is not None:
+                t.append(" · CO2 from the Capnostream 35", "grey62")
         else:
             t.append(s.status_detail or "Not connected: press o to connect", "grey62")
         rec = s.recording
@@ -290,6 +300,7 @@ class MonitorApp(App):
         Binding("f", "freeze", "Freeze", show=False),
         Binding("a", "arm_audio", "Audio", show=False),
         Binding("h", "hardware", "Board", show=False),
+        Binding("k", "capnostream", "Capnostream"),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -522,6 +533,42 @@ class MonitorApp(App):
         e = self.engine
         e.update_settings(hardware="analog" if e.settings.hardware == "digital" else "digital")
         self.notify(f"Expecting the {'Uno R4 board with digital sensors' if e.settings.hardware == 'digital' else 'ADC board'}", timeout=3)
+
+    def action_capnostream(self) -> None:
+        """Choose a Capnostream 35 as the CO2 source (or not)."""
+        import dataclasses
+
+        from ..sources.serial_source import list_ports
+
+        e = self.engine
+        c = e.settings.capno
+        opts: list[tuple[str, str]] = [("off", "Off: the board's own CO2 sensor" + ("  (now)" if not c.enabled else ""))]
+        opts.append(("sim", "Simulated Capnostream (with the simulator)" + ("  (now)" if c.enabled and c.port == "sim" else "")))
+        try:
+            ports = list_ports()
+        except Exception:  # noqa: BLE001
+            ports = []
+        for p in ports:
+            now = "  (now)" if c.enabled and c.port == p.device else ""
+            opts.append((f"port:{p.device}", f"Serial port {p.device}  {p.label}{now}"))
+        if c.port and c.port not in ("sim",) and c.port not in [p.device for p in ports]:
+            opts.append((f"port:{c.port}", f"{c.port}" + ("  (now)" if c.enabled else "")))
+        note = (
+            f"Its CO2 waveform replaces the board's CO2 sensor; flow still comes from the board. {c.baud} baud, fields {c.fields or 'auto'}, "
+            f"{c.units}, delay {c.delay_ms:g} ms (change with co2response --capno-baud/--capno-fields/--capno-units/--capno-delay)."
+        )
+
+        def done(choice: str | None) -> None:
+            if not choice:
+                return
+            if choice == "off":
+                new = dataclasses.replace(c, enabled=False)
+            else:
+                new = dataclasses.replace(c, enabled=True, port="sim" if choice == "sim" else choice[5:])
+            e.update_settings(capno=new)
+            self.notify("Capnostream off" if not new.enabled else f"CO2 from the Capnostream on {new.port}" + ("" if isinstance(e.source, type(None)) else " (applies at the next connection)" if e.source is not None and e.source.kind != "simulator" else ""), timeout=5)
+
+        self.push_screen(Picker("Capnostream 35 as the CO2 source", opts, note), done)
 
     def action_view(self) -> None:
         order = ["response", "etco2", "mv"]

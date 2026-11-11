@@ -9,6 +9,7 @@ CO2-Response is a research capnography and airflow monitor for CO2 rebreathing t
 
 - **The Uno R4 board (current build, [wiring](docs/wiring.md#uno-r4-board-digital-sensors)):** an Arduino Uno R4 Minima reading a Sensirion **SFM3304-D** flow sensor (I2C) and a GSS **SprintIR-6S-20** CO2 sensor (UART, sidestream with a sample pump), with a stop/marker button, a reed switch on the valve handle, an alarm LED and a buzzer. It sends % CO2 and L/min. One flow sensor gives the flow waveform, the breaths, tidal volume and minute ventilation.
 - **The ADC board (earlier build):** an Arduino Uno with an ADS1115 16-bit ADC reading a capnograph, a flow sensor and a pneumotachograph as voltages.
+- **A Medtronic Capnostream 35 as the CO2 source** (with the Uno R4 board): the app reads the monitor's CO2 waveform from its RS-232 or LAN data output and lines it up with the board's flow, in place of the SprintIR. See [docs/capnostream.md](docs/capnostream.md).
 
 The monitor app turns that stream into a bedside-style display:
 
@@ -83,6 +84,7 @@ The whole monitor is drawn in the terminal, so it works in the terminal panel of
 | `b`, `r`, `e`, `x` | Start baseline, start rebreathing, end the test, emergency stop |
 | `m`, `space`, `c` | Mark an event, silence alarms, start/stop recording (stopping also writes the PDF report next to the CSV) |
 | `v` | The graph: ventilatory response, EtCO2 trend, MV trend |
+| `k` | Capnostream 35 as the CO2 source: a serial port, simulated, or off |
 | `f`, `a`, `h`, `q` | Freeze the waveforms, arm the alarm sound, switch the expected board, quit |
 
 `co2response-tui --situation test_normal --speed 10` starts a whole simulated test straight away, and `co2response-tui --port COM3` (or `/dev/ttyACM0`, `/dev/cu.usbmodem…`) connects to the Arduino.
@@ -138,6 +140,7 @@ python -m co2response --sim
 | `python -m co2response --tui --sim` | The monitor full-screen in the terminal (the same as `co2response-tui --sim`). Without PySide6 installed, `python -m co2response` opens this by itself. |
 | `python -m co2response --situation test_normal --speed 10` | Starts the simulator in a situation (`--list-situations` lists them) at a speed from 1 to 50. |
 | `python -m co2response --fast-test normal` | A whole simulated test with no window in about a second: the session, its PDF report and the graph in the terminal. `--variability 15` sets the breath-to-breath variation, `--sessions DIR` where it is saved. |
+| `python -m co2response --capnostream COM5` | Take the CO2 from a Capnostream 35 on that port (saved; `off` turns it off, `sim` uses a simulated one with `--sim`). `--capture COM5` records what the monitor sends, to set up its format. See [docs/capnostream.md](docs/capnostream.md). |
 | `python -m co2response --board analog` | Expect (and simulate) the ADC board instead of the Uno R4 board, and remember that. |
 | `python -m co2response --version` | Prints the version. |
 
@@ -899,6 +902,7 @@ These are placeholders until the [open questions](docs/open-questions.md) are an
 | **[SETUP-GUIDE.md](SETUP-GUIDE.md)** | Step-by-step setup and operation: wiring, firmware, install, checks, calibration, sessions, troubleshooting |
 | [docs/wiring.md](docs/wiring.md) | Pin-by-pin wiring |
 | [docs/protocol.md](docs/protocol.md) | Serial protocol (test vectors in `docs/protocol-fixtures.json`) |
+| [docs/capnostream.md](docs/capnostream.md) | A Medtronic Capnostream 35 as the CO2 source: cabling, capturing its output, setting up its format and delay |
 | [docs/python-daq.md](docs/python-daq.md) | Python acquisition: NI, LabJack and other DAQs, `co2r-daq` |
 | [docs/calibration.md](docs/calibration.md) | Calibration procedures |
 | [docs/data-format.md](docs/data-format.md) | Session file format (v4), noise-removal details, import/export, the test report, analysis in Python/MATLAB/Excel |

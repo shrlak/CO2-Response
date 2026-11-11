@@ -41,6 +41,10 @@ class SimulatorCore:
         self.digital = digital
         self._co2_held = 0.0
         self._co2_age = 0.0
+        #: with a simulated Capnostream attached (``sources/capnostream.py``): the
+        #: subject's CO2 goes to it, 20 times a second, as (device s, mmHg, EtCO2, RR),
+        #: and the board's own CO2 value reads "not answering" (no SprintIR fitted)
+        self.capno_feed = None
         self.model = PhysioModel(**params)
         self.rate_hz = 100
         self.streaming = True
@@ -80,6 +84,11 @@ class SimulatorCore:
             volts.append(self._clamp(self.encoders.spo2(s.spo2_pct)))
         return self._send(seq, volts, p)
 
+    @property
+    def device_s(self) -> float:
+        """The simulated device's clock, s."""
+        return self._t_ms / 1000
+
     def _digital_values(self, s, p, dt: float) -> list[float]:
         """What the Uno R4 board puts on a line: % CO2 as the SprintIR last reported it
         (20 times a second) and the SFM3304's flow in L/min. One flow sensor, so either
@@ -88,6 +97,13 @@ class SimulatorCore:
         if self._co2_age >= 1 / CO2_UPDATE_HZ - 1e-9:
             self._co2_age = 0.0
             self._co2_held = NOT_ANSWERING if s.co2_pct is None else min(CO2_RANGE_PCT[1], max(CO2_RANGE_PCT[0], s.co2_pct))
+            if self.capno_feed is not None:
+                m = self.model
+                if s.co2_pct is not None:  # unplugging the CO2 sensor stops the Capnostream's data
+                    rr = 60 / m._period if m._period else math.nan
+                    self.capno_feed.append((self.device_s, s.co2_pct / 100 * p.barometric_mm_hg, m._et, rr))
+        if self.capno_feed is not None:
+            self._co2_held = NOT_ANSWERING
         flow = NOT_ANSWERING if p.flow_disconnected or p.pneumo_disconnected else min(FLOW_RANGE_LPM, max(-FLOW_RANGE_LPM, s.flow_lpm))
         values = [self._co2_held, flow]
         if self.encoders.spo2 is not None:  # an oximeter is not part of this board: its volts ride along as value 3

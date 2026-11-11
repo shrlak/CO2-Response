@@ -353,7 +353,8 @@ class MonitorView:
                 alarm=("high" if co2_alarm.priority == "high" else "medium") if co2_alarm else None,
                 flash=bool(co2_alarm and not co2_alarm.acknowledged),
                 limits=(lim(st.alarms.high_mm_hg) + (f" / {lim(st.alarms.stop_mm_hg)}" if st.alarms.stop_mm_hg is not None else ""), lim(st.alarms.low_mm_hg)),
-                qualifier="no CO2 signal" if sc["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br: {fmt(disp(n.etco2_median), digits)}",
+                qualifier=("no CO2 signal" if sc["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br: {fmt(disp(n.etco2_median), digits)}")
+                + (f" · Capnostream {fmt(disp(s.capno['etco2']), digits)}" if s.capno and "etco2" in s.capno else ""),
                 raw=raw("co2"),
             ),
             "rr": tile_html("rr", "RR", "/min", fmt(n.rr), alarm="high" if apnea else None, flash=bool(apnea and not apnea.acknowledged), qualifier="no breath detected" if n.rr != n.rr and s.status == "connected" else ""),

@@ -8,6 +8,8 @@
     python -m co2response --report file.csv   # write the test report (file.pdf) and exit
     python -m co2response --tui --sim         # the monitor full-screen in a terminal (also: co2response-tui)
     python -m co2response --fast-test normal  # a whole simulated test in about a second: CSV, PDF and the graph
+    python -m co2response --capnostream COM4  # take the CO2 from a Capnostream 35 on COM4 (saved; "off" to stop)
+    python -m co2response --capture COM4      # record what a Capnostream sends, to set up its format
 """
 
 from __future__ import annotations
@@ -35,6 +37,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fast-test", choices=("normal", "blunted", "brisk"), metavar="KIND", help="run a whole simulated rebreathing test (normal, blunted or brisk) with no window as fast as the computer can, save it with its PDF report, print the MV-vs-EtCO2 graph and exit")
     ap.add_argument("--variability", type=float, default=None, metavar="PCT", help="with --fast-test: breath-to-breath variability of VT, %% (default 15)")
     ap.add_argument("--sessions", metavar="DIR", help="with --fast-test: the folder to save the session in (default: the sessions folder)")
+    cap = ap.add_argument_group("Capnostream 35 as the CO2 source (saved in the settings)")
+    cap.add_argument("--capnostream", metavar="PORT", help="its data port: a serial port (COM4, /dev/ttyUSB0), socket://HOST:PORT for its LAN/Wi-Fi link, sim (a simulated one, with --sim) or off")
+    cap.add_argument("--capno-baud", type=int, metavar="N", help="its serial speed (default 9600)")
+    cap.add_argument("--capno-fields", metavar="LIST", help='its ASCII layout, e.g. "time,co2,etco2,rr,spo2,pr"; "auto" finds KEY=value pairs (default)')
+    cap.add_argument("--capno-units", choices=("mmHg", "%", "kPa"), help="the unit of its CO2 values (default mmHg)")
+    cap.add_argument("--capno-delay", type=float, metavar="MS", help="its sample-line delay, ms (default 2700)")
+    cap.add_argument("--capture", metavar="PORT", help="record what a Capnostream sends on PORT (60 s), report what was found, and exit")
+    cap.add_argument("--capture-seconds", type=float, default=60, metavar="SEC", help="with --capture: how long to record")
+    cap.add_argument("--capture-baud", default="auto", metavar="N", help="with --capture: the serial speed, or auto to try the common ones")
     ap.add_argument("--exit-after", type=float, default=None, metavar="SEC", help="close the window by itself after this many seconds (for checking an installation)")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     args = ap.parse_args(argv)
@@ -48,6 +59,12 @@ def main(argv: list[str] | None = None) -> int:
         if not ports:
             print("No serial ports found.")
         return 0
+
+    if args.capture:
+        return capture_capnostream(args.capture, args.capture_seconds, args.capture_baud, args.capno_fields, args.capno_units)
+
+    if any(v is not None for v in (args.capnostream, args.capno_baud, args.capno_fields, args.capno_units, args.capno_delay)):
+        save_capno(args)
 
     if args.list_situations:
         from .sim.controls import SITUATIONS
@@ -98,6 +115,56 @@ def main(argv: list[str] | None = None) -> int:
     from .ui.app import run
 
     return run(sim=args.sim or bool(args.situation), port=args.port, replay=args.replay, exit_after=args.exit_after, situation=args.situation, speed=args.speed)
+
+
+def save_capno(args) -> None:
+    """Save the Capnostream options given on the command line in the settings."""
+    import dataclasses
+
+    from .settings import SettingsStore, sanitize_capno
+
+    store = SettingsStore()
+    s = store.load_settings()
+    c = s.capno
+    if args.capnostream is not None:
+        off = args.capnostream.lower() in ("off", "none", "")
+        c = dataclasses.replace(c, enabled=not off, port=c.port if off else args.capnostream)
+    if args.capno_baud is not None:
+        c = dataclasses.replace(c, baud=args.capno_baud)
+    if args.capno_fields is not None:
+        c = dataclasses.replace(c, fields="" if args.capno_fields.lower() == "auto" else args.capno_fields)
+    if args.capno_units is not None:
+        c = dataclasses.replace(c, units=args.capno_units)
+    if args.capno_delay is not None:
+        c = dataclasses.replace(c, delay_ms=args.capno_delay)
+    s.capno = sanitize_capno(c)
+    store.save_settings(s)
+    state = f"on: {s.capno.port}, {s.capno.baud} baud, fields {s.capno.fields or 'auto'}, {s.capno.units}, delay {s.capno.delay_ms:g} ms" if s.capno.enabled else "off"
+    print(f"Capnostream as the CO2 source: {state}")
+
+
+def capture_capnostream(port: str, seconds: float, baud: str, fields: str | None, units: str | None) -> int:
+    """``--capture``: record a Capnostream's output and say what the decoder makes of it."""
+    import time
+    from pathlib import Path
+
+    from .sources.capnostream import CapnoDecoder, capture
+
+    out = Path(f"capnostream-capture-{time.strftime('%Y%m%d-%H%M%S')}.txt")
+    dec = CapnoDecoder("" if not fields or fields.lower() == "auto" else fields, units or "mmHg")
+    print(f"Capturing from {port}. On the Capnostream, turn on its data output (RS-232 / LAN) in the ASCII protocol.")
+    try:
+        with open(out, "w", encoding="utf-8") as f:
+            r = capture(port, seconds, baud if baud == "auto" else int(baud), f, dec)
+    except Exception as e:  # noqa: BLE001  (the port could not be opened)
+        print(f"Could not read {port}: {e}", file=sys.stderr)
+        return 1
+    print(f"{r['lines']} lines, {r['bytes']} bytes at {r['baud']} baud, saved to {out.resolve()}")
+    print(f"CO2 waveform samples found: {r['co2_samples']} ({r['co2_rate_hz']:.1f} a second; the monitor measures 20)")
+    print(f"Numbers found: {', '.join(r['numbers']) or 'none'}; lines not understood: {r['unknown_lines']}")
+    if r["co2_rate_hz"] < 15:
+        print("The CO2 waveform was not found at 20 a second: look at the file and give the layout with --capno-fields (docs/capnostream.md).")
+    return 0
 
 
 def report(csv_path: str, out: str | None = None, skip_sec: float | None = None) -> int:
