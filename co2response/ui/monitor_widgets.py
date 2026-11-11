@@ -136,8 +136,9 @@ class SweepWidget(QWidget):
     def push(self, values: list[float]) -> None:
         if not values:
             return
-        if self._layer is None or self._cache_key() != self._key:
-            # the layers will be rebuilt from the buffer at the next paint
+        if self._layer is None or self._cache_key() != self._key or len(values) > self._n // 4:
+            # the layers will be rebuilt from the buffer at the next paint (also after a
+            # stall: a quarter of a screen at once is cheaper to redraw than to sweep)
             v = np.asarray(values[-self._n :], dtype=float)
             self._buf[(self._pos + np.arange(len(v))) % self._n] = v
             self._pos = (self._pos + len(values)) % self._n

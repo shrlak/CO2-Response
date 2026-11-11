@@ -479,8 +479,11 @@ class MonitorEngine:
         self._marker_id = 1
         #: display values waiting to be drawn, per channel; the window drains them
         self.waves: dict[str, list[float]] = {cid: [] for cid in CHANNEL_IDS}
-        #: bumps when the waveforms should be cleared (new connection)
+        #: bumps when the waveforms should be cleared (new connection, a new speed)
         self.wave_epoch = 0
+        #: the sweep gets one sample in this many (the speed of a simulation or replay)
+        self._wave_every = 1
+        self._wave_count = 0
         self._sample_listeners: list[Callable[[Processed], None]] = []
         self._timers: list[tuple[float, Callable[[], None]]] = []
         self._jobs: set[HardwareCheckJob] = set()
@@ -596,6 +599,7 @@ class MonitorEngine:
         if isinstance(self._source, SimulatorSource):
             if "speed" in patch and self._source.speed != self.settings.sim.speed:
                 self._source.speed = self.settings.sim.speed
+                self._sync_wave_speed()
                 self._add_log(f"Simulation speed {self._source.run_speed:g}×")
                 # a recording's clock follows the simulated time, so it notes where that changes
                 self.recorder.event(self.clock(), f"SIM_SPEED {self._source.run_speed:g}")
@@ -850,6 +854,7 @@ class MonitorEngine:
         now = self.clock()
         self._last_data_wall = self._last_breath_wall = now
         self._last_valid_wall = {cid: 0.0 for cid in CHANNEL_IDS}
+        self._wave_every = max(1, round(src.run_speed if isinstance(src, SimulatorSource) else float(getattr(src, "speed", 1) or 1)))
         self._clear_waves()
         self.alarms.set_condition("deviceLost", False, now, "medium", "")
         self._awaiting_reconnect = False
@@ -1098,7 +1103,12 @@ class MonitorEngine:
             if pr.valid[cid]:
                 self._last_valid_wall[cid] = now
 
-        if not self.frozen:
+        # Faster than real time, the sweep gets every k-th sample, so it still crosses
+        # the screen at the real-time pace (a time-compressed trace) instead of racing
+        # across it k times a sweep, which looks like flashing colour, not a waveform.
+        self._wave_count += 1
+        if not self.frozen and self._wave_count >= self._wave_every:
+            self._wave_count = 0
             w = self.waves
             w["co2"].append(pr.co2_pct if self.settings.co2_unit == "%" else pr.co2_mmhg)
             w["flow"].append(pr.flow_lpm)
@@ -1235,6 +1245,18 @@ class MonitorEngine:
     def _clear_waves(self) -> None:
         self.waves = {cid: [] for cid in CHANNEL_IDS}
         self.wave_epoch += 1
+        self._wave_count = 0
+
+    @property
+    def wave_compression(self) -> int:
+        """How many of the subject's seconds one second of the sweep shows (1 = real time)."""
+        return self._wave_every
+
+    def _sync_wave_speed(self) -> None:
+        k = max(1, round(self.time_scale()))
+        if k != self._wave_every:
+            self._wave_every = k
+            self._clear_waves()
 
     # ---------- periodic checks (4 Hz) ----------
 

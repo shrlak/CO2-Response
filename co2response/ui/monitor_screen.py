@@ -215,21 +215,18 @@ class MonitorScreen(QWidget):
         self.tiles = {
             "etco2": NumericTile("co2", "EtCO2", "mmHg", big=True),
             "rr": NumericTile("co2", "RR", "/min"),
-            "fico2": NumericTile("co2", "FiCO2", "mmHg"),
             "flow": NumericTile("flow", "Flow", "L/min"),
-            "peak": NumericTile("flow", "Peak insp", "L/min"),
             "spo2": NumericTile("flow", "SpO2", "%"),
             "vt": NumericTile("pneumo", "VT", "mL"),
             "mv": NumericTile("pneumo", "MV", "L/min"),
         }
         co2nums = QGridLayout()
         co2nums.setSpacing(6)
-        co2nums.addWidget(self.tiles["etco2"], 0, 0, 2, 1)
+        co2nums.addWidget(self.tiles["etco2"], 0, 0)
         co2nums.addWidget(self.tiles["rr"], 0, 1)
-        co2nums.addWidget(self.tiles["fico2"], 1, 1)
         co2nums.setColumnStretch(0, 135)
         co2nums.setColumnStretch(1, 100)
-        rows = [("co2", co2nums), ("flow", hbox(self.tiles["flow"], self.tiles["peak"], self.tiles["spo2"], spacing=6)), ("pneumo", hbox(self.tiles["vt"], self.tiles["mv"], spacing=6))]
+        rows = [("co2", co2nums), ("flow", hbox(self.tiles["flow"], self.tiles["spo2"], spacing=6)), ("pneumo", hbox(self.tiles["vt"], self.tiles["mv"], spacing=6))]
         self.holders: dict[str, QWidget] = {}
         for r, (cid, nums) in enumerate(rows):
             grid.addWidget(self.sweeps[cid], r, 0)
@@ -262,6 +259,9 @@ class MonitorScreen(QWidget):
         outer.addLayout(body, 1)
         #: one graph enlarged to fill the monitor ("co2", "flow", "pneumo", "trend"), or None
         self.focus: str | None = None
+        #: one flow sensor (the Uno R4 board): one Flow waveform over two rows, no pneumotach
+        self._single: bool | None = None
+        self._layout_flow(engine.single_flow)
 
         keys = QHBoxLayout()
         keys.setSpacing(6)
@@ -314,12 +314,23 @@ class MonitorScreen(QWidget):
     def toggle_focus(self, target: str) -> None:
         self.set_focus(None if self.focus == target else target)
 
+    def _layout_flow(self, single: bool) -> None:
+        """With one flow sensor the Flow waveform takes the pneumotach's row as well;
+        VT and MV stay beside it, since they are computed from that same flow."""
+        if single == self._single:
+            return
+        self._single = single
+        self.grid.removeWidget(self.sweeps["flow"])
+        self.grid.addWidget(self.sweeps["flow"], 1, 0, 2 if single else 1, 1)
+        self.set_focus(None if single and self.focus == "pneumo" else self.focus)
+
     def set_focus(self, target: str | None) -> None:
         """Enlarge one graph to fill the monitor, or (None) go back to the full layout."""
         self.focus = target
+        single = bool(self._single)
         for r, (cid, sw) in enumerate(self.sweeps.items()):
-            show = target in (None, cid)
-            sw.setVisible(show)
+            show = target in (None, cid) or (single and cid == "pneumo" and target == "flow")
+            sw.setVisible(show and not (single and cid == "pneumo"))
             self.holders[cid].setVisible(show)
             sw.expand.setChecked(target == cid)
             self.grid.setRowStretch(r, ROW_STRETCH[r] if show else 0)
@@ -375,7 +386,11 @@ class MonitorScreen(QWidget):
         # the list is in priority order, so the stop alarm comes before the warning
         co2_alarm = next((a for a in s.alarms if a.id in ("co2Stop", "co2High", "co2Low") and a.state == "active"), None)
         apnea = next((a for a in s.alarms if a.id == "apnea" and a.state == "active"), None)
+        self._layout_flow(s.single_flow)
+        k = self.engine.wave_compression
         tag = "FROZEN" if s.frozen else "SIMULATED" if s.source_kind == "simulator" else "REPLAY" if s.source_kind == "replay" else None
+        if tag and tag != "FROZEN" and k > 1:
+            tag += f" · {st.sweep_sec * k:g} s/SCREEN"  # faster than real time: a compressed trace
         sw["co2"].set_tag(tag, bool((co2_alarm and co2_alarm.priority == "high") or apnea))
 
         def lim(v):
@@ -386,7 +401,7 @@ class MonitorScreen(QWidget):
         def raw(cid):
             i = idx[cid]
             v = n.volts[i] if i < len(n.volts) else float("nan")
-            return f"{v:.4f} V" if st.show_raw_volts and v == v else ""
+            return (f"{v:.2f} raw" if s.hardware == "digital" else f"{v:.4f} V") if st.show_raw_volts and v == v else ""
 
         def stale_val(stale, v, d=0):
             return "---" if stale else fmt(v, d)
@@ -403,9 +418,7 @@ class MonitorScreen(QWidget):
             raw=raw("co2"),
         )
         t["rr"].set(fmt(n.rr), alarm="high" if apnea else None, flash=bool(apnea and not apnea.acknowledged and blink_fast), qualifier="no breath detected" if n.rr != n.rr and s.status == "connected" else "")
-        t["fico2"].set(stale_val(s.stale["co2"], disp(n.fico2), digits), unit, stale=s.stale["co2"])
         t["flow"].set(stale_val(s.stale["flow"], n.flow), stale=s.stale["flow"], raw=raw("flow"))
-        t["peak"].set(stale_val(s.stale["flow"], n.peak_flow), stale=s.stale["flow"])
         # the oximeter's tile is there only while the SpO2 channel is switched on
         o = st.spo2
         if t["spo2"].isVisibleTo(self) != o.enabled:
@@ -420,7 +433,8 @@ class MonitorScreen(QWidget):
             qualifier="no reading" if n.spo2 != n.spo2 and s.status == "connected" else "",
         )
         exp = f"exp {fmt(n.vte)} mL · " if n.vte == n.vte else ""
-        t["vt"].set(stale_val(s.stale["pneumo"], n.vt), stale=s.stale["pneumo"], raw=raw("pneumo"), qualifier="" if s.stale["pneumo"] else f"{exp}flow {fmt(n.pneumo_flow)} L/min")
+        vq = exp.rstrip(" ·") if s.single_flow else f"{exp}flow {fmt(n.pneumo_flow)} L/min"
+        t["vt"].set(stale_val(s.stale["pneumo"], n.vt), stale=s.stale["pneumo"], raw=raw("pneumo"), qualifier="" if s.stale["pneumo"] else vq)
         t["mv"].set(stale_val(s.stale["pneumo"], n.mv, 1), stale=s.stale["pneumo"], qualifier="" if s.stale["pneumo"] else "60 s average")
 
         disconnected = s.status in ("idle", "error")

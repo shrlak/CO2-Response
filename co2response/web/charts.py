@@ -200,6 +200,17 @@ class Sweep:
         ctx = self.fg.ctx
         d, W, H = self.fg.dpr, self.fg.W, self.fg.H
         N = self.n
+        if len(self.pending) > N // 4:
+            # more than a quarter of a screen since the last frame (a slow frame, a tab in
+            # the background): the erase gaps of an incremental draw would land on segments
+            # stroked after them and the trace would smear into a block of colour, so
+            # draw it again from the buffer instead
+            v = np.asarray(self.pending[-N:], dtype=float)
+            self.hist[(self.pos + len(self.pending) - len(v) + np.arange(len(v))) % N] = v
+            self.pos += len(self.pending)
+            self.pending.clear()
+            self._redraw()
+            return
         gap, lw = 18 * d, 3 * d
         self._pen()
         ctx.beginPath()

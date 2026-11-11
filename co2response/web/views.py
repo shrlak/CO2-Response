@@ -167,7 +167,7 @@ def install_alarm_actions(app: "WebApp") -> None:
 # ------------------------------------------------------------------ the monitor screen
 
 
-TILE_IDS = ("etco2", "rr", "fico2", "flow", "peak", "spo2", "vt", "mv")
+TILE_IDS = ("etco2", "rr", "flow", "spo2", "vt", "mv")
 #: what the trend tab can plot against time: setting value → (tab text, caption)
 SERIES = {"etco2": ("EtCO2 trend", "EtCO2"), "mv": ("MV trend", "MV (L/min, 60 s average)"), "rr": ("RR trend", "RR (/min)")}
 
@@ -208,17 +208,22 @@ class MonitorView:
         self.mark: tuple[int, str] | None = None
         self._epoch = -1
         self._trend_key = None
+        #: the layout drawn: one flow sensor (the Uno R4 board) has one Flow row, no pneumotach
+        self._single: bool | None = None
 
     def html(self) -> str:
-        nums = {
-            "co2": '<div class="nums"><div id="t-etco2" style="display:contents"></div><div id="t-rr" style="display:contents"></div><div id="t-fico2" style="display:contents"></div></div>',
-            "flow": '<div class="nums"><div id="t-flow" style="display:contents"></div><div id="t-peak" style="display:contents"></div><div id="t-spo2" style="display:contents"></div></div>',
-            "pneumo": '<div class="nums"><div id="t-vt" style="display:contents"></div><div id="t-mv" style="display:contents"></div></div>',
-        }
-        rows = "".join(
-            f'<section class="row {cid}" id="row-{cid}">{wave_html(cid, label, unit)}{nums[cid]}</section>'
-            for cid, label, unit in (("co2", "CO2", "mmHg"), ("flow", "Flow", "L/min"), ("pneumo", "Pneumotach", "L/min"))
-        )
+        def slots(*ids: str) -> str:
+            return '<div class="nums">' + "".join(f'<div id="t-{i}" style="display:contents"></div>' for i in ids) + "</div>"
+
+        self._single = single = self.app.engine.single_flow
+        if single:
+            # one flow sensor: VT and MV are computed from the Flow waveform, so they sit beside it
+            nums = {"co2": slots("etco2", "rr"), "flow": slots("flow", "spo2", "vt", "mv")}
+            layout = (("co2", "CO2", "mmHg"), ("flow", "Flow", "L/min"))
+        else:
+            nums = {"co2": slots("etco2", "rr"), "flow": slots("flow", "spo2"), "pneumo": slots("vt", "mv")}
+            layout = (("co2", "CO2", "mmHg"), ("flow", "Flow", "L/min"), ("pneumo", "Pneumotach", "L/min"))
+        rows = "".join(f'<section class="row {cid}" id="row-{cid}">{wave_html(cid, label, unit)}{nums[cid]}</section>' for cid, label, unit in layout)
         trend = (
             '<section class="trend"><div class="trend-head" role="tablist">'
             '<button class="tab" role="tab" data-act="trend-tab" data-arg="trend" id="tab-trend">EtCO2 trend</button>'
@@ -234,7 +239,7 @@ class MonitorView:
             '<div class="trend-plot"><canvas id="trend-canvas" data-act="resp-click"></canvas></div></section>'
         )
         return (
-            f'<div class="monitor-screen" id="monscreen"><main class="monitor">{rows}<div id="overlay"></div></main>{trend}'
+            f'<div class="monitor-screen" id="monscreen"><main class="monitor{" single" if single else ""}">{rows}<div id="overlay"></div></main>{trend}'
             '<aside class="simpanel" id="simpanel" aria-label="Simulation" hidden></aside>'
             '<nav class="softkeys" id="softkeys"></nav><div id="drawer"></div></div>'
         )
@@ -261,8 +266,10 @@ class MonitorView:
                     b.title = "Back to all graphs (Esc)" if on else "Enlarge this graph to fill the screen (Esc to go back)"
 
     def mount(self) -> None:
+        self.sweeps = {}
         for cid, var in (("co2", "--co2"), ("flow", "--flow"), ("pneumo", "--pneumo")):
-            self.sweeps[cid] = Sweep(byid(f"fg-{cid}"), byid(f"bg-{cid}"), var)
+            if byid(f"fg-{cid}") is not None:
+                self.sweeps[cid] = Sweep(byid(f"fg-{cid}"), byid(f"bg-{cid}"), var)
         self.trend = TrendChart(byid("trend-canvas"))
         self.resp = ResponseChart(byid("trend-canvas"))
         self._epoch = -1
@@ -286,6 +293,9 @@ class MonitorView:
     # ---------- refresh at 4 Hz
 
     def refresh(self, s: Snapshot) -> None:
+        if s.single_flow != self._single:
+            self.app.show("monitor")  # the other board: one flow row, or flow and pneumotach
+            return
         st = s.settings
         n = s.numbers
         pb, wv = st.processing.barometric_mm_hg, st.processing.water_vapor
@@ -302,7 +312,8 @@ class MonitorView:
         theme = self.app.theme
         self.sweeps["co2"].set_options(0, co2_max, ticks, False, disp(st.alarms.high_mm_hg), st.sweep_sec, s.rate_hz, theme)
         for cid in ("flow", "pneumo"):
-            self.sweeps[cid].set_options(-fs, fs, [-fs, 0, fs], True, None, st.sweep_sec, s.rate_hz, theme)
+            if cid in self.sweeps:
+                self.sweeps[cid].set_options(-fs, fs, [-fs, 0, fs], True, None, st.sweep_sec, s.rate_hz, theme)
         byid("unit-co2").textContent = unit
 
         # the list is in priority order, so the stop alarm comes before the warning
@@ -310,6 +321,9 @@ class MonitorView:
         apnea = next((a for a in s.alarms if a.id == "apnea" and a.state == "active"), None)
         byid("row-co2").className = "row co2" + (" in-alarm" if (co2_alarm and co2_alarm.priority == "high") or apnea else "")
         tag = "FROZEN" if s.frozen else "SIMULATED" if s.source_kind == "simulator" else "REPLAY" if s.source_kind == "replay" else None
+        k = self.app.engine.wave_compression
+        if tag and tag != "FROZEN" and k > 1:
+            tag += f" · {st.sweep_sec * k:g} s/screen"  # faster than real time: a compressed trace
         wt = byid("wtag")
         wt.hidden = tag is None
         wt.textContent = tag or ""
@@ -322,7 +336,7 @@ class MonitorView:
         def raw(cid):
             i = idx[cid]
             v = n.volts[i] if i < len(n.volts) else math.nan
-            return f"{v:.4f} V" if st.show_raw_volts and math.isfinite(v) else ""
+            return (f"{v:.2f} raw" if s.hardware == "digital" else f"{v:.4f} V") if st.show_raw_volts and math.isfinite(v) else ""
 
         def sv(stale, v, d=0):
             return "---" if stale else fmt(v, d)
@@ -343,12 +357,10 @@ class MonitorView:
                 raw=raw("co2"),
             ),
             "rr": tile_html("rr", "RR", "/min", fmt(n.rr), alarm="high" if apnea else None, flash=bool(apnea and not apnea.acknowledged), qualifier="no breath detected" if n.rr != n.rr and s.status == "connected" else ""),
-            "fico2": tile_html("fico2", "FiCO2", unit, sv(sc["co2"], disp(n.fico2), digits), stale=sc["co2"]),
             "flow": tile_html("flow", "Flow", "L/min", sv(sc["flow"], n.flow), stale=sc["flow"], raw=raw("flow")),
-            "peak": tile_html("peak", "Peak insp", "L/min", sv(sc["flow"], n.peak_flow), stale=sc["flow"]),
             "vt": tile_html(
                 "vt", "VT", "mL", sv(sc["pneumo"], n.vt), stale=sc["pneumo"], raw=raw("pneumo"),
-                qualifier="" if sc["pneumo"] else (f"exp {fmt(n.vte)} mL · " if math.isfinite(n.vte) else "") + f"flow {fmt(n.pneumo_flow)} L/min",
+                qualifier="" if sc["pneumo"] else (f"exp {fmt(n.vte)} mL" if math.isfinite(n.vte) else "") + ("" if s.single_flow else f" · flow {fmt(n.pneumo_flow)} L/min"),
             ),  # fmt: skip
             "mv": tile_html("mv", "MV", "L/min", sv(sc["pneumo"], n.mv, 1), stale=sc["pneumo"], qualifier="" if sc["pneumo"] else "60 s average"),
         }
