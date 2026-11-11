@@ -1,7 +1,16 @@
-"""Channel configuration: which ADC input each sensor is on and how volts become units.
+"""Channel configuration: which value of a data line each sensor is and how it becomes units.
 
-The configuration is a plain JSON document (``co2response/config/channels.json``) so it
-can be edited by hand. A calibration is one of:
+There are two boards, and so two bundled configurations:
+
+- ``config/channels-digital.json``: the Uno R4 board with digital sensors (a Sensirion
+  SFM3304-D flow sensor on I2C and a GSS SprintIR-6S-20 CO2 sensor on UART). Its data
+  lines already carry engineering units (% CO2 and L/min), so the calibrations are 1:1
+  trims, and the one flow sensor is both the "flow" and the "pneumo" channel.
+- ``config/channels.json``: the earlier board, an ADS1115 reading three analog sensors
+  (capnograph, flow sensor, pneumotach) and sending volts.
+
+The configuration is a plain JSON document so it can be edited by hand. A calibration
+is one of:
 
 - ``{"type": "linear", "gain": g, "offset": o}``       value = g·V + o
 - ``{"type": "polynomial", "coeffs": [c0, c1, …]}``    value = c0 + c1·V + c2·V² + …
@@ -18,7 +27,9 @@ from .jsfmt import is_num
 
 CHANNEL_IDS: tuple[str, ...] = ("co2", "flow", "pneumo")
 RAIL_CHECKS = ("both", "high", "low", "none")
+HARDWARE: tuple[str, ...] = ("digital", "analog")
 DEFAULT_CHANNELS_PATH = Path(__file__).with_name("config") / "channels.json"
+DIGITAL_CHANNELS_PATH = Path(__file__).with_name("config") / "channels-digital.json"
 DEFAULT_FLOW_MODEL = {"k1": 0.2, "k2": 0}
 
 
@@ -67,10 +78,25 @@ def validate_channels(c) -> dict:
     return c
 
 
-def load_default_channels() -> dict:
-    """The defaults shipped with the app (``co2response/config/channels.json``)."""
-    with open(DEFAULT_CHANNELS_PATH, encoding="utf-8") as f:
+def load_default_channels(hardware: str = "analog") -> dict:
+    """The defaults shipped with the app for a board: ``config/channels.json`` (analog
+    sensors on an ADC) or ``config/channels-digital.json`` (the Uno R4 board)."""
+    with open(DIGITAL_CHANNELS_PATH if hardware == "digital" else DEFAULT_CHANNELS_PATH, encoding="utf-8") as f:
         return validate_channels(json.load(f))
 
 
+def is_digital(c: dict) -> bool:
+    """Does this configuration read a board that sends engineering units, not volts?"""
+    return str(c.get("adc", {}).get("type", "")).lower() == "digital"
+
+
+def single_flow(c: dict) -> bool:
+    """One flow sensor does both jobs (the flow waveform, and breaths and volumes), as on
+    the Uno R4 board: the "flow" and "pneumo" channels read the same value."""
+    ch = c["channels"]
+    return int(ch["flow"]["index"]) == int(ch["pneumo"]["index"])
+
+
+#: the analog board's defaults (the name is older than the second board)
 DEFAULT_CHANNELS: dict = load_default_channels()
+DEFAULT_DIGITAL_CHANNELS: dict = load_default_channels("digital")

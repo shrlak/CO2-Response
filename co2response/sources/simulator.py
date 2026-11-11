@@ -13,9 +13,9 @@ class SimulatorSource(Source):
     kind = "simulator"
 
     def __init__(
-        self, encoders: Encoders, rail_low_v: float = 0, rail_high_v: float = 5, clock: Callable[[], float] = time.monotonic, speed: float = 1, **params
+        self, encoders: Encoders, rail_low_v: float = 0, rail_high_v: float = 5, clock: Callable[[], float] = time.monotonic, speed: float = 1, digital: bool = False, **params
     ) -> None:
-        self.core = SimulatorCore(encoders, rail_low_v, rail_high_v, **params)
+        self.core = SimulatorCore(encoders, rail_low_v, rail_high_v, digital=digital, **params)
         self._clock = clock
         #: simulated seconds per real second. The device clock in the lines runs this much
         #: faster, as in a replay at 2×–10×, so everything measured on it (RR, VT, MV, the
