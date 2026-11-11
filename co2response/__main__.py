@@ -48,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     cap.add_argument("--capture-baud", default="auto", metavar="N", help="with --capture: the serial speed, or auto to try the common ones")
     ap.add_argument("--exit-after", type=float, default=None, metavar="SEC", help="close the window by itself after this many seconds (for checking an installation)")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
+    ap.add_argument("--update", action="store_true", help="update to the latest version from GitHub (or git pull, when run from a copy of the repository) and exit")
     args = ap.parse_args(argv)
 
     if args.list_ports:
@@ -59,6 +60,9 @@ def main(argv: list[str] | None = None) -> int:
         if not ports:
             print("No serial ports found.")
         return 0
+
+    if args.update:
+        return update()
 
     if args.capture:
         return capture_capnostream(args.capture, args.capture_seconds, args.capture_baud, args.capno_fields, args.capno_units)
@@ -115,6 +119,43 @@ def main(argv: list[str] | None = None) -> int:
     from .ui.app import run
 
     return run(sim=args.sim or bool(args.situation), port=args.port, replay=args.replay, exit_after=args.exit_after, situation=args.situation, speed=args.speed)
+
+
+REPO_URL = "https://github.com/shrlak/CO2-Response"
+
+
+def update(run=None) -> int:
+    """``--update``: bring this installation up to the latest version.
+
+    Run from a copy of the repository, that is ``git pull``; installed with pip (or the
+    install script), it reinstalls the package from GitHub, with the desktop window if
+    it is installed now."""
+    import subprocess
+    from pathlib import Path
+
+    run = run or subprocess.call
+    print(f"{APP_NAME} {__version__} now.")
+    root = Path(__file__).resolve().parents[1]
+    if (root / ".git").exists():
+        print(f"Updating the copy of the repository in {root} (git pull) …")
+        code = run(["git", "-C", str(root), "pull", "--ff-only"])
+        if code == 0:
+            print("Updated. If the requirements changed, run:  pip install -r requirements.txt")
+        return code
+    try:
+        import PySide6  # noqa: F401
+
+        extra = "[desktop]"
+    except ImportError:
+        extra = ""
+    spec = f"co2response{extra} @ git+{REPO_URL}"
+    print(f"Reinstalling from {REPO_URL} …")
+    # the package itself always (same version number or not), then whatever it now needs
+    code = run([sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall", "--no-deps", spec])
+    if code == 0:
+        code = run([sys.executable, "-m", "pip", "install", "--upgrade", spec])
+    print("Updated: run co2response --version to see the version." if code == 0 else "The update did not finish; see the messages above.")
+    return code
 
 
 def save_capno(args) -> None:

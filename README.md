@@ -68,6 +68,14 @@ Then:
 co2response-tui --sim
 ```
 
+**Updating.** An installed copy does not update itself. To get the latest version:
+
+```bash
+co2response --update
+```
+
+(or run the install script again). From a copy of the repository, `--update` runs `git pull`. The terminal monitor shows its version in the top-left corner, and `co2response --version` prints it.
+
 The whole monitor is drawn in the terminal, so it works in the terminal panel of VS Code or any other editor:
 
 - the CO2 and flow waveforms, sweeping like a bedside monitor
@@ -658,7 +666,7 @@ It is seeded, so the tests and the sample session are reproducible. `sample-data
 
 Both front ends use the same `co2response` engine, processing, alarms, session-file and report code; only the drawing and the platform adapters differ. The alarm, signal-processing and test/subject forms are described once, in `co2response/forms.py`, and each front end builds its form from that list (`ui/spec_form.py`, `web/spec_form.py`), so a setting is added, worded and limited in one place. The calibration and connection screens are still written separately for each front end.
 
-**The standalone desktop app.** `.github/workflows/release.yml` builds the desktop app with PyInstaller for Windows, macOS and Linux (`packaging/CO2-Response.spec`) and checks that each built program writes a report and runs the simulator. Pushing a tag like `v0.4.0` attaches the three apps to a GitHub Release; a lab computer then needs no Python. To build one locally: `pip install pyinstaller` and `pyinstaller --noconfirm packaging/CO2-Response.spec`.
+**The standalone desktop app.** `.github/workflows/release.yml` builds the desktop app with PyInstaller for Windows, macOS and Linux (`packaging/CO2-Response.spec`) and checks that each built program writes a report and runs the simulator. Pushing a tag like `v0.5.0` attaches the three apps to a GitHub Release; a lab computer then needs no Python. To build one locally: `pip install pyinstaller` and `pyinstaller --noconfirm packaging/CO2-Response.spec`.
 
 **How the browser version works.** `site/index.html` and the small service worker `site/sw.js` are the only JavaScript:
 

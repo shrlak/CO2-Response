@@ -26,7 +26,11 @@ Write-Host "Installing CO2-Response$Extra into $Venv"
 & cmd /c "$Py -m venv ""$Venv"""
 $VPy = Join-Path $Venv "Scripts\python.exe"
 & $VPy -m pip install --quiet --upgrade pip
-if (Test-Path $Source) { & $VPy -m pip install --quiet "$Source$Extra" } else { & $VPy -m pip install --quiet "co2response$Extra @ $Source" }
+# --force-reinstall: running the script again always brings the latest version
+$Spec = if (Test-Path $Source) { "$Source$Extra" } else { "co2response$Extra @ $Source" }
+& $VPy -m pip install --quiet --upgrade --force-reinstall --no-deps $Spec
+& $VPy -m pip install --quiet --upgrade $Spec
+& (Join-Path $Venv "Scripts\co2response.exe") --version
 
 $Bin = Join-Path $Venv "Scripts"
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")

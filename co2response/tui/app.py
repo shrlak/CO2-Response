@@ -180,7 +180,7 @@ def draw_tiles(tiles: dict[str, Tile], s: Snapshot, flash: bool, single: bool) -
 class StatusBar(Static):
     def draw(self, s: Snapshot, engine: MonitorEngine) -> None:
         t = Text(no_wrap=True, overflow="ellipsis")
-        t.append(f" {APP_NAME} ", "bold black on dark_orange")
+        t.append(f" {APP_NAME} {__version__} ", "bold black on dark_orange")
         t.append(" RESEARCH USE ONLY ", "bold dark_orange")
         dot = {"connected": ("●", "green3"), "connecting": ("●", "gold1"), "error": ("●", "red")}.get(s.status, ("○", "grey50"))
         t.append(f" {dot[0]} ", dot[1])

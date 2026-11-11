@@ -29,10 +29,14 @@ echo "Installing CO2-Response$EXTRA with $($PY --version) into $VENV"
 "$PY" -m venv "$VENV"
 "$VENV/bin/python" -m pip install --quiet --upgrade pip
 if [ -d "$SOURCE" ]; then
-  "$VENV/bin/python" -m pip install --quiet "$SOURCE$EXTRA"   # a local copy
+  "$VENV/bin/python" -m pip install --quiet --upgrade --force-reinstall --no-deps "$SOURCE$EXTRA"   # a local copy
+  "$VENV/bin/python" -m pip install --quiet --upgrade "$SOURCE$EXTRA"
 else
-  "$VENV/bin/python" -m pip install --quiet "co2response$EXTRA @ $SOURCE"
+  # --force-reinstall: running the script again always brings the latest version
+  "$VENV/bin/python" -m pip install --quiet --upgrade --force-reinstall --no-deps "co2response$EXTRA @ $SOURCE"
+  "$VENV/bin/python" -m pip install --quiet --upgrade "co2response$EXTRA @ $SOURCE"
 fi
+echo "Installed $("$VENV/bin/co2response" --version)."
 
 BIN="$HOME/.local/bin"
 mkdir -p "$BIN"
