@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 from PySide6.QtWidgets import QComboBox, QFileDialog, QLineEdit, QVBoxLayout
@@ -124,10 +125,46 @@ class ConnectionPage(Page):
         br.add(f)
         br.add(hbox(button("Connect to Python", self._bridge, kind="primary"), stretch_end=True))
         cards.add(br)
+
+        # ---- a Capnostream 35 as the CO2 source
+        cap = Card("Capnostream 35", "CO2 from the monitor")
+        cap.add(
+            label(
+                "Takes the CO2 waveform from a Medtronic Capnostream 35's data output (RS-232 through a USB adapter, or its LAN link as "
+                "socket://address:port) instead of the board's CO2 sensor; the flow still comes from the Arduino. Turn on the monitor's "
+                "data output in its ASCII protocol. To find its layout, run co2response --capture PORT (docs/capnostream.md). "
+                "Choose Simulated to try it with the simulator.",
+                "note",
+                wrap=True,
+            )
+        )
+        f = Form()
+        c = s.capno
+        self.capno_on = toggle(c.enabled, lambda v: self._capno(enabled=v))
+        f.add("capon", "Use the Capnostream for CO2", self.capno_on)
+        self.capno_port = QComboBox()
+        self.capno_port.setEditable(True)
+        self.capno_port.setFixedWidth(260)
+        self.capno_port.lineEdit().editingFinished.connect(lambda: self._capno(port=self._capno_port_value()))
+        self.capno_port.activated.connect(lambda _i: self._capno(port=self._capno_port_value()))
+        f.add("capport", "Its port", hbox(self.capno_port, button("Refresh", self._refresh_capno_ports, small=True)))
+        f.add("capbaud", "Baud rate", combo([(b, str(b)) for b in cf.CAPNO_BAUDS], c.baud, lambda v: self._capno(baud=v), 120))
+        self.capno_fields = QLineEdit(c.fields)
+        self.capno_fields.setPlaceholderText("auto (KEY=value pairs)")
+        self.capno_fields.setFixedWidth(260)
+        self.capno_fields.editingFinished.connect(lambda: self._capno(fields=self.capno_fields.text().strip()))
+        f.add("capfields", "Fields in order", self.capno_fields, hint="e.g. time,co2,etco2,rr,spo2,pr; co2* = the rest are waveform samples; skip = ignore one")
+        f.add("capunits", "CO2 unit", combo(cf.CAPNO_UNITS, c.units, lambda v: self._capno(units=v), 120))
+        number_field(f, "capdelay", "Sample-line delay", c.delay_ms, lambda v: self._capno(delay_ms=v), "ms", hint="About 2700 ms for Microstream; the flow is delayed to match.", lo=0, hi=10000, step=50)
+        cap.add(f)
+        self.capno_state = label("", "note", wrap=True)
+        cap.add(self.capno_state)
+        cards.add(cap)
         lay.addWidget(cards)
         lay.addStretch(1)
         self._lib_version = -1
         self._refresh_ports()
+        self._refresh_capno_ports()
 
     # ---------- actions
 
@@ -180,6 +217,26 @@ class ConnectionPage(Page):
             return
         self.engine.connect("replay", session=s, file_name=Path(path).name, speed=self.speed.value() or 1, use_file_calibration=self.use_file_cal.isChecked())
 
+    def _capno_port_value(self) -> str:
+        data = self.capno_port.currentData()
+        text = self.capno_port.currentText().strip()
+        return str(data) if data and self.capno_port.itemText(self.capno_port.currentIndex()) == text else text
+
+    def _capno(self, **change) -> None:
+        self.engine.update_settings(capno=dataclasses.replace(self.engine.settings.capno, **change))
+
+    def _refresh_capno_ports(self) -> None:
+        cur = self.engine.settings.capno.port
+        self.capno_port.blockSignals(True)
+        self.capno_port.clear()
+        self.capno_port.addItem("Simulated (with the simulator)", "sim")
+        for p in self.engine._ports():
+            self.capno_port.addItem(p.label, p.device)
+        if cur and self.capno_port.findData(cur) < 0:
+            self.capno_port.addItem(cur, cur)
+        set_combo(self.capno_port, cur or "sim")
+        self.capno_port.blockSignals(False)
+
     def _bridge(self) -> None:
         self.engine.update_settings(bridge_url=self.bridge_url.text().strip())
         if not self.engine.connect("bridge"):
@@ -212,5 +269,18 @@ class ConnectionPage(Page):
             has = self.session.count() > 0
             self.no_sessions.setVisible(not has)
             self.replay_btn.setEnabled(has)
+        c = s.settings.capno
+        if c.enabled:
+            nums = s.capno
+            if nums is None:
+                state = f"On ({c.port or 'no port chosen'}): used at the next connection to the Arduino or the simulator."
+            elif nums:
+                state = "Connected. The monitor says " + " · ".join(f"{k.upper()} {v:.0f}" for k, v in nums.items() if k in ("etco2", "rr", "spo2", "pr"))
+            else:
+                state = "Waiting for data from the Capnostream (it warms up for about 40 s)."
+        else:
+            state = "Off: the CO2 comes from the board's own sensor."
+        self.capno_state.setText(state)
         if force:
             self._refresh_ports()
+            self._refresh_capno_ports()

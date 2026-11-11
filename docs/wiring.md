@@ -38,6 +38,8 @@ The separate 5 V / 2 A wall adapter (barrel jack) is the **5V_EXT** rail: SFM330
 
 Software settings for this board are in `firmware/CO2ResponseR4/config.h` (pins, the flow sensor's sign and fallback scale factor, the CO2 sensor's filter choice). Build and upload with the Arduino IDE (board "Arduino UNO R4 Minima") or `pio run -d firmware/r4 -t upload`. The protocol differences are in [protocol.md](protocol.md#the-uno-r4-board-digital-sensors).
 
+**With a Capnostream 35 as the CO2 source** ([capnostream.md](capnostream.md)): its FilterLine goes to the filter's gas port in place of the SprintIR's sample line, and it has its own pump, so the SprintIR and the sample pump are not needed. Its data cable goes to the computer (RS-232 through an isolated USB adapter, or its network link), not to the Arduino.
+
 **Not yet tested on hardware.** The SFM3304-D command codes and the fallback scale factor follow Sensirion's SFM3x19-family interface; check them against the datasheet of your part. The firmware asks the sensor for its own scale factor at start-up and uses the fallback only if the sensor does not answer.
 
 ## ADC board (ADS1115)

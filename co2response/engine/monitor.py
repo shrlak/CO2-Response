@@ -77,6 +77,7 @@ from ..sim.controls import (
 from ..sim.core import Encoders
 from ..sources.base import MarkerEvent, Source, StatusEvent
 from ..sources.bridge import BridgeSource
+from ..sources.capnostream import CapnoDecoder, CapnoMerge, CapnostreamSource, SimulatedCapnostream, mmhg_to_line_pct
 from ..sources.replay import ReplaySource
 from ..sources.serial_source import PortInfo, SerialSource, list_ports
 from ..sources.simulator import SimulatorSource
@@ -89,6 +90,8 @@ NAN = float("nan")
 MAX_TREND = 20000
 MAX_TRACE = 4 * 3600 * 2  # 4 h at 2 Hz
 MAX_WAVE = 6000
+#: no "Capnostream not answering" alarm before its first CO2 for this long after connecting (ms)
+CAPNO_WARMUP_MS = 45_000
 TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum", "noisyBreaths", "leak", "calibration", "testTime", "spo2NoSignal")
 #: the alarms that turn the valve back to room air when the app switches the valve
 AUTO_STOP = {"co2Stop": "stop limit", "apnea": "apnea", "spo2Low": "low SpO2"}
@@ -303,6 +306,9 @@ class Snapshot:
     hardware: str = "analog"
     #: one flow sensor does everything, so there is one flow waveform, not two
     single_flow: bool = False
+    #: the Capnostream's own numbers (etco2, fico2, rr, spo2, pr) while one is the CO2
+    #: source, from its last 5 s; None without one
+    capno: dict | None = None
 
 
 @dataclass
@@ -454,6 +460,11 @@ class MonitorEngine:
         self._spo2_low_since: float | None = None
         self._spo2_valid_wall = 0.0
         self._save_error_logged = False
+        #: a Capnostream 35 as the CO2 source (settings.capno): its own source, and the
+        #: merge that puts its CO2 into the board's data lines
+        self._capno_src: Source | None = None
+        self._merge: CapnoMerge | None = None
+        self._capno_on = False
         #: what the board's alarm LED and buzzer were last told (None = not told yet)
         self._alarm_out: int | None = None
         self._alarm_out_at = 0.0
@@ -545,7 +556,11 @@ class MonitorEngine:
         return r if math.isfinite(r) and r else 100
 
     def _processing_options(self) -> ProcessingOptions:
-        return dataclasses.replace(self.settings.processing, sample_rate_hz=self._rate())
+        o = dataclasses.replace(self.settings.processing, sample_rate_hz=self._rate())
+        if self._capno_on:
+            # the Capnostream's sample line: the flow waits for the CO2 it goes with
+            o = dataclasses.replace(o, co2_delay_ms=self.settings.capno.delay_ms)
+        return o
 
     def update_settings(self, **changes) -> None:
         """Change settings (attribute names of ``Settings``); applied and saved at once."""
@@ -563,6 +578,11 @@ class MonitorEngine:
         was = self.effective_channels
         self.settings = nxt
         self.store.save_settings(nxt)
+        if nxt.capno != prev.capno and self._source is not None:
+            if isinstance(self._source, SimulatorSource):
+                self.connect("simulator")  # with (or without) its simulated Capnostream
+                return
+            self._add_log("Capnostream settings take effect at the next connection")
         if nxt.hardware != prev.hardware:
             if isinstance(self._source, SimulatorSource):
                 self.connect("simulator")  # the simulated board is the other one now
@@ -829,6 +849,7 @@ class MonitorEngine:
             self._replay_hardware = ("digital" if is_digital(made_with) else "analog") if made_with else self.settings.hardware
         self._info = None
         self._alarm_out = None
+        self._capno_on = self.settings.capno.enabled and kind in ("serial", "bridge", "simulator")
         self._valve = False  # a board starts (and restarts) on room air
         self._valve_asked.clear()
         if self._file_channels is not None:
@@ -887,6 +908,8 @@ class MonitorEngine:
             self._known_port = info or PortInfo(src.port)
         self._add_log(f"Connected: {src.label}")
         self.recorder.event(now, f"CONNECTED {src.label}")
+        if self._capno_on:
+            self._start_capno(src)
         if self.prevent_sleep:
             keep_awake.acquire()
         if kind in ("serial", "bridge") and self.settings.auto_record and not self.recorder.active:
@@ -996,6 +1019,7 @@ class MonitorEngine:
         for aid in TECHNICAL:
             if self.alarms.is_active(aid):
                 self.alarms.remove(aid)
+        self._stop_capno()
         self._file_channels = None
         self._replay_hardware = None
         if self.pipeline.channels is not self.channels:
@@ -1019,7 +1043,10 @@ class MonitorEngine:
         """Read whatever the source has produced. Call often (e.g. every 20 ms)."""
         src = self._source
         if src is not None:
-            for item in src.poll():
+            items = src.poll()
+            if self._merge is not None:
+                items = self._merged(items)
+            for item in items:
                 if self._source is not src:
                     break
                 if isinstance(item, str):
@@ -1273,7 +1300,11 @@ class MonitorEngine:
         one_flow = single_flow(self.pipeline.channels)
         for cid, (aid, name) in rails.items():
             stuck = self._last is not None and self._last.stuck[cid] and not (one_flow and cid == "pneumo")
+            if cid == "co2" and self._merge is not None and self._merge.samples_in == 0 and now - self._connected_at < CAPNO_WARMUP_MS:
+                stuck = False  # the Capnostream warms up (about 40 s) and its first CO2 is still in the sample line
             # a digital sensor that stops answering is sent as 9999, the "rail" of that board
+            if cid == "co2" and self._merge is not None:
+                name = "CAPNOSTREAM"  # no CO2 from the monitor's data port
             what = f"{name} NOT ANSWERING: check its wiring and power" if digital else f"{name} SIGNAL AT ADC RAIL: check sensor connection"
             a.set_condition(aid, connected and fresh and stuck, now, "medium", what)
 
@@ -1514,6 +1545,69 @@ class MonitorEngine:
         self._add_log("EMERGENCY STOP" + (": valve to room air" if sent else ": turn the valve to room air"), "alarm")
         self.recorder.event(now, "EMERGENCY_STOP")
         return self.add_marker(EMERGENCY_LABEL) if self._rebreathing() else None
+
+    # ---------- a Capnostream 35 as the CO2 source
+
+    def _start_capno(self, src: Source) -> None:
+        """Open the Capnostream (or a simulated one) and start merging its CO2 in."""
+        c = self.settings.capno
+        p = self.settings.processing
+        if isinstance(src, SimulatorSource):
+            capno: Source = SimulatedCapnostream(src.core, c.delay_ms / 1000)
+            core = src.core
+            clock = lambda: core.device_s  # noqa: E731  (the simulated device's clock)
+        elif not c.port or c.port == "sim":
+            self._add_log("Capnostream: choose its port (a simulated one works only with the simulator)", "error")
+            capno, clock = None, time.monotonic
+        else:
+            capno, clock = CapnostreamSource(c.port, c.baud), time.monotonic
+        self._merge = CapnoMerge(CapnoDecoder(c.fields, c.units, p.barometric_mm_hg), clock, mmhg_to_line_pct(p.barometric_mm_hg, p.water_vapor))
+        if capno is None:
+            return
+        try:
+            capno.start()
+        except Exception as e:  # noqa: BLE001
+            self._add_log(str(e) or "Could not open the Capnostream", "error")
+            return
+        self._capno_src = capno
+        self._add_log(f"CO2 from {capno.label}: its CO2 delay {c.delay_ms:g} ms is applied to the flow")
+        self.recorder.event(self.clock(), f"CO2_SOURCE {capno.label}")
+
+    def _stop_capno(self) -> None:
+        capno, self._capno_src, self._merge = self._capno_src, None, None
+        self._capno_on = False
+        if capno is not None:
+            try:
+                capno.stop()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _merged(self, items: list) -> list:
+        """The board's items with the Capnostream's CO2 in its data lines."""
+        m = self._merge
+        capno = self._capno_src
+        if capno is not None:
+            for item in capno.poll():
+                if isinstance(item, str):
+                    m.capno_line(item)
+                elif isinstance(item, StatusEvent):
+                    self._add_log(item.detail or "Capnostream disconnected", "error")
+                    self._capno_src = None  # its CO2 now reads "not answering"
+                    try:
+                        capno.stop()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    break
+        out = m.board_items(items)
+        if not m.board_ok and not getattr(m, "_warned", False):
+            m._warned = True  # type: ignore[attr-defined]
+            self._add_log("Capnostream: this board sends volts, not units; the Capnostream's CO2 is used with the Uno R4 board only", "error")
+        return out
+
+    @property
+    def capnostream(self) -> CapnoMerge | None:
+        """The Capnostream link while one is in use."""
+        return self._merge
 
     # ---------- the board's button, reed switch, alarm LED and buzzer (the Uno R4 board)
 
@@ -1883,6 +1977,7 @@ class MonitorEngine:
             valve=("bag" if self._valve else "air") if self.valve_available() else None,
             hardware=self.hardware,
             single_flow=self.single_flow,
+            capno=self._merge.fresh_numbers if self._merge is not None else None,
         )
 
     def settings_json(self) -> dict:

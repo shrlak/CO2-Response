@@ -24,6 +24,15 @@ from .sim_panel import SimPanel
 from .trend import TrendPanel
 from .widgets import button, fmt, hbox, label, mss, scroll_page, set_prop
 
+
+def capno_note(s: Snapshot, key: str, disp=None, digits: int = 0) -> str:
+    """What a Capnostream 35 used as the CO2 source says, for beside the app's own number."""
+    v = (s.capno or {}).get(key)
+    if v is None:
+        return ""
+    return f" · Capnostream {fmt(disp(v) if disp else v, digits)}"
+
+
 #: relative heights of the CO2, flow and pneumotach rows
 ROW_STRETCH = (130, 100, 100)
 
@@ -414,10 +423,15 @@ class MonitorScreen(QWidget):
             alarm=("high" if co2_alarm.priority == "high" else "medium") if co2_alarm else None,
             flash=bool(co2_alarm and not co2_alarm.acknowledged and blink_fast),
             limits=(lim(st.alarms.high_mm_hg) + (f" / {lim(st.alarms.stop_mm_hg)}" if st.alarms.stop_mm_hg is not None else ""), lim(st.alarms.low_mm_hg)),
-            qualifier="no CO2 signal" if s.stale["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br: {fmt(disp(n.etco2_median), digits)}",
+            qualifier=("no CO2 signal" if s.stale["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br: {fmt(disp(n.etco2_median), digits)}") + capno_note(s, "etco2", disp, digits),
             raw=raw("co2"),
         )
-        t["rr"].set(fmt(n.rr), alarm="high" if apnea else None, flash=bool(apnea and not apnea.acknowledged and blink_fast), qualifier="no breath detected" if n.rr != n.rr and s.status == "connected" else "")
+        t["rr"].set(
+            fmt(n.rr),
+            alarm="high" if apnea else None,
+            flash=bool(apnea and not apnea.acknowledged and blink_fast),
+            qualifier=(("no breath detected" if n.rr != n.rr and s.status == "connected" else "") + capno_note(s, "rr")).lstrip(" ·"),
+        )
         t["flow"].set(stale_val(s.stale["flow"], n.flow), stale=s.stale["flow"], raw=raw("flow"))
         # the oximeter's tile is there only while the SpO2 channel is switched on
         o = st.spo2
