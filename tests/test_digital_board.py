@@ -346,3 +346,20 @@ def test_the_response_curve_bends_with_the_data_and_ignores_an_outlier():
     pts = [(3, 45, 12), (1, 38, 7), (2, 40, 8)]
     res = co2_response(pts, None)
     assert breath_path(res) == ([38, 40, 45], [7, 8, 12])  # in the order they were taken
+
+
+def test_update_pulls_a_repository_copy_or_reinstalls_from_github(monkeypatch, capsys):
+    import pathlib
+
+    from co2response.__main__ import REPO_URL, update
+
+    calls: list = []
+    assert update(run=lambda cmd: calls.append(cmd) or 0) == 0
+    assert calls == [["git", "-C", str(ROOT), "pull", "--ff-only"]]  # this checkout has .git
+    calls.clear()
+    real_exists = pathlib.Path.exists
+    monkeypatch.setattr(pathlib.Path, "exists", lambda self: False if self.name == ".git" else real_exists(self))
+    assert update(run=lambda cmd: calls.append(cmd) or 0) == 0
+    assert len(calls) == 2 and "--force-reinstall" in calls[0] and calls[0][-1].endswith(f"@ git+{REPO_URL}")
+    assert "co2response" in calls[1][-1] and "--force-reinstall" not in calls[1]
+    assert "Updated" in capsys.readouterr().out
