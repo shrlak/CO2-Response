@@ -245,7 +245,7 @@ def test_braille_canvas_and_graphs_draw():
 
 def test_terminal_monitor_runs_a_whole_test(tmp_path, monkeypatch):
     pytest.importorskip("textual")
-    from co2response.tui.app import BreathTable, GraphPanel, MonitorApp
+    from co2response.tui.app import GraphPanel, MonitorApp, Tile
 
     monkeypatch.setenv("CO2R_HOME", str(tmp_path))
     monkeypatch.setenv("CO2R_HARDWARE", "digital")
@@ -259,11 +259,21 @@ def test_terminal_monitor_runs_a_whole_test(tmp_path, monkeypatch):
             assert len(e.trend) > 20
             graph = app.query_one(GraphPanel).render()
             assert "Response slope" in str(graph) or e.co2_response().fit is None
-            assert "EtCO2" in str(app.query_one(BreathTable).render())
             assert app.query_one("#w-pneumo").display is False  # one flow sensor: one flow waveform
+            # every number in block digits of one size, as large as EtCO2's
+            from co2response.tui.app import on_screen
+
+            tiles = {t.id: t for t in app.query(Tile) if on_screen(t)}
+            assert set(tiles) == {"t-etco2", "t-rr", "t-flow", "t-vt", "t-mv"}
+            heights = {k: len(str(t.render()).strip("\n").splitlines()) for k, t in tiles.items()}
+            assert len(set(heights.values())) == 1 and min(heights.values()) >= 5, heights
+            assert "█" in str(tiles["t-mv"].render()) and "█" in str(tiles["t-rr"].render())
             await pilot.press("v")
             await pilot.pause(0.4)
-            assert "Trend" in app.query_one(GraphPanel).border_title
+            assert "[reverse] ETCO2 TREND [/" in app.query_one(GraphPanel).border_title  # the tab showing, highlighted
+            await pilot.press("v", "v")
+            await pilot.pause(0.4)
+            assert "EtCO2" in str(app.query_one(GraphPanel).render())  # the breath table
             await pilot.press("s")
             await pilot.pause(0.3)
             await pilot.press("escape")
@@ -317,3 +327,22 @@ def test_r4_firmware_matches_the_wiring():
     # the info line tells the app which board it is
     assert "UNITS,1" in ino and "A,BUTTON" in ino and "A,REED,1" in ino and "ALARM" in ino
     assert Path(ROOT / "firmware" / "r4" / "platformio.ini").exists()
+
+
+def test_the_response_curve_bends_with_the_data_and_ignores_an_outlier():
+    from co2response.processing.metrics import breath_path, lowess_curve
+
+    xs = [40 + 0.5 * i for i in range(40)]
+    ys = [5 + 0.05 * (x - 40) ** 2 for x in xs]  # a response that steepens
+    ys[20] += 15  # one erratic breath
+    cx, cy = lowess_curve(xs, ys)
+    assert len(cx) == 48 and cx[0] == xs[0] and cx[-1] == xs[-1]
+    truth = [5 + 0.05 * (x - 40) ** 2 for x in cx]
+    assert max(abs(a - b) for a, b in zip(cy, truth)) < 2.0  # follows the bend, not the outlier
+    slopes = [(cy[i + 1] - cy[i]) / (cx[i + 1] - cx[i]) for i in range(len(cx) - 1)]
+    assert slopes[-1] > 2 * slopes[5]  # steeper at the top: a curve, not a line
+    assert lowess_curve([38] * 6, [7] * 6) == ([], [])  # no spread in EtCO2: no curve
+    assert lowess_curve([38, 39, 40], [7, 8, 9]) == ([], [])  # too few breaths
+    pts = [(3, 45, 12), (1, 38, 7), (2, 40, 8)]
+    res = co2_response(pts, None)
+    assert breath_path(res) == ([38, 40, 45], [7, 8, 12])  # in the order they were taken

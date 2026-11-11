@@ -26,8 +26,9 @@ from .. import APP_NAME, __version__
 from ..alarms.audio import AlarmAudio
 from ..engine.monitor import MonitorEngine, Snapshot
 from ..processing.co2 import mmhg_to_pct
+from ..processing.metrics import co2_response_summary
 from ..sim.controls import SITUATIONS, situation_label
-from .canvas import Canvas, SweepBuffer, big_digits, draw_response, draw_sweep, draw_trend
+from .canvas import Canvas, SweepBuffer, big_digits, digits_size, draw_response, draw_sweep, draw_trend
 
 #: colours of the three channels, as on the desktop monitor
 COLOR = {"co2": "yellow1", "flow": "deep_sky_blue1", "pneumo": "spring_green2"}
@@ -71,61 +72,109 @@ class WavePanel(Panel):
         self.update(cv.render())
 
 
-class NumbersPanel(Panel):
-    """The large numbers: EtCO2 in block digits, then RR, live flow, VT, MV (and SpO2)."""
+class Tile(Panel):
+    """One number on the monitor, as large as the tiles allow: its name and unit in the
+    border, the number in block digits, a note in the bottom border."""
 
-    def draw(self, s: Snapshot, flash: bool) -> None:
+    def __init__(self, title: str, color: str, **kw) -> None:
+        super().__init__(title, **kw)
+        self.color = color
+        self.border_title = title
+        self.value = "--"
+        self.style_ = color
+        self.note = ""
+
+    def set(self, value: str, title: str | None = None, style: str | None = None, note: str = "") -> None:
+        self.value = value
+        if title is not None:
+            self.border_title = title
+        self.style_ = style or self.color
+        self.note = note
+        self.border_subtitle = note
+
+    def scale_fits(self, scale: int) -> bool:
         w, h = self.area()
-        n = s.numbers
-        st = s.settings
-        pct = st.co2_unit == "%"
-        pb, wv = st.processing.barometric_mm_hg, st.processing.water_vapor
+        dw, dh = digits_size(self.value if len(self.value) >= 3 else "000", scale)
+        return dw <= w and dh <= h
 
-        def disp(mm):
-            return mmhg_to_pct(mm, pb, wv) if pct else mm
-
-        co2_alarm = next((a for a in s.alarms if a.id in ("co2Stop", "co2High", "co2Low") and a.state == "active"), None)
-        apnea = next((a for a in s.alarms if a.id == "apnea" and a.state == "active"), None)
-        et = "---" if s.stale["co2"] else fmt(disp(n.etco2), 1 if pct else 0)
-        style = COLOR["co2"]
-        if co2_alarm:
-            style = "bold white on red3" if co2_alarm.priority == "high" else "bold black on gold1"
-            if flash and not co2_alarm.acknowledged:
-                style = "bold red3"
-        a = st.alarms
-        stop = f" / stop {fmt(disp(a.stop_mm_hg))}" if a.stop_mm_hg is not None else ""
+    def paint(self, scale: int) -> None:
+        w, h = self.area()
+        if scale >= 1 and self.scale_fits(scale):
+            lines = big_digits(self.value, scale)
+        else:
+            lines = [self.value]  # too small for block digits: plain bold
+        top = max(0, (h - len(lines)) // 2)
         out = Text(no_wrap=True, overflow="crop")
-        out.append(f"EtCO2 {'%' if pct else 'mmHg'}", f"bold {COLOR['co2']}")
-        out.append(f"   warn {fmt(disp(a.high_mm_hg))}{stop}\n", "grey62")
-        for digits in big_digits(et):
-            out.append(f" {digits}\n", style)
-        q = "no CO2 signal" if s.stale["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median of 3 breaths {fmt(disp(n.etco2_median), 1 if pct else 0)}"
-        out.append(f" {q}\n", "grey62")
+        for _ in range(top):
+            out.append("\n")
+        for i, line in enumerate(lines):
+            out.append(line.rjust(w - 1) + " ", f"bold {self.style_}")
+            if i < len(lines) - 1:
+                out.append("\n")
+        self.update(out)
 
-        def row(label: str, unit: str, value: str, color: str, note: str = "") -> None:
-            out.append(f"{label:<5}", f"bold {color}")
-            out.append(f"{value:>7}", f"bold {color}")
-            out.append(f" {unit:<6}", "grey62")
-            out.append(f"{note}\n", "grey50")
 
-        rr_style = "bold white on red3" if apnea and (not flash or apnea.acknowledged) else COLOR["co2"]
-        out.append("\n")
-        row("RR", "/min", fmt(n.rr), COLOR["co2"] if not apnea else rr_style, "apnea!" if apnea else "")
-        row("Flow", "L/min", "---" if s.stale["flow"] else fmt(n.flow), COLOR["flow"], "live")
-        row("VT", "mL", "---" if s.stale["pneumo"] else fmt(n.vt), COLOR["pneumo"], f"exp {fmt(n.vte)} mL" if math.isfinite(n.vte) else "")
-        row("MV", "L/min", "---" if s.stale["pneumo"] else fmt(n.mv, 1), COLOR["pneumo"], "this breath")
-        if st.spo2.enabled:
-            row("SpO2", "%", fmt(n.spo2), "white", f"low {fmt(st.spo2.low_pct)}" if st.spo2.low_pct > 0 else "")
-        if s.capno is not None:
-            c = s.capno
-            out.append("\nCapnostream 35 says\n", "bold grey70")
-            if c:
-                parts = [f"EtCO2 {fmt(c.get('etco2', math.nan))}", f"RR {fmt(c.get('rr', math.nan))}", f"SpO2 {fmt(c.get('spo2', math.nan))}", f"PR {fmt(c.get('pr', math.nan))}"]
-                out.append(" " + " · ".join(parts) + "\n", "grey70")
-            else:
-                out.append(" no numbers from it yet\n", "grey50")
-        lines = out.split("\n")[:h]
-        self.update(Text("\n").join(lines))
+def on_screen(w) -> bool:
+    """Shown: neither it nor anything it sits in is hidden."""
+    node = w
+    while node is not None and hasattr(node, "display"):
+        if not node.display:
+            return False
+        node = node.parent
+    return True
+
+
+TILES = ("etco2", "rr", "flow", "spo2", "vt", "mv", "vt2", "mv2")
+
+
+def draw_tiles(tiles: dict[str, Tile], s: Snapshot, flash: bool, single: bool) -> None:
+    """Every number, then one block-digit size for all of them: the largest that fits
+    the smallest tile showing, so they all read alike."""
+    n = s.numbers
+    st = s.settings
+    pct = st.co2_unit == "%"
+    pb, wv = st.processing.barometric_mm_hg, st.processing.water_vapor
+
+    def disp(mm):
+        return mmhg_to_pct(mm, pb, wv) if pct else mm
+
+    digits = 1 if pct else 0
+    co2_alarm = next((a for a in s.alarms if a.id in ("co2Stop", "co2High", "co2Low") and a.state == "active"), None)
+    apnea = next((a for a in s.alarms if a.id == "apnea" and a.state == "active"), None)
+    style = None
+    if co2_alarm:
+        style = "white on red3" if co2_alarm.priority == "high" else "black on gold1"
+        if flash and not co2_alarm.acknowledged:
+            style = "red3"
+    a = st.alarms
+    stop = f"/{fmt(disp(a.stop_mm_hg))}" if a.stop_mm_hg is not None else ""
+    capno = s.capno or {}
+    note = "no CO2 signal" if s.stale["co2"] else f"left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br {fmt(disp(n.etco2_median), digits)}"
+    if "etco2" in capno:
+        note += f" · Capnostream {fmt(disp(capno['etco2']), digits)}"
+    tiles["etco2"].set("---" if s.stale["co2"] else fmt(disp(n.etco2), digits), f"EtCO2 {'%' if pct else 'mmHg'} · {fmt(disp(a.high_mm_hg))}{stop}", style, note)
+    rr_style = ("white on red3" if not flash or apnea.acknowledged else "red3") if apnea else None
+    rr_note = "apnea" if apnea else "no breath detected" if n.rr != n.rr and s.status == "connected" else ""
+    if "rr" in capno:
+        rr_note = (rr_note + " · " if rr_note else "") + f"Capnostream {fmt(capno['rr'])}"
+    tiles["rr"].set(fmt(n.rr), "RR /min", rr_style, rr_note)
+    tiles["flow"].set("---" if s.stale["flow"] else fmt(n.flow), "Flow L/min", note="live")
+    vt = "---" if s.stale["pneumo"] else fmt(n.vt)
+    vt_note = f"exp {fmt(n.vte)} mL" if math.isfinite(n.vte) else ""
+    mv = "---" if s.stale["pneumo"] else fmt(n.mv, 1)
+    for k in ("vt", "vt2"):
+        tiles[k].set(vt, "VT mL", note=vt_note)
+    for k in ("mv", "mv2"):
+        tiles[k].set(mv, "MV L/min", note="this breath")
+    tiles["spo2"].set(fmt(n.spo2), "SpO2 %", note=f"low {fmt(st.spo2.low_pct)}" if st.spo2.low_pct > 0 else "")
+    shown = [t for t in tiles.values() if on_screen(t)]
+    scale = 0
+    for sc in (4, 3, 2, 1):
+        if shown and all(t.scale_fits(sc) for t in shown):
+            scale = sc
+            break
+    for t in tiles.values():
+        t.paint(scale)
 
 
 class StatusBar(Static):
@@ -190,38 +239,44 @@ class TestBar(Static):
         self.update(t)
 
 
-class BreathTable(Panel):
-    """The last breaths: each one's EtCO2, VT, its own RR and MV (VT × 60 / its length)."""
-
-    def draw(self, engine: MonitorEngine) -> None:
-        w, h = self.area()
-        rows = h - 1
-        out = Text(no_wrap=True, overflow="crop")
-        out.append(f"{'#':>4} {'EtCO2':>6} {'VT':>5} {'RR':>4} {'MV':>5}  \n", "bold")
-        pts = engine.trend[-rows:] if rows > 0 else []
-        for i, q in enumerate(pts):
-            n = len(engine.trend) - len(pts) + i + 1
-            rr = q.mv_breath / (q.vt / 1000) if math.isfinite(q.vt) and q.vt > 0 and math.isfinite(q.mv_breath) else math.nan
-            st = "" if q.quality == "ok" else "grey42"
-            line = f"{n:>4} {fmt(q.etco2):>6} {fmt(q.vt):>5} {fmt(rr):>4} {fmt(q.mv_breath, 1):>5}"
-            out.append(line, st)
-            out.append((" x" if q.excluded else "  " if q.quality == "ok" else f" {q.quality[:6]}") + "\n", "grey50")
-        self.update(out)
+def breath_table(engine: MonitorEngine, w: int, h: int) -> Text:
+    """The last breaths: each one's EtCO2, VT, its own RR and MV (MV = VT × RR)."""
+    rows = h - 1
+    out = Text(no_wrap=True, overflow="crop")
+    out.append(f"{'#':>5} {'time':>7} {'EtCO2':>7} {'VT mL':>7} {'RR':>5} {'MV L/min':>9}  \n", "bold")
+    pts = engine.trend[-rows:] if rows > 0 else []
+    t0 = engine.trend[0].t if engine.trend else 0.0
+    for i, q in enumerate(pts):
+        n = len(engine.trend) - len(pts) + i + 1
+        rr = q.mv_breath / (q.vt / 1000) if math.isfinite(q.vt) and q.vt > 0 and math.isfinite(q.mv_breath) else math.nan
+        st = "" if q.quality == "ok" else "grey42"
+        out.append(f"{n:>5} {mss(q.t - t0):>7} {fmt(q.etco2):>7} {fmt(q.vt):>7} {fmt(rr):>5} {fmt(q.mv_breath, 1):>9}", st)
+        out.append((" excluded" if q.excluded else "" if q.quality == "ok" else f" {q.quality}") + "\n", "grey50")
+    return out
 
 
 class GraphPanel(Panel):
     """The ventilatory response (MV vs EtCO2) or the trend, chosen with the v key."""
 
+    TABS = (("response", "VENTILATORY RESPONSE"), ("etco2", "ETCO2 TREND"), ("mv", "MV TREND"), ("breaths", "EACH BREATH"))
+
     def draw(self, s: Snapshot, engine: MonitorEngine, mode: str) -> None:
         w, h = self.area()
         cv = Canvas(w, h)
+        # the tabs in the border, the one showing in brackets (v moves along)
+        self.border_title = "  ".join(f"[reverse] {name} [/]" if key == mode else name for key, name in self.TABS) + "   (v)"
+        if mode == "breaths":
+            self.border_subtitle = "MV of each breath = VT × 60 / its length"
+            self.update(breath_table(engine, w, h))
+            return
         if mode == "response":
-            self.border_title = "Ventilatory response · MV of each breath vs its EtCO2"
+            res = engine.co2_response()
+            self.border_subtitle = co2_response_summary(res, lambda v, d: f"{v:.{d}f}")
             res = engine.co2_response()
             draw_response(cv, res, title=s.settings.study_code)
         else:
-            series = {"etco2": ("EtCO2 (mmHg) per breath", "etco2", COLOR["co2"]), "mv": ("MV (L/min) per breath", "mv_breath", COLOR["pneumo"])}[mode]
-            self.border_title = f"Trend · {series[0]}"
+            series = {"etco2": ("EtCO2 (mmHg) per breath", "etco2", COLOR["co2"]), "mv": ("MV of each breath (L/min)", "mv_breath", COLOR["flow"])}[mode]
+            self.border_subtitle = "one point per breath, joined by a line"
             pts = engine.trend
             now = s.now / 1000
             t1 = max(now, pts[-1].t if pts else now)
@@ -273,16 +328,23 @@ class Picker(ModalScreen):
 
 class MonitorApp(App):
     TITLE = f"{APP_NAME} monitor"
+    # the same layout as the browser and desktop monitor: each waveform with its numbers
+    # beside it, then the test line, the trend / response panel and the keys
     CSS = """
     Screen { layout: vertical; background: #000000; }
     StatusBar, AlarmBar, TestBar { height: 1; }
-    #waves { height: 3fr; }
-    #wavecol { width: 3fr; }
-    #nums { width: 36; height: 100%; border: round #333333; }
-    WavePanel { height: 1fr; border: round #333333; border-title-color: $text; }
-    #bottom { height: 2fr; min-height: 12; }
-    #graph { width: 3fr; height: 100%; border: round #333333; }
-    #breaths { width: 36; height: 100%; border: round #333333; }
+    #main { height: 3fr; }
+    .row { height: 1fr; }
+    #row-co2 { height: 13fr; }
+    #row-flow { height: 20fr; }
+    #row-pneumo { height: 10fr; }
+    WavePanel { width: 5fr; height: 100%; border: round #333333; border-title-color: $text; }
+    .nums { width: 3fr; height: 100%; }
+    Tile { width: 1fr; height: 100%; border: round #262626; background: #0d1117; border-title-style: bold; border-subtitle-color: #8b949e; }
+    #t-etco2, #t-rr { border-title-color: #ffd60a; }
+    #t-flow, #t-vt, #t-mv, #t-spo2 { border-title-color: #33d1f5; }
+    #t-vt2, #t-mv2 { border-title-color: #57e389; }
+    #graph { height: 2fr; min-height: 12; border: round #333333; border-title-color: #ffd60a; border-subtitle-color: #8b949e; }
     """
     BINDINGS = [
         Binding("o", "connect", "Connect"),
@@ -327,16 +389,26 @@ class MonitorApp(App):
     def compose(self) -> ComposeResult:
         yield StatusBar(id="status")
         yield AlarmBar(id="alarms")
-        with Horizontal(id="waves"):
-            with Vertical(id="wavecol"):
+        with Vertical(id="main"):
+            with Horizontal(id="row-co2", classes="row"):
                 yield WavePanel("co2", "CO2 mmHg", id="w-co2")
+                with Horizontal(classes="nums"):
+                    yield Tile("EtCO2 mmHg", COLOR["co2"], id="t-etco2")
+                    yield Tile("RR /min", COLOR["co2"], id="t-rr")
+            with Horizontal(id="row-flow", classes="row"):
                 yield WavePanel("flow", "Flow L/min", id="w-flow")
+                with Horizontal(classes="nums"):
+                    yield Tile("Flow L/min", COLOR["flow"], id="t-flow")
+                    yield Tile("SpO2 %", "white", id="t-spo2")
+                    yield Tile("VT mL", COLOR["flow"], id="t-vt")
+                    yield Tile("MV L/min", COLOR["flow"], id="t-mv")
+            with Horizontal(id="row-pneumo", classes="row"):
                 yield WavePanel("pneumo", "Pneumotach L/min", id="w-pneumo")
-            yield NumbersPanel("Numbers", id="nums")
+                with Horizontal(classes="nums"):
+                    yield Tile("VT mL", COLOR["pneumo"], id="t-vt2")
+                    yield Tile("MV L/min", COLOR["pneumo"], id="t-mv2")
         yield TestBar(id="test")
-        with Horizontal(id="bottom"):
-            yield GraphPanel("", id="graph")
-            yield BreathTable("Each breath · MV = VT × RR", id="breaths")
+        yield GraphPanel("", id="graph")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -344,9 +416,9 @@ class MonitorApp(App):
         self.w_status = self.query_one(StatusBar)
         self.w_alarms = self.query_one(AlarmBar)
         self.w_test = self.query_one(TestBar)
-        self.w_nums = self.query_one(NumbersPanel)
+        self.w_tiles = {k: self.query_one(f"#t-{k}", Tile) for k in TILES}
         self.w_graph = self.query_one(GraphPanel)
-        self.w_breaths = self.query_one(BreathTable)
+        self._layout: tuple | None = None
         self.w_waves = {p.cid: p for p in self.query(WavePanel)}
         e = self.engine
         recovered = e.init()
@@ -396,14 +468,24 @@ class MonitorApp(App):
         self.w_status.draw(s, e)
         self.w_alarms.draw(s, self._flash)
         self.w_test.draw(s, e)
-        self.w_nums.draw(s, self._flash)
+        self._arrange(s.single_flow, s.settings.spo2.enabled)
+        draw_tiles(self.w_tiles, s, self._flash, s.single_flow)
         self.w_graph.draw(s, e, self.graph_mode)
-        self.w_breaths.draw(e)
-        single = s.single_flow
-        pn = self.w_waves["pneumo"]
-        if pn.display == single:
-            pn.display = not single
         self._scales = s
+
+    def _arrange(self, single: bool, spo2: bool) -> None:
+        """One flow sensor: Flow, VT and MV beside the flow waveform, which takes the
+        pneumotach's row too. The ADC board: VT and MV beside the pneumotach."""
+        if (single, spo2) == self._layout:
+            return
+        self._layout = (single, spo2)
+        t = self.w_tiles
+        row = self.query_one("#row-pneumo")
+        row.display = not single
+        self.w_waves["pneumo"].display = not single
+        t["vt"].display = t["mv"].display = single
+        t["spo2"].display = spo2
+        self.query_one("#row-flow").styles.height = "20fr" if single else "10fr"
 
     def _frame(self) -> None:
         e = self.engine
@@ -571,7 +653,7 @@ class MonitorApp(App):
         self.push_screen(Picker("Capnostream 35 as the CO2 source", opts, note), done)
 
     def action_view(self) -> None:
-        order = ["response", "etco2", "mv"]
+        order = ["response", "etco2", "mv", "breaths"]
         self.graph_mode = order[(order.index(self.graph_mode) + 1) % len(order)]
 
     def action_record(self) -> None:

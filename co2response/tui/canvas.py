@@ -49,14 +49,15 @@ class Canvas:
         for y in range(max(0, y0), min(4 * self.h - 1, y1) + 1):
             self.dot(x, y, style)
 
-    def line(self, x0: float, y0: float, x1: float, y1: float, style: str) -> None:
-        """A straight line in dot coordinates."""
+    def line(self, x0: float, y0: float, x1: float, y1: float, style: str, dash: tuple[int, int] | None = None) -> None:
+        """A straight line in dot coordinates (``dash``: dots on, dots off)."""
         x0, y0, x1, y1 = round(x0), round(y0), round(x1), round(y1)
         dx, dy = abs(x1 - x0), -abs(y1 - y0)
         sx, sy = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
         err = dx + dy
-        for _ in range(4 * (self.w + self.h) * 4):
-            self.dot(x0, y0, style)
+        for k in range(4 * (self.w + self.h) * 4):
+            if dash is None or k % (dash[0] + dash[1]) < dash[0]:
+                self.dot(x0, y0, style)
             if x0 == x1 and y0 == y1:
                 return
             e2 = 2 * err
@@ -266,11 +267,21 @@ def draw_response(cv: Canvas, res, title: str = "") -> None:
     ax.frame(nice_ticks(x0, x1, max(2, (ax.c1 - ax.c0) // 8)), nice_ticks(0, y1, max(2, (ax.r1 - ax.r0) // 2)), xlabel="etCO2 (mmHg)", ylabel="MV (L/min)")
     if title:
         cv.text(max(0, cv.w // 2 - len(title) // 2), 0, title, "bold")
+    from ..processing.metrics import breath_path, lowess_curve
+
+    # the breaths joined in the order they were taken
+    bx, by = breath_path(res)
+    for i in range(1, len(bx)):
+        cv.line(ax.px(bx[i - 1]), ax.py(min(y1, by[i - 1])), ax.px(bx[i]), ax.py(min(y1, by[i])), "dark_sea_green4")
     if res.fit and res.rebreathing:
+        # the least-squares line the slope comes from (dashed), and over it the curve (LOWESS)
         a = min(p.etco2 for p in res.rebreathing)
         b = max(p.etco2 for p in res.rebreathing)
         f = res.fit
-        cv.line(ax.px(a), ax.py(f.slope * a + f.intercept), ax.px(b), ax.py(f.slope * b + f.intercept), "white")
+        cv.line(ax.px(a), ax.py(f.slope * a + f.intercept), ax.px(b), ax.py(f.slope * b + f.intercept), "grey50", dash=(2, 3))
+        cx, cy = lowess_curve([p.etco2 for p in res.rebreathing], [p.mv for p in res.rebreathing])
+        for i in range(1, len(cx)):
+            cv.line(ax.px(cx[i - 1]), ax.py(min(y1, cy[i - 1])), ax.px(cx[i]), ax.py(min(y1, cy[i])), "bold white")
     for pts, ch, st in ((res.skipped, "·", "grey50"), (res.baseline, "○", "bold grey85"), (res.rebreathing, "●", "bold green3"), (res.excluded, "x", "bold red")):
         for p in pts:
             c, r = ax.cell(p.etco2, min(y1, p.mv))
@@ -346,11 +357,24 @@ _FONT = {
 }
 
 
-def big_digits(s: str) -> list[str]:
-    """``s`` in 5-line block digits (other characters as blanks)."""
+def big_digits(s: str, scale: int = 1) -> list[str]:
+    """``s`` in block digits, 5 lines tall at ``scale`` 1 (5 x scale lines, each
+    character 3 x scale columns wide); other characters as blanks."""
     rows = ["", "", "", "", ""]
     for ch in s:
         glyph = _FONT.get(ch, _FONT[" "])
         for i in range(5):
             rows[i] += glyph[i] + " "
-    return [r.rstrip() for r in rows]
+    rows = [r.rstrip() for r in rows]
+    if scale <= 1:
+        return rows
+    out = []
+    for r in rows:
+        wide = "".join(c * scale for c in r)
+        out.extend([wide] * scale)
+    return out
+
+
+def digits_size(s: str, scale: int = 1) -> tuple[int, int]:
+    """(columns, lines) that ``big_digits(s, scale)`` takes."""
+    return max(0, (4 * len(s) - 1) * scale), 5 * scale

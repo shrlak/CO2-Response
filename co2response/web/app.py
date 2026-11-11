@@ -268,6 +268,11 @@ def _install_actions(app: WebApp) -> None:
             if ev.key == "Enter" and t is not None and t.tagName == "INPUT" and (t.id == "mark-label" or t.hasAttribute("data-change")):
                 t.blur()
             return
+        if ev.key in ("f", "F") and app.screen == "monitor":
+            from .views import toggle_fullscreen
+
+            ev.preventDefault()
+            toggle_fullscreen()
         if ev.key in ("m", "M") and app.screen == "monitor" and app.hotkey_mark:
             ev.preventDefault()
             app.hotkey_mark()
