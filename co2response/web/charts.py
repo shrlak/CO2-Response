@@ -471,13 +471,16 @@ class ResponseChart(Plot):
         g.textBaseline = "top"
         for i, part in enumerate(fit_text.split(" · ") if fit_text else []):
             g.font = f"{700 if i == 0 else 500} {15 * d}px {FONT}"
-            g.fillText(part, x_l + 12 * d, y_t + (8 + 19 * i) * d)
+            g.fillText(part, x_l + 12 * d, y_t + (24 + 19 * i) * d)
         if base_text:
             bx = self.px(min(p.etco2 for p in base)) - 6 * d
-            by = self.py(max(p.mv for p in base)) - 44 * d
+            above = self.py(max(p.mv for p in base)) - 46 * d
+            below = self.py(min(p.mv for p in base)) + 10 * d
+            # above the baseline breaths if that leaves the slope label clear, else below them
+            by = above if above >= y_t + 64 * d or below + 38 * d > self.py(0) else below
             for i, part in enumerate(base_text.split(" · ")):
                 g.font = f"{700 if i == 0 else 500} {15 * d}px {FONT}"
-                g.fillText(part, max(x_l + 4 * d, bx), max(y_t + 48 * d, by) + 19 * i * d)
+                g.fillText(part, max(x_l + 4 * d, bx), by + 19 * i * d)
         rings(skip, 3.5, 1.5, 0.55)
         rings(base, 5, 2, 1)
         self.dots([self.px(p.etco2) for p in reb], [self.py(p.mv) for p in reb], css_var("--pneumo"), 5)

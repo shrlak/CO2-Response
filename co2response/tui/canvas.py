@@ -90,7 +90,8 @@ class Canvas:
         out = []
         for r in range(self.h):
             t = Text(no_wrap=True, overflow="crop")
-            run, run_style = [], None
+            run: list[str] = []
+            run_style: str | None = None
             for c in range(self.w):
                 if (r, c) in self.chars:
                     ch, st = self.chars[(r, c)]

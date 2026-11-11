@@ -8,7 +8,6 @@ from typing import Callable
 from ..sim.core import Encoders, SimulatorCore
 from .base import Source, SourceItem
 
-
 #: the fastest the simulation runs (the engine processes about 25 000 samples a second)
 MAX_SPEED = 50.0
 

@@ -342,7 +342,8 @@ def test_a_whole_simulated_test_fills_every_graph(tmp_path):
     res = e.co2_response()
     assert len(res.baseline) >= 6 and len(res.rebreathing) >= 20 and len(res.skipped) >= 5
     assert res.baseline_etco2 == pytest.approx(38, abs=1) and res.baseline_mv == pytest.approx(7.5, rel=0.06)
-    assert 0.2 < res.slope < 0.6 and res.r > 0.97
+    # the whole-test situations vary each breath (15 %), so the points scatter around the line
+    assert 0.2 < res.slope < 0.7 and res.r > 0.7
     assert max(p.etco2 for p in res.rebreathing) > 63
     # the trends: EtCO2, MV and RR all rise through the test
     pts = [q for q in e.trend if q.quality == "ok"]

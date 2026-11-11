@@ -67,6 +67,7 @@ files = [
     "co2response/settings.py",
     "co2response/channels.py",
     "co2response/jsfmt.py",
+    "co2response/tui/canvas.py",
 ]
 
 [tool.coverage.run]

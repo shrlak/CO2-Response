@@ -5,23 +5,23 @@ CMU BME 26-27 Capstone Project
 [![CI](https://github.com/shrlak/CO2-Response/actions/workflows/ci.yml/badge.svg)](https://github.com/shrlak/CO2-Response/actions/workflows/ci.yml)
 [![Deploy to GitHub Pages](https://github.com/shrlak/CO2-Response/actions/workflows/deploy.yml/badge.svg)](https://github.com/shrlak/CO2-Response/actions/workflows/deploy.yml)
 
-CO2-Response is a research capnography and airflow monitor. An Arduino with a 16-bit ADC reads three analog sensors 100 times a second and streams the voltages over USB:
+CO2-Response is a research capnography and airflow monitor for CO2 rebreathing tests. An Arduino streams the sensors over USB 100 times a second. Two boards are supported, and the app recognises which one is connected:
 
-- a capnograph (CO2)
-- a flow sensor
-- a pneumotachograph
+- **The Uno R4 board (current build, [wiring](docs/wiring.md#uno-r4-board-digital-sensors)):** an Arduino Uno R4 Minima reading a Sensirion **SFM3304-D** flow sensor (I2C) and a GSS **SprintIR-6S-20** CO2 sensor (UART, sidestream with a sample pump), with a stop/marker button, a reed switch on the valve handle, an alarm LED and a buzzer. It sends % CO2 and L/min. One flow sensor gives the flow waveform, the breaths, tidal volume and minute ventilation.
+- **The ADC board (earlier build):** an Arduino Uno with an ADS1115 16-bit ADC reading a capnograph, a flow sensor and a pneumotachograph as voltages.
 
-The monitor app turns those voltages into a bedside-style display:
+The monitor app turns that stream into a bedside-style display:
 
-- sweeping waveforms and large numbers (EtCO2, FiCO2, respiratory rate, tidal volume, minute ventilation)
+- sweeping waveforms and large numbers (EtCO2, respiratory rate, live flow, tidal volume, minute ventilation)
 - trends of EtCO2, MV and RR, and a ventilatory-response plot (each breath's minute ventilation against its EtCO2)
 - keys that run a rebreathing test (baseline, rebreathing, end) and a PDF report of the result
 - visual and audible CO2 alarms, with a warning limit and a stop limit
 
 It records everything to one CSV file per session for analysis afterwards. Noisy samples and noisy breaths are removed before any number, plot or alarm uses them.
 
-The app is written in Python. It runs in two places, from the same code:
+The app is written in Python. It runs in three places, from the same code:
 
+- **In a terminal**, full screen, on any computer: Windows Terminal, macOS Terminal, the VS Code terminal, over SSH (`co2response-tui`, [§1](#in-a-terminal-any-computer))
 - **Desktop app** on Windows, macOS and Linux (`python -m co2response`, or a standalone build that needs no Python)
 - **In the browser** from GitHub Pages: **<https://shrlak.github.io/CO2-Response/>**. Nothing to install; reading the Arduino needs desktop Chrome or Edge. After one visit it also works with no internet.
 
@@ -44,6 +44,56 @@ The app is written in Python. It runs in two places, from the same code:
 ---
 
 ## 1. Try it now (no hardware)
+
+### In a terminal (any computer)
+
+Install it once (Python 3.10 or newer; the script makes its own environment and adds the commands to your PATH):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/shrlak/CO2-Response/main/scripts/install.sh | bash
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/shrlak/CO2-Response/main/scripts/install.ps1 | iex
+```
+
+From a downloaded copy of the repository, run `./scripts/install.sh` (or `.\scripts\install.ps1`). Add `--terminal-only` (`-TerminalOnly`) to leave out the Qt desktop window. Or, with [pipx](https://pipx.pypa.io): `pipx install "co2response[desktop] @ git+https://github.com/shrlak/CO2-Response"`. A [GitHub Release](https://github.com/shrlak/CO2-Response/releases) also has `co2response-terminal`, a single program file that needs no Python at all.
+
+Then:
+
+```bash
+co2response-tui --sim
+```
+
+The whole monitor is drawn in the terminal, so it works in the terminal panel of VS Code or any other editor:
+
+- the CO2 and flow waveforms, sweeping like a bedside monitor
+- EtCO2 in large digits, RR, live flow, VT and MV, with alarm colours, and the alarm messages above
+- the test phase and timer
+- the **ventilatory response graph**: each breath's own minute ventilation against its EtCO2, baseline breaths hollow (○), rebreathing breaths filled (●), the fitted line, and the labels "Response slope = … (L/min)/mmHg · r = …" and "Baseline Ave = … mmHg · MV = … L/min"
+- a table of the last breaths: EtCO2, VT, the breath's own RR and MV (MV = VT × RR = VT × 60 / breath length)
+
+| Key | Does |
+| --- | --- |
+| `o` | Connect: the simulator (either board), an Arduino on a serial port, the sample session, or disconnect |
+| `s` | Simulation situations, including a whole rebreathing test that runs by itself |
+| `+` / `-` | Simulation speed, 1× to 50× |
+| `b`, `r`, `e`, `x` | Start baseline, start rebreathing, end the test, emergency stop |
+| `m`, `space`, `c` | Mark an event, silence alarms, start/stop recording (stopping also writes the PDF report next to the CSV) |
+| `v` | The graph: ventilatory response, EtCO2 trend, MV trend |
+| `f`, `a`, `h`, `q` | Freeze the waveforms, arm the alarm sound, switch the expected board, quit |
+
+`co2response-tui --situation test_normal --speed 10` starts a whole simulated test straight away, and `co2response-tui --port COM3` (or `/dev/ttyACM0`, `/dev/cu.usbmodem…`) connects to the Arduino.
+
+**A whole test in a second, with no window:**
+
+```bash
+co2response --fast-test normal
+```
+
+It runs a whole simulated rebreathing test (`normal`, `blunted` or `brisk`) through the real engine as fast as the computer can, saves the session and its PDF report, and prints the MV-vs-EtCO2 graph in the terminal.
 
 ### In the browser
 
@@ -85,9 +135,13 @@ python -m co2response --sim
 | `python -m co2response --list-ports` | Lists serial ports and exits. |
 | `python -m co2response --report session.csv` | Writes the CO2 response report (`session.pdf`) and exits. `--out` names the file; `--skip 20` changes the seconds of rebreathing left out. |
 | `python -m co2response --sim --exit-after 12` | Runs for 12 s, prints what the monitor measured and closes: a check that an installation works. |
+| `python -m co2response --tui --sim` | The monitor full-screen in the terminal (the same as `co2response-tui --sim`). Without PySide6 installed, `python -m co2response` opens this by itself. |
+| `python -m co2response --situation test_normal --speed 10` | Starts the simulator in a situation (`--list-situations` lists them) at a speed from 1 to 50. |
+| `python -m co2response --fast-test normal` | A whole simulated test with no window in about a second: the session, its PDF report and the graph in the terminal. `--variability 15` sets the breath-to-breath variation, `--sessions DIR` where it is saved. |
+| `python -m co2response --board analog` | Expect (and simulate) the ADC board instead of the Uno R4 board, and remember that. |
 | `python -m co2response --version` | Prints the version. |
 
-`pip install -e .` also adds a `co2response` command.
+`pip install -e ".[desktop]"` also adds the `co2response` and `co2response-tui` commands (`pip install -e .` alone installs the terminal monitor without Qt).
 
 On Linux, alarm sounds need PortAudio (`sudo apt install libportaudio2`). Without it, the app falls back to the system beep and says so.
 
@@ -95,7 +149,7 @@ On Linux, alarm sounds need PortAudio (`sudo apt install libportaudio2`). Withou
 
 Press **Simulation** (the soft key next to Settings) to open the simulation panel beside the monitor. It works in the desktop app and in the browser, with or without the simulator already running.
 
-- **Speed** (top of the panel): runs simulated time 1× to 10× faster than real time, like a replay at 2×–10×. At 10× a whole rebreathing test (38 → 58 mmHg, about 100 s of breathing) fills the ventilatory-response plot in about 14 s, with the same slope as at 1×, because everything the monitor measures runs on the device clock. Alarm delays (apnea 20 s, no data 3 s) stay in real seconds. The header shows the speed (e.g. "Simulator (5× speed) · 500 Hz"), and so does the source line of a recording made at that speed. Choosing a situation keeps the speed.
+- **Speed** (top of the panel): runs simulated time 1× to 50× faster than real time, like a replay at 2×–10×. Above 1× the waveforms show a **time-compressed** trace that still sweeps at the real-time pace (one sample in every *speed*; the tag reads, for example, "SIMULATED · 120 s/screen" at 10×), instead of racing across the screen faster than the eye can follow. At 10× a whole rebreathing test (38 → 58 mmHg, about 100 s of breathing) fills the ventilatory-response plot in about 14 s, with the same slope as at 1×, because everything the monitor measures runs on the device clock. Alarm delays (apnea 20 s, no data 3 s) stay in real seconds. The header shows the speed (e.g. "Simulator (5× speed) · 500 Hz"), and so does the source line of a recording made at that speed. Choosing a situation keeps the speed.
 - **Record whole simulated tests** (switch under Speed): also saves a whole simulated test as a session, marked Simulator, so the review charts and the PDF report can be made from it too. A line under the switch says where the test stands ("Whole test: rebreathing 1:20, until the stop alarm").
 - **Situations:** one click sets every simulator value for a ready-made situation and starts the simulator if it is not running. The monitor changes in place, with no gap in the data.
 
@@ -126,6 +180,24 @@ Press **Simulation** (the soft key next to Settings) to open the simulation pane
 ---
 
 ## 2. What you need for a real session
+
+**The Uno R4 board (current build).** Pin-by-pin wiring and the flow path are in [docs/wiring.md](docs/wiring.md#uno-r4-board-digital-sensors).
+
+| Part | Notes |
+| --- | --- |
+| Arduino Uno R4 Minima | USB-C to the computer, through a USB isolator for tests on people |
+| Sensirion SFM3304-D flow sensor | I2C 0x2E at 3.3 V through a BSS138 level shifter; its heater switched by an IRLZ44N (D9) from the 5 V adapter |
+| GSS SprintIR-6S-20 CO2 sensor | UART 9600 baud on D0/D1 at 3.3 V (through the level shifter), 0–20 % CO2, 20 readings a second |
+| 5 V diaphragm sample pump | About 0.2 L/min of sample gas through the SprintIR; IRLZ44N on D10, 1N5819 across the motor |
+| AMS1117-3.3 module, BSS138 4-channel level shifter | The 3V3 rail and the 5 V ↔ 3.3 V logic |
+| Stop/marker button (D2), reed switch + magnet on the valve handle (D3), LED + 330 Ω (D7), active buzzer (D8) | The board reports the button and the valve position, and lights/sounds the app's alarms |
+| 5 V / 2 A wall adapter | The 5V_EXT rail: heater, pump and an optional valve servo (D6) |
+| Mouthpiece, filter with gas port, 3-way valve, rebreathing bag | The breathing circuit |
+| A computer | Any terminal (Windows, macOS, Linux) with Python 3.10+, or the standalone programs |
+
+Firmware: `firmware/CO2ResponseR4/` (Arduino IDE, board "Arduino UNO R4 Minima", no extra libraries; or `pio run -d firmware/r4 -t upload`).
+
+**The ADC board (earlier build):**
 
 | Part | Notes |
 | --- | --- |
@@ -207,10 +279,10 @@ If the USB cable comes out, the device-disconnected alarm sounds. Plugging the s
   - blue: advisories
 
   Alarms latch until you press **Acknowledge** or **Clear**. A high alarm also flashes the window title and taskbar entry.
-- **Waveforms** sweep left to right like a bedside monitor: CO2 (yellow, with the warning limit dashed), flow sensor (cyan) and pneumotach flow (green). The graphs take all the space the numbers and keys do not, with thick traces and large scale labels.
+- **Waveforms** sweep left to right like a bedside monitor: CO2 (yellow, with the warning limit dashed) and flow (cyan). With the Uno R4 board's one flow sensor, the Flow waveform takes two rows and VT and MV sit beside it; with the ADC board the pneumotach flow (green) has its own row. The graphs take all the space the numbers and keys do not, with thick traces and large scale labels. Faster than real time (a simulation or replay above 1×) the trace is time-compressed and still sweeps at the real-time pace.
 - **Enlarge a graph:** the **⤢** button beside each graph's name (or a double-click on a waveform in the desktop app) makes that graph fill the monitor. Press it again, or `Esc`, to go back. The waveform carries on without losing what is on screen.
 - **Numbers:**
-  - EtCO2 with its limits beside it (warning / stop, and low), RR, FiCO2, live and peak flow, VT and MV
+  - EtCO2 with its limits beside it (warning / stop, and low), RR, live flow, VT and MV (FiCO2 and peak inspiratory flow are no longer on the monitor; they are still in every recording and the simulation panel's read-back)
   - SpO2 with its low limit, when an oximeter is connected ([§5.2](#52-hardware))
   - under VT, the expired volume of the same breath; MV is the average over the last 60 s
   - a channel with no valid data for 2 s shows `---`
@@ -221,7 +293,7 @@ If the USB cable comes out, the device-disconnected alarm sounds. Plugging the s
   - for EtCO2: the continuous CO2 trace behind the points, the warning limit (dashed) and stop limit (solid) with their bands
   - alarm marks and your event markers
   - the caption counts breaths left out as noisy
-- **Ventilatory response tab:** each clean breath's own minute ventilation (VT × 60 / its length) against its EtCO2. Once rebreathing is marked:
+- **Ventilatory response tab:** each clean breath's own minute ventilation (VT × 60 / its length) against its EtCO2, labelled like the lab's figures: "Response slope = 1.244 (L/min)/mmHg · r = 0.848" over the fitted line and "Baseline Ave = 43.64 mmHg · MV = 6.63 L/min" by the baseline breaths. Once rebreathing is marked:
   - baseline breaths are hollow rings, summarized as the baseline (mean EtCO2 and MV)
   - the least-squares line is fitted to the rebreathing breaths only, the way CHOP reports the test
   - breaths in the first 30 s of rebreathing and after the end of the test are faint rings and are not fitted
@@ -553,6 +625,8 @@ The starting values come from `co2response/config/channels.json`, which can be e
 The rules of this screen (converting between calibration types, zeroing, fitting the captured points, integrating the syringe stroke, saving) are in `co2response/calibration_draft.py`, with no UI code. The desktop window and the browser page both draw that one model, so they cannot disagree, and it is tested directly.
 
 ### 5.12 Simulator (`co2response/sim/`)
+
+The simulator emulates either board (**Settings**, `--board`, or `h` in the terminal monitor): the Uno R4 board sends % CO2 (held between the SprintIR's 20 Hz updates) and L/min with `UNITS,1` in its info line, and `9999` for a sensor that is unplugged; the ADC board sends volts. Its speed runs from 1× to 50×. **Breath-to-breath variability** (a slider; 15 % in the whole-test situations, 0 % elsewhere) varies each breath's tidal volume and length, so the response plot scatters around its line as real data does instead of lying on it.
 
 A physiological model (`physiology.py`) generates the CO2 and flow waveforms. Every value the monitor shows can be set: EtCO2 and FiCO2, RR, VT and the I:E ratio (and so peak inspiratory flow), the capnogram's shape, a CO2 rise with an adjustable breathing response, apnea, unplugged sensors, a stalled data stream, sensor noise, ADC spikes, partial breaths, serial line errors and a miscalibrated flow sensor. An emulated firmware (`core.py`) turns the waveforms into real protocol lines with real checksums and sequence numbers.
 

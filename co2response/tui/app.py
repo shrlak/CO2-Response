@@ -97,8 +97,8 @@ class NumbersPanel(Panel):
         out = Text(no_wrap=True, overflow="crop")
         out.append(f"EtCO2 {'%' if pct else 'mmHg'}", f"bold {COLOR['co2']}")
         out.append(f"   warn {fmt(disp(a.high_mm_hg))}{stop}\n", "grey62")
-        for row in big_digits(et):
-            out.append(f" {row}\n", style)
+        for digits in big_digits(et):
+            out.append(f" {digits}\n", style)
         q = "no CO2 signal" if s.stale["co2"] else f"last breath left out ({n.rejected.split(':')[0]})" if n.rejected else f"median of 3 breaths {fmt(disp(n.etco2_median), 1 if pct else 0)}"
         out.append(f" {q}\n", "grey62")
 
@@ -305,11 +305,13 @@ class MonitorApp(App):
         self._last_print = ""
 
     def _bell(self) -> None:
-        try:
-            sys.__stdout__.write("\a")
-            sys.__stdout__.flush()
-        except Exception:  # noqa: BLE001
-            pass
+        out = sys.__stdout__
+        if out is not None:  # the terminal bell: the alarm sound when no sound output works
+            try:
+                out.write("\a")
+                out.flush()
+            except OSError:
+                pass
 
     def compose(self) -> ComposeResult:
         yield StatusBar(id="status")

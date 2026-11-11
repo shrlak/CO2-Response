@@ -16,8 +16,11 @@ does; Python's own formatting would round halves to even, so both Python package
 
 - USB serial, 8N1, **115200 baud** by default (`BAUD_RATE` in `firmware/CO2Response/config.h`).
 - ASCII text, one message per line, terminated by `\n` (a preceding `\r` is ignored).
-- The device only sends **volts**. Every conversion to engineering units happens in the monitor app,
+- The ADC board sends **volts**. Every conversion to engineering units happens in the monitor app,
   so recalibrating never requires reflashing.
+- The Uno R4 board with digital sensors (`firmware/CO2ResponseR4/`) sends **% CO2 and L/min**,
+  as its sensors report them, and says `UNITS,1` in its info line. See
+  [The Uno R4 board](#the-uno-r4-board-digital-sensors) below.
 
 ## Device → host
 
@@ -90,6 +93,36 @@ Plain text commands, one per line, case-insensitive.
 | `VALVE 0` | `A,VALVE,0` | Valve output to room air. |
 
 The app sends `INFO` then `START` after opening the port. Opening the port resets an Uno, so if no `I,…` line has arrived 2.5 s later the app sends them once more.
+
+## The Uno R4 board (digital sensors)
+
+The board in the wiring diagram (`firmware/CO2ResponseR4/`, [wiring.md](wiring.md#uno-r4-board-digital-sensors))
+uses the same lines, checksums, sequence numbers, heartbeat and commands, with these differences:
+
+- **Info line:** `I,FW,2.0.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR,FLOW,SFM3304,CH,2,RATE,100,BAUD,115200,ADDR,0x2E,WD,3000,REED,1,ALARM,1,PUMP,1,HEAT,1`
+  (`VALVE,1` too when a valve servo is fitted). `UNITS,1` tells the app the values are engineering
+  units, so it uses the bundled `co2response/config/channels-digital.json` (1:1 trims) and keeps
+  that board's calibration in its own file.
+- **Data line:** two values, `D,<seq>,<t_ms>,<CO2 %>,<flow L/min>*<checksum>`. Flow is the
+  SFM3304-D's reading in standard L/min, inspiration positive. CO2 is the SprintIR's latest reading
+  (it reports 20 times a second, so the value repeats between updates). One flow sensor does both
+  jobs: the app shows one Flow waveform and computes breaths, VT and MV from it.
+- **A sensor that is not answering** (no CO2 reading for 1 s; an I2C error from the flow sensor) is
+  sent as `9999`. The app shows `---` and raises "… NOT ANSWERING". The firmware restarts the flow
+  sensor once a second until it answers, and sends `E,FLOW_NOT_FOUND` at boot if it is missing.
+- **Device events:** `A,BUTTON` when the stop / marker button is pressed (during rebreathing the app
+  treats it as an emergency stop; otherwise it places a marker). `A,REED,1` / `A,REED,0` when the
+  valve handle's reed switch says the valve is at the bag / room air (the app starts the
+  rebreathing phase / ends the test); also sent after `INFO` when the handle is at the bag.
+- **Extra commands:**
+
+| Command | Reply | Effect |
+| --- | --- | --- |
+| `ALARM 0`, `ALARM 1`, `ALARM 2` | `A,ALARM,<n>` | The board's alarm LED and buzzer: off; LED blinking (a medium alarm); LED on and buzzer pulsing (a high alarm). The app sends it whenever its alarm level changes and every 5 s. A silenced high alarm is sent as 1. |
+| `PUMP 0`, `PUMP 1` | `A,PUMP,<n>` | The sample pump (Q2, D10). It also starts with `START` and stops with `STOP`. |
+| `HEAT 0`, `HEAT 1` | `A,HEAT,<n>` | The flow sensor's heater (Q1, D9). On from power-up. |
+
+The host watchdog works as on the ADC board, and also flashes the alarm LED and pulses the buzzer.
 
 ## Host watchdog (heartbeat)
 

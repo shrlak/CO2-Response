@@ -85,8 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     tui = args.tui
     if not tui:
         try:
-            import PySide6.QtWidgets  # noqa: F401
             import pyqtgraph  # noqa: F401
+            import PySide6.QtWidgets  # noqa: F401
         except ImportError:
             print("The desktop window needs PySide6 and pyqtgraph (pip install \"co2response[desktop]\"); opening the terminal monitor instead.", file=sys.stderr)
             tui = True
