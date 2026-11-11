@@ -8,21 +8,24 @@ dynamic = ["version"]
 description = "Research capnography and flow monitor: Arduino + 16-bit ADC + a bedside-style desktop monitor. Research use only."
 readme = "README.md"
 requires-python = ">=3.10"
+# The terminal monitor needs only these; the desktop window is the "desktop" extra:
+#   pip install "co2response[desktop] @ git+https://github.com/shrlak/CO2-Response"
 dependencies = [
-    "PySide6-Essentials>=6.6",
-    "pyqtgraph>=0.13.3",
     "numpy>=1.24",
     "pyserial>=3.5",
     "websockets>=11",
     "sounddevice>=0.4.6",
+    "textual>=0.80",
 ]
 
 [project.optional-dependencies]
+desktop = ["PySide6-Essentials>=6.6", "pyqtgraph>=0.13.3"]
 dev = ["pytest>=8", "pytest-qt>=4.4", "pytest-cov>=5", "ruff>=0.5", "mypy>=1.10", "pypdf>=4"]
 analysis = ["pandas>=2.0"]
 
 [project.scripts]
 co2response = "co2response.__main__:main"
+co2response-tui = "co2response.tui.app:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "co2response.__version__" }
@@ -64,6 +67,7 @@ files = [
     "co2response/settings.py",
     "co2response/channels.py",
     "co2response/jsfmt.py",
+    "co2response/tui/canvas.py",
 ]
 
 [tool.coverage.run]

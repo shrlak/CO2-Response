@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "adc": {
+    "type": "digital",
+    "railLowV": -9999.0,
+    "railHighV": 9999.0,
+    "railToleranceV": 0.5,
+    "note": "The Uno R4 board with digital sensors sends engineering units, not volts: value 0 is CO2 in % (GSS SprintIR-6S-20, UART) and value 1 is flow in L/min (Sensirion SFM3304-D, I2C 0x2E). The firmware sends 9999 for a sensor that is not answering, which the rail check below turns into '---' and a technical alarm."
+  },
+  "channels": {
+    "co2": {
+      "index": 0,
+      "label": "CO2",
+      "unit": "%",
+      "calibration": {
+        "type": "linear",
+        "gain": 1.0,
+        "offset": 0.0
+      },
+      "zeroOffset": 0,
+      "calibratedAt": null,
+      "note": "SprintIR-6S-20 reading in % CO2. Gain 1 = the sensor's factory calibration; a calibration-gas check can trim it.",
+      "railCheck": "both"
+    },
+    "flow": {
+      "index": 1,
+      "label": "Flow",
+      "unit": "L/min",
+      "calibration": {
+        "type": "linear",
+        "gain": 1.0,
+        "offset": 0.0
+      },
+      "zeroOffset": 0,
+      "calibratedAt": null,
+      "note": "SFM3304-D reading in L/min, inspiration positive. Gain 1 = the sensor's factory calibration.",
+      "railCheck": "both"
+    },
+    "pneumo": {
+      "index": 1,
+      "label": "Flow",
+      "unit": "L/min",
+      "calibration": {
+        "type": "linear",
+        "gain": 1.0,
+        "offset": 0.0
+      },
+      "zeroOffset": 0,
+      "flowModel": {
+        "k1": 1.0,
+        "k2": 0.0
+      },
+      "calibratedAt": null,
+      "note": "The same SFM3304-D reading (value 1): this is the channel breaths, tidal volume and minute ventilation are computed from. A 3 L syringe check trims k1.",
+      "railCheck": "both"
+    }
+  }
+}

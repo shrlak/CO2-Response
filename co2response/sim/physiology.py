@@ -85,6 +85,9 @@ class SimParams:
     settle: float = 0.5
     #: the subject's oxygen saturation while breathing, %
     spo2: float = 98
+    #: breath-to-breath variability of tidal volume, % (standard deviation); breath
+    #: length varies by half as much. 0 = every breath alike (the original model)
+    variability_pct: float = 0
     #: events, on top of the scenario
     ramp: bool = False
     apnea: bool = False
@@ -198,6 +201,13 @@ class PhysioModel:
         self._period = 60 / rr
         self._ti = self._period * p.insp_fraction
         vt_l = (p.vt_ml / 1000) * (1 + 0.04 * max(0, self._et - p.etco2) * p.drive)
+        v = min(50.0, max(0.0, p.variability_pct)) / 100
+        if v > 0:
+            # a real subject: no two breaths alike, so the response plot scatters around
+            # its line as in the lab's figures. No random numbers are drawn at 0 %.
+            vt_l *= max(0.3, 1 + v * self._gauss())
+            self._period = max(0.8, self._period * (1 + 0.5 * v * self._gauss()))
+            self._ti = self._period * p.insp_fraction
         self._qpk = (vt_l * 60 * math.pi) / (2 * self._ti)
         te = self._period - self._ti
         self._tau = te / 5
@@ -207,6 +217,10 @@ class PhysioModel:
         # an alveolar plateau, so its CO2 peak under-reads (a classic capnography artifact)
         partial = max(0.15 if p.scenario == "artifacts" else 0, p.partial_pct / 100)
         self._shallow = partial > 0 and self._rand() < partial
+
+    def _gauss(self) -> float:
+        """About a standard normal number (the sum of three uniform ones), in ±3."""
+        return (self._rand() + self._rand() + self._rand() - 1.5) * 2
 
     def _noise(self, scale: float) -> float:
         return (self._rand() - 0.5) * 2 * scale

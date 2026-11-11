@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .channels import validate_channels
+from .channels import HARDWARE, is_digital, validate_channels
 from .paths import data_dir
 
 
@@ -212,6 +212,8 @@ class SimSettings:
     #: the subject's oxygen saturation, % (falls during apnea). Simulated only while
     #: the SpO2 channel is switched on.
     spo2: float = 98
+    #: breath-to-breath variability of tidal volume, % (0 = every breath alike)
+    variability_pct: float = 0
     #: simulated seconds per real second (1 = real time). Not part of a situation.
     speed: float = 1
     #: record a whole simulated test as a session, so the review charts and the PDF
@@ -222,9 +224,20 @@ class SimSettings:
     adjusted: bool = False
 
 
+def default_hardware() -> str:
+    """The board a new installation expects: 'digital' (the Uno R4 board with the SFM3304-D
+    and SprintIR sensors) unless the CO2R_HARDWARE environment variable says 'analog'."""
+    h = os.environ.get("CO2R_HARDWARE", "").strip().lower()
+    return h if h in HARDWARE else "digital"
+
+
 @dataclass
 class Settings:
     theme: str = "dark"  # 'dark' | 'light' | 'system'
+    #: the board the simulator emulates and a new connection expects until the device
+    #: says what it is: 'digital' (Uno R4, SFM3304-D flow + SprintIR CO2, one flow
+    #: waveform) or 'analog' (ADS1115 with a capnograph, a flow sensor and a pneumotach)
+    hardware: str = field(default_factory=default_hardware)
     co2_unit: str = "mmHg"  # 'mmHg' | '%'
     #: seconds per screen for the sweep
     sweep_sec: float = 12
@@ -327,6 +340,8 @@ class SettingsStore:
         self.folder = Path(folder) if folder else data_dir()
         self.settings_path = self.folder / "settings.json"
         self.channels_path = self.folder / "channels.json"
+        #: the saved calibration of the Uno R4 board with digital sensors
+        self.digital_channels_path = self.folder / "channels-digital.json"
         #: why the last save failed (None when it worked): the monitor shows it, so a
         #: calibration or limit that was not kept is never a silent surprise
         self.save_error: str | None = None
@@ -358,25 +373,32 @@ class SettingsStore:
         s.spo2 = sanitize_spo2(s.spo2)
         if s.trend_series not in ("etco2", "mv", "rr"):
             s.trend_series = "etco2"
+        if s.hardware not in HARDWARE:
+            s.hardware = default_hardware()
         return s
 
     def save_settings(self, s: Settings) -> None:
         self._write(self.settings_path, to_dict(s))
 
-    def load_saved_channels(self) -> dict | None:
-        c = self._read(self.channels_path)
+    def _channels_file(self, hardware: str) -> Path:
+        return self.digital_channels_path if hardware == "digital" else self.channels_path
+
+    def load_saved_channels(self, hardware: str = "analog") -> dict | None:
+        c = self._read(self._channels_file(hardware))
         if c is None:
             return None
         try:
-            return validate_channels(c)
+            c = validate_channels(c)
         except ValueError:
             return None
+        return c if is_digital(c) == (hardware == "digital") else None
 
     def save_channels(self, c: dict) -> None:
-        self._write(self.channels_path, c)
+        """Each board keeps its own calibration file."""
+        self._write(self._channels_file("digital" if is_digital(c) else "analog"), c)
 
-    def clear_saved_channels(self) -> None:
+    def clear_saved_channels(self, hardware: str = "analog") -> None:
         try:
-            self.channels_path.unlink()
+            self._channels_file(hardware).unlink()
         except OSError:
             pass

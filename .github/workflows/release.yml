@@ -29,9 +29,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: windows-latest, name: Windows, archive: CO2-Response-Windows.zip }
-          - { os: macos-latest, name: macOS, archive: CO2-Response-macOS.zip }
-          - { os: ubuntu-24.04, name: Linux, archive: CO2-Response-Linux.tar.gz }
+          - { os: windows-latest, name: Windows, archive: CO2-Response-Windows.zip, terminal: CO2-Response-Terminal-Windows.zip }
+          - { os: macos-latest, name: macOS, archive: CO2-Response-macOS.zip, terminal: CO2-Response-Terminal-macOS.zip }
+          - { os: ubuntu-24.04, name: Linux, archive: CO2-Response-Linux.tar.gz, terminal: CO2-Response-Terminal-Linux.tar.gz }
     defaults:
       run:
         shell: bash
@@ -72,6 +72,29 @@ jobs:
           name: ${{ matrix.archive }}
           path: dist/${{ matrix.archive }}
           if-no-files-found: error
+      # the terminal monitor: one program file, no Qt
+      - name: Build the terminal program
+        run: pip install textual && pyinstaller --noconfirm packaging/CO2-Response-Terminal.spec
+      - name: The terminal program runs (a whole simulated test with its report)
+        run: |
+          APP=dist/co2response-terminal
+          [ "$RUNNER_OS" = "Windows" ] && APP="$APP.exe"
+          export CO2R_HOME="$RUNNER_TEMP/co2r-home-t"
+          "$APP" --fast-test normal --sessions "$RUNNER_TEMP/sessions"
+          ls "$RUNNER_TEMP"/sessions/*.pdf
+      - name: Pack the terminal program
+        run: |
+          cd dist
+          case "$RUNNER_OS" in
+            Windows) 7z a -bso0 "${{ matrix.terminal }}" co2response-terminal.exe ;;
+            macOS) ditto -c -k co2response-terminal "${{ matrix.terminal }}" ;;
+            *) tar czf "${{ matrix.terminal }}" co2response-terminal ;;
+          esac
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.terminal }}
+          path: dist/${{ matrix.terminal }}
+          if-no-files-found: error
 
   release:
     name: Attach to the GitHub Release
@@ -90,4 +113,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$GITHUB_REF_NAME" apps/* --repo "$GITHUB_REPOSITORY" --title "CO2-Response $GITHUB_REF_NAME" --generate-notes
-          --notes "Standalone apps: unzip and run CO2-Response. Research use only; not a medical device. On macOS the app is not signed: right-click it and choose Open the first time."
+          --notes "Standalone apps: unzip and run CO2-Response (the desktop window) or co2response-terminal (the monitor full-screen in a terminal). Research use only; not a medical device. On macOS the app is not signed: right-click it and choose Open the first time."

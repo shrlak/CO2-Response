@@ -294,8 +294,8 @@ def test_speed_runs_simulated_time_faster(tmp_path):
     text = e.stop_recording().path.read_text(encoding="utf-8")  # session files are UTF-8 on every OS
     assert "# source,Simulator (5× speed)" in text and "SIM_SPEED 1" in text
     # a stored speed out of range runs at the nearest end
-    e.set_sim(speed=50)
-    assert e.source.run_speed == 10
+    e.set_sim(speed=500)
+    assert e.source.run_speed == 50
 
 
 def test_the_panel_warns_when_flow_would_clip(tmp_path):
@@ -342,7 +342,8 @@ def test_a_whole_simulated_test_fills_every_graph(tmp_path):
     res = e.co2_response()
     assert len(res.baseline) >= 6 and len(res.rebreathing) >= 20 and len(res.skipped) >= 5
     assert res.baseline_etco2 == pytest.approx(38, abs=1) and res.baseline_mv == pytest.approx(7.5, rel=0.06)
-    assert 0.2 < res.slope < 0.6 and res.r > 0.97
+    # the whole-test situations vary each breath (15 %), so the points scatter around the line
+    assert 0.2 < res.slope < 0.7 and res.r > 0.7
     assert max(p.etco2 for p in res.rebreathing) > 63
     # the trends: EtCO2, MV and RR all rise through the test
     pts = [q for q in e.trend if q.quality == "ok"]

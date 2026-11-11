@@ -8,6 +8,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# The suites written for the ADC board (volts on the line, a separate pneumotach) run on it;
+# tests/test_digital_board.py covers the Uno R4 board, which a new installation expects.
+os.environ.setdefault("CO2R_HARDWARE", "analog")
 
 from co2response.channels import DEFAULT_CHANNELS  # noqa: E402
 from co2response.sim.core import Encoders  # noqa: E402

@@ -24,8 +24,11 @@ from ..alarms.engine import AlarmEngine, AlarmLogEntry, AlarmRecord
 from ..channels import (
     CHANNEL_IDS,
     DEFAULT_CHANNELS,
+    DEFAULT_DIGITAL_CHANNELS,
     clone_channels,
+    is_digital,
     load_default_channels,
+    single_flow,
     validate_channels,
 )
 from ..jsfmt import iso_ms, parse_iso_ms
@@ -111,11 +114,13 @@ def _age(ms: float) -> str:
     return f"{h:.0f} h" if h < 48 else f"{h / 24:.0f} days"
 
 
-def simulator_encoders(spo2: Spo2Settings | None = None) -> Encoders:
-    """The simulator's "true" sensors: the bundled default calibration, inverted. With
-    the SpO2 channel on, it also has an oximeter with that channel's scaling."""
-    c = DEFAULT_CHANNELS["channels"]
-    lo, hi = DEFAULT_CHANNELS["adc"]["railLowV"], DEFAULT_CHANNELS["adc"]["railHighV"]
+def simulator_encoders(spo2: Spo2Settings | None = None, digital: bool = False) -> Encoders:
+    """The simulator's "true" sensors: the bundled default calibration, inverted (for the
+    digital board that is 1:1, since its lines carry units). With the SpO2 channel on,
+    it also has an oximeter with that channel's scaling."""
+    d = DEFAULT_DIGITAL_CHANNELS if digital else DEFAULT_CHANNELS
+    c = d["channels"]
+    lo, hi = d["adc"]["railLowV"], d["adc"]["railHighV"]
     oximeter = None
     if spo2 is not None and spo2.enabled:
         gain, offset = spo2.gain_pct_per_v or 100.0, spo2.offset_pct
@@ -293,6 +298,11 @@ class Snapshot:
     test: TestState = field(default_factory=lambda: TestState("idle", TestWindow(None, None, None)))
     #: where the board's valve output stands: 'bag', 'air', or None if the device has none
     valve: str | None = None
+    #: the board in use: 'digital' (Uno R4, SFM3304-D + SprintIR, units on the line) or
+    #: 'analog' (ADS1115, volts on the line)
+    hardware: str = "analog"
+    #: one flow sensor does everything, so there is one flow waveform, not two
+    single_flow: bool = False
 
 
 @dataclass
@@ -376,7 +386,15 @@ class MonitorEngine:
         self.clock = clock
         self.store = store or SettingsStore()
         self.settings = self.store.load_settings()
-        self.channels = self.store.load_saved_channels() or clone_channels(DEFAULT_CHANNELS)
+        #: the saved calibration of each board; ``channels`` is the one in use
+        self._channels_of: dict[str, dict] = {
+            "analog": self.store.load_saved_channels() or clone_channels(DEFAULT_CHANNELS),
+            "digital": self.store.load_saved_channels("digital") or clone_channels(DEFAULT_DIGITAL_CHANNELS),
+        }
+        #: the board a replayed recording was made with
+        self._replay_hardware: str | None = None
+        self._info: dict[str, str] | None = None
+        self._source: Source | None = None
         self.alarms = AlarmEngine(self.settings.alarms, self._on_alarm_log)
         self.audio = audio if audio is not None else AlarmAudio()
         self.audio.volume = self.settings.alarms.volume
@@ -402,10 +420,8 @@ class MonitorEngine:
         #: the reason a Python DAQ driver gives after ADC_NOT_FOUND (co2r-daq)
         self._adc_detail: str | None = None
         self._adc_error_count = 0
-        self._source: Source | None = None
         self._status = "idle"
         self._status_detail = ""
-        self._info: dict[str, str] | None = None
         self._seq = SeqTracker()
         self._bad_lines = 0
         self._bad_times: collections.deque[float] = collections.deque()
@@ -438,6 +454,9 @@ class MonitorEngine:
         self._spo2_low_since: float | None = None
         self._spo2_valid_wall = 0.0
         self._save_error_logged = False
+        #: what the board's alarm LED and buzzer were last told (None = not told yet)
+        self._alarm_out: int | None = None
+        self._alarm_out_at = 0.0
 
         #: breaths on the device clock (cleared on every new connection), all of them
         self.breaths: list[Breath] = []
@@ -460,8 +479,11 @@ class MonitorEngine:
         self._marker_id = 1
         #: display values waiting to be drawn, per channel; the window drains them
         self.waves: dict[str, list[float]] = {cid: [] for cid in CHANNEL_IDS}
-        #: bumps when the waveforms should be cleared (new connection)
+        #: bumps when the waveforms should be cleared (new connection, a new speed)
         self.wave_epoch = 0
+        #: the sweep gets one sample in this many (the speed of a simulation or replay)
+        self._wave_every = 1
+        self._wave_count = 0
         self._sample_listeners: list[Callable[[Processed], None]] = []
         self._timers: list[tuple[float, Callable[[], None]]] = []
         self._jobs: set[HardwareCheckJob] = set()
@@ -477,9 +499,35 @@ class MonitorEngine:
         return Path(self.settings.sessions_dir) if self.settings.sessions_dir else default_sessions_dir()
 
     @property
+    def hardware(self) -> str:
+        """The board in use: what the connected device says it is (a board that sends
+        engineering units says UNITS in its info line), what a replayed recording was
+        made with, and otherwise the setting."""
+        if self._source is not None:
+            if self._replay_hardware is not None:
+                return self._replay_hardware
+            if self._info is not None and "FW" in self._info:
+                return "digital" if "UNITS" in self._info else "analog"
+        return self.settings.hardware
+
+    @property
+    def channels(self) -> dict:
+        """The saved calibration of the board in use."""
+        return self._channels_of[self.hardware]
+
+    @channels.setter
+    def channels(self, c: dict) -> None:
+        self._channels_of["digital" if is_digital(c) else "analog"] = c
+
+    @property
     def effective_channels(self) -> dict:
         """The calibration in use: a replay's own, or the saved one."""
         return self._file_channels if self._file_channels is not None else self.channels
+
+    @property
+    def single_flow(self) -> bool:
+        """One flow sensor is both the flow waveform and the source of breaths and volumes."""
+        return single_flow(self.effective_channels)
 
     @property
     def source(self) -> Source | None:
@@ -510,8 +558,16 @@ class MonitorEngine:
         nxt.processing = sanitize_processing(nxt.processing)
         nxt.test = sanitize_test(nxt.test)
         nxt.spo2 = sanitize_spo2(nxt.spo2)
+        if nxt.hardware not in ("digital", "analog"):
+            nxt.hardware = prev.hardware
+        was = self.effective_channels
         self.settings = nxt
         self.store.save_settings(nxt)
+        if nxt.hardware != prev.hardware:
+            if isinstance(self._source, SimulatorSource):
+                self.connect("simulator")  # the simulated board is the other one now
+            elif self.effective_channels is not was:
+                self.pipeline.set_channels(self.effective_channels)
         if self.store.save_error and not self._save_error_logged:
             self._add_log(f"Settings could not be saved ({self.store.save_error})", "error")
         self._save_error_logged = bool(self.store.save_error)
@@ -543,6 +599,7 @@ class MonitorEngine:
         if isinstance(self._source, SimulatorSource):
             if "speed" in patch and self._source.speed != self.settings.sim.speed:
                 self._source.speed = self.settings.sim.speed
+                self._sync_wave_speed()
                 self._add_log(f"Simulation speed {self._source.run_speed:g}×")
                 # a recording's clock follows the simulated time, so it notes where that changes
                 self.recorder.event(self.clock(), f"SIM_SPEED {self._source.run_speed:g}")
@@ -662,8 +719,9 @@ class MonitorEngine:
 
     def set_channels(self, c: dict) -> None:
         """Save a new calibration (applies immediately)."""
-        self.channels = validate_channels(clone_channels(c))
-        self.store.save_channels(self.channels)
+        c = validate_channels(clone_channels(c))
+        self.channels = c
+        self.store.save_channels(c)
         if self._file_channels is None:
             self.pipeline.set_channels(self.channels)
         if self.store.save_error:
@@ -673,9 +731,10 @@ class MonitorEngine:
         self.recorder.event(self.clock(), "CALIBRATION_CHANGED")
 
     def reset_channels(self) -> None:
-        """Back to co2response/config/channels.json."""
-        self.store.clear_saved_channels()
-        self.channels = load_default_channels()
+        """Back to the bundled defaults of the board in use (co2response/config/)."""
+        hw = self.hardware
+        self.store.clear_saved_channels(hw)
+        self._channels_of[hw] = load_default_channels(hw)
         if self._file_channels is None:
             self.pipeline.set_channels(self.channels)
         self._add_log("Calibration reset to defaults")
@@ -717,13 +776,15 @@ class MonitorEngine:
             src: Source = SerialSource(device, self.settings.baud_rate, info.label if info else None)
         elif kind == "simulator":
             sim = self.settings.sim
-            a = DEFAULT_CHANNELS["adc"]
+            digital = self.settings.hardware == "digital"
+            a = (DEFAULT_DIGITAL_CHANNELS if digital else DEFAULT_CHANNELS)["adc"]
             src = SimulatorSource(
-                simulator_encoders(self.settings.spo2),
+                simulator_encoders(self.settings.spo2, digital),
                 a["railLowV"],
                 a["railHighV"],
                 clock=self._seconds,
                 speed=sim.speed,
+                digital=digital,
                 seed=int(self.clock()) & 0xFFFF,
                 **model_params(dataclasses.asdict(sim)),
             )
@@ -761,10 +822,22 @@ class MonitorEngine:
     def _start_source(self, src: Source, session: ParsedSession | None, use_file_calibration: bool, auto: bool) -> bool:
         kind = src.kind
         self._file_channels = session.channels if kind == "replay" and use_file_calibration and session is not None and session.channels else None
+        self._replay_hardware = None
+        if kind == "replay":
+            # replayed without its own calibration, a recording still needs its own board's
+            made_with = session.channels if session is not None and session.channels else None
+            self._replay_hardware = ("digital" if is_digital(made_with) else "analog") if made_with else self.settings.hardware
         self._info = None
+        self._alarm_out = None
         self._valve = False  # a board starts (and restarts) on room air
         self._valve_asked.clear()
-        self.pipeline = Pipeline(self.effective_channels, self._processing_options(), self.settings.spo2)
+        if self._file_channels is not None:
+            first = self._file_channels
+        elif isinstance(src, SimulatorSource):
+            first = self._channels_of["digital" if src.core.digital else "analog"]
+        else:
+            first = self._channels_of[self._replay_hardware or self.settings.hardware]
+        self.pipeline = Pipeline(first, self._processing_options(), self.settings.spo2)
         self._spo2_low_since = None
         self._spo2_valid_wall = self.clock()
         self._sync_phase()
@@ -781,6 +854,7 @@ class MonitorEngine:
         now = self.clock()
         self._last_data_wall = self._last_breath_wall = now
         self._last_valid_wall = {cid: 0.0 for cid in CHANNEL_IDS}
+        self._wave_every = max(1, round(src.run_speed if isinstance(src, SimulatorSource) else float(getattr(src, "speed", 1) or 1)))
         self._clear_waves()
         self.alarms.set_condition("deviceLost", False, now, "medium", "")
         self._awaiting_reconnect = False
@@ -908,6 +982,8 @@ class MonitorEngine:
                 src.send("VALVE 0")
             self._valve = False
             self._valve_asked.clear()
+            if (self._info or {}).get("ALARM"):
+                src.send("ALARM 0")  # the board's LED and buzzer go quiet with the app
             if src.kind in ("serial", "bridge") and self._has_watchdog():
                 src.send("HB OFF")  # a deliberate disconnect must not sound the device's buzzer
             if src.kind == "serial":
@@ -920,8 +996,9 @@ class MonitorEngine:
         for aid in TECHNICAL:
             if self.alarms.is_active(aid):
                 self.alarms.remove(aid)
-        if self._file_channels is not None:
-            self._file_channels = None
+        self._file_channels = None
+        self._replay_hardware = None
+        if self.pipeline.channels is not self.channels:
             self.pipeline.set_channels(self.channels)
         if not keep_error:
             self._status = "idle"
@@ -971,6 +1048,10 @@ class MonitorEngine:
             self._info = {**(self._info or {}), **p.fields}
             if self._rate() != prev_rate:
                 self.pipeline.set_options(self._processing_options())
+            if self.pipeline.channels is not self.effective_channels:
+                # the device turned out to be the other board: its calibration applies
+                self.pipeline.set_channels(self.effective_channels)
+                self._add_log("Board with digital sensors: lines carry % CO2 and L/min" if self.hardware == "digital" else "Board with an ADC: lines carry volts")
             self._add_log(f"Device: {p.raw}")
         elif kind == "error":
             if p.code == "ADC_NOT_FOUND":
@@ -987,6 +1068,12 @@ class MonitorEngine:
         elif kind == "ack":
             if p.fields[:1] == ["VALVE"] and len(p.fields) > 1:
                 self._valve_reported(p.fields[1] == "1", now)
+            elif p.fields[:1] == ["BUTTON"]:
+                self._on_button(now)
+            elif p.fields[:1] == ["REED"] and len(p.fields) > 1:
+                self._on_reed(p.fields[1] == "1", now)
+            elif p.fields[:1] == ["ALARM"]:
+                return  # the answer to the alarm output command, sent on every change
             self._add_log(f"Device: {p.raw}")
         elif kind == "bad":
             self._bad_lines += 1
@@ -1016,7 +1103,12 @@ class MonitorEngine:
             if pr.valid[cid]:
                 self._last_valid_wall[cid] = now
 
-        if not self.frozen:
+        # Faster than real time, the sweep gets every k-th sample, so it still crosses
+        # the screen at the real-time pace (a time-compressed trace) instead of racing
+        # across it k times a sweep, which looks like flashing colour, not a waveform.
+        self._wave_count += 1
+        if not self.frozen and self._wave_count >= self._wave_every:
+            self._wave_count = 0
             w = self.waves
             w["co2"].append(pr.co2_pct if self.settings.co2_unit == "%" else pr.co2_mmhg)
             w["flow"].append(pr.flow_lpm)
@@ -1153,6 +1245,18 @@ class MonitorEngine:
     def _clear_waves(self) -> None:
         self.waves = {cid: [] for cid in CHANNEL_IDS}
         self.wave_epoch += 1
+        self._wave_count = 0
+
+    @property
+    def wave_compression(self) -> int:
+        """How many of the subject's seconds one second of the sweep shows (1 = real time)."""
+        return self._wave_every
+
+    def _sync_wave_speed(self) -> None:
+        k = max(1, round(self.time_scale()))
+        if k != self._wave_every:
+            self._wave_every = k
+            self._clear_waves()
 
     # ---------- periodic checks (4 Hz) ----------
 
@@ -1165,9 +1269,13 @@ class MonitorEngine:
 
         a.set_condition("noData", connected and not fresh, now, "medium", f"NO DATA FROM DEVICE for {round((now - self._last_data_wall) / 1000)} s")
         rails = {"co2": ("railCo2", "CO2 SENSOR"), "flow": ("railFlow", "FLOW SENSOR"), "pneumo": ("railPneumo", "PNEUMOTACH")}
+        digital = is_digital(self.pipeline.channels)
+        one_flow = single_flow(self.pipeline.channels)
         for cid, (aid, name) in rails.items():
-            stuck = self._last is not None and self._last.stuck[cid]
-            a.set_condition(aid, connected and fresh and stuck, now, "medium", f"{name} SIGNAL AT ADC RAIL: check sensor connection")
+            stuck = self._last is not None and self._last.stuck[cid] and not (one_flow and cid == "pneumo")
+            # a digital sensor that stops answering is sent as 9999, the "rail" of that board
+            what = f"{name} NOT ANSWERING: check its wiring and power" if digital else f"{name} SIGNAL AT ADC RAIL: check sensor connection"
+            a.set_condition(aid, connected and fresh and stuck, now, "medium", what)
 
         apnea_sec = self.settings.alarms.apnea_sec
         signal = self._last is not None and (self._last.valid["pneumo"] or self._last.valid["co2"])
@@ -1214,6 +1322,7 @@ class MonitorEngine:
 
         a.tick(now)
         self._run_sim_test()
+        self._drive_alarm_output(now)
 
         # audio: highest active priority, unless silenced
         pri = a.active_priority()
@@ -1405,6 +1514,48 @@ class MonitorEngine:
         self._add_log("EMERGENCY STOP" + (": valve to room air" if sent else ": turn the valve to room air"), "alarm")
         self.recorder.event(now, "EMERGENCY_STOP")
         return self.add_marker(EMERGENCY_LABEL) if self._rebreathing() else None
+
+    # ---------- the board's button, reed switch, alarm LED and buzzer (the Uno R4 board)
+
+    def _on_button(self, now: float) -> None:
+        """The stop / marker button on the board. During rebreathing it stops the test
+        (the valve goes back to room air where the board can move it); at any other
+        time it places an event marker, like the Mark event key."""
+        self.recorder.event(now, "BUTTON")
+        if self._rebreathing():
+            self._add_log("Stop button pressed on the board", "alarm")
+            self.emergency_stop()
+        else:
+            self._add_log("Marker button pressed on the board")
+            self.add_marker()
+
+    def _on_reed(self, at_bag: bool, now: float) -> None:
+        """The reed switch on the valve handle: the operator turned the valve by hand.
+        To the bag starts the rebreathing phase; back to room air ends the test."""
+        self._valve = at_bag
+        self.recorder.event(now, f"VALVE {'BAG' if at_bag else 'AIR'} (reed switch)")
+        self._add_log(f"Valve handle turned to {'the bag' if at_bag else 'room air'}")
+        if at_bag and not self._rebreathing():
+            self.add_marker(REBREATHING_LABEL)
+        elif not at_bag and self._rebreathing():
+            self.add_marker(END_LABEL)
+
+    def _drive_alarm_output(self, now: float) -> None:
+        """Tell the board's alarm LED and buzzer what the monitor is alarming about:
+        2 = a high-priority alarm (stop limit, apnea), 1 = a medium one (the warning
+        limit, a technical fault), 0 = nothing. Silenced alarms keep the LED on (1)
+        but stop the buzzer. Sent on a change, and repeated every 5 s so a board that
+        missed one still follows."""
+        src = self._source
+        if src is None or not (self._info or {}).get("ALARM"):
+            return
+        pri = self.alarms.active_priority()
+        level = 2 if pri == "high" else 1 if pri == "medium" else 0
+        if level == 2 and self.alarms.is_silenced(now):
+            level = 1
+        if level != self._alarm_out or now - self._alarm_out_at >= 5000:
+            self._alarm_out, self._alarm_out_at = level, now
+            src.send(f"ALARM {level}")
 
     # ---------- the board's valve output
 
@@ -1729,6 +1880,8 @@ class MonitorEngine:
             i2c_scan=self._i2c_scan,
             test=self.test_state(now),
             valve=("bag" if self._valve else "air") if self.valve_available() else None,
+            hardware=self.hardware,
+            single_flow=self.single_flow,
         )
 
     def settings_json(self) -> dict:

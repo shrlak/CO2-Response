@@ -190,11 +190,15 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .row.in-alarm .wave { border: 2px solid var(--alarm-high); }
 
 .nums { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-height: 0; }
-.row.co2 .nums { grid-template-columns: 1.35fr 1fr; grid-template-rows: 1fr 1fr; }
+.row.co2 .nums { grid-template-columns: 1.35fr 1fr; grid-template-rows: 1fr; }
 /* a third tile (SpO2) appears in the flow row while the oximeter channel is on */
 .row.flow .nums:has(#t-spo2 > .tile) { grid-template-columns: 1fr 1fr 1fr; }
+/* one flow sensor (the Uno R4 board): the Flow row is twice as tall and carries VT and MV */
+.monitor.single { grid-template-rows: minmax(0, 1.3fr) minmax(0, 2fr); }
+.monitor.single .row.flow .nums, .monitor.single .row.flow .nums:has(#t-spo2 > .tile) { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.monitor.single .row.flow .nums:has(#t-spo2 > .tile) { grid-template-rows: 1fr 1fr 1fr; }
 .tile { background: var(--panel); border-radius: var(--radius); padding: 6px 12px; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
-.tile.big { grid-row: span 2; }
+.tile.big { grid-row: auto; }
 .tlabel { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; font-size: 14px; }
 .tlabel b { font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
 .tlabel .unit { color: var(--muted); margin-left: 6px; letter-spacing: 0.02em; }

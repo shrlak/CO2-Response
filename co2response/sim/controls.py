@@ -53,6 +53,7 @@ GROUPS: tuple[Group, ...] = (
             Slider("etco2", "End-tidal CO2", "mmHg", 0, 100, 1, "Sets EtCO2. Changes take a few breaths to settle, as in a patient."),
             Slider("fico2", "Inspired CO2", "mmHg", 0, 30, 1, "Sets FiCO2: the capnogram baseline between breaths."),
             Slider("obstruction_pct", "Airway obstruction", "%", 0, 100, 5, "Capnogram shape: 0 % square, 100 % slow-rising “shark fin”."),
+            Slider("variability_pct", "Breath-to-breath variability", "% of VT", 0, 40, 1, "Real breaths differ: VT varies by this much (SD), breath length by half as much. The response plot then scatters around its line."),
             Slider("spo2", "Oxygen saturation", "%", 70, 100, 1, "Sets SpO2 (shown when the SpO2 channel is on in Settings > Display & units). It also falls by itself after 20 s of apnea."),
         ),
     ),
@@ -87,7 +88,7 @@ GROUPS: tuple[Group, ...] = (
     Group(
         "Flow sensor calibration",
         (
-            Slider("flow_gain_pct", "Flow sensor gain", "% of true", 50, 150, 1, "Changes the Flow and Peak insp numbers, not VT (the pneumotach)."),
+            Slider("flow_gain_pct", "Flow sensor gain", "% of true", 50, 150, 1, "Changes the Flow number. With the analog board it does not change VT (that comes from the pneumotach); with one flow sensor it changes VT and MV too."),
             Slider("flow_offset_lpm", "Flow sensor zero offset", "L/min", -10, 10, 0.5),
         ),
     ),
@@ -100,10 +101,11 @@ SPEED = Slider(
     "Speed",
     "×",
     1,
-    10,
+    50,
     1,
-    "Runs the simulation faster than real time, like a replay at 2× to 10×: at 5× a minute of breathing passes in 12 s, "
-    "so the numbers, trend and response plot get there five times sooner. Alarm delays stay in real seconds.",
+    "Runs the simulation faster than real time, like a replay at 2× to 50×: at 5× a minute of breathing passes in 12 s, "
+    "so the numbers, trend and response plot get there five times sooner; at 50× a whole rebreathing test takes a few seconds. "
+    "The waveforms then show a time-compressed trace that still sweeps at the real-time pace. Alarm delays stay in real seconds.",
 )
 
 #: under the panel's controls (both front ends)
@@ -179,7 +181,7 @@ SITUATIONS: tuple[Situation, ...] = (
         "Whole rebreathing test",
         WHOLE_TEST,
         "A normal response: breathing rises steadily as CO2 climbs 12 mmHg/min to the 65 mmHg stop limit." + _WHOLE,
-        {"ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 67, "drive": 0.8},
+        {"ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 67, "drive": 0.8, "variability_pct": 15},
         test=True,
     ),
     Situation(
@@ -187,7 +189,7 @@ SITUATIONS: tuple[Situation, ...] = (
         "Whole test: blunted response",
         WHOLE_TEST,
         "Breathing hardly responds to the CO2 (opioids, sleep, CCHS): an almost flat response line." + _WHOLE,
-        {"ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 67, "drive": 0.1, "rr": 12},
+        {"ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 67, "drive": 0.1, "rr": 12, "variability_pct": 15},
         test=True,
     ),
     Situation(
@@ -195,7 +197,7 @@ SITUATIONS: tuple[Situation, ...] = (
         "Whole test: brisk response",
         WHOLE_TEST,
         "A strong response: a steep line. The CO2 rise stops at 52 mmHg, before the limits, and the test ends there." + _WHOLE,
-        {"ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 52, "drive": 2, "vt_ml": 400},
+        {"ramp_mm_hg_per_min": 12, "ramp_max_mm_hg": 52, "drive": 2, "vt_ml": 400, "variability_pct": 15},
         test=True,
     ),
     # breathing patterns

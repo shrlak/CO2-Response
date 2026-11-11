@@ -19,7 +19,7 @@ import math
 from dataclasses import dataclass, field
 
 from ..jsfmt import iso_ms
-from ..processing.metrics import CO2Response, TestWindow, co2_response, normalized_slopes, test_window
+from ..processing.metrics import CO2Response, TestWindow, co2_response, normalized_slopes, response_labels, test_window
 from .pdf import LETTER, Pdf, text_width
 from .session_file import ParsedSession, SessionSummary, session_markers, summarize
 
@@ -280,7 +280,7 @@ def _response_plot(pdf: Pdf, r: Report, x: float, y: float, w: float, h: float) 
     xs = [p.etco2 for p in every] or [30.0, 50.0]
     ys = [p.mv for p in every] or [0.0, 10.0]
     ax = _Axes(pdf, x, y, w, h, math.floor(min(xs) - 2), math.ceil(max(xs) + 2), 0, max(10.0, math.ceil(max(ys) * 1.15)))
-    ax.frame("EtCO2 (mmHg)", "MV of each breath (L/min)")
+    ax.frame("etCO2 (mmHg)", "MV (liters/min), each breath")
     for p in res.skipped:
         pdf.circle(ax.px(p.etco2), ax.py(p.mv), 2.2, stroke=_LIGHT, width=0.8)
     for p in res.baseline:
@@ -292,6 +292,15 @@ def _response_plot(pdf: Pdf, r: Report, x: float, y: float, w: float, h: float) 
     if res.fit:
         a, b = min(p.etco2 for p in res.rebreathing), max(p.etco2 for p in res.rebreathing)
         pdf.line(ax.px(a), ax.py(res.fit.slope * a + res.fit.intercept), ax.px(b), ax.py(res.fit.slope * b + res.fit.intercept), 1.6)
+    # the labels of the lab's figures: the slope and r up by the line, the baseline by its breaths
+    fit_label, base_label = response_labels(res)
+    for i, part in enumerate(fit_label.split(" · ") if fit_label else []):
+        pdf.text(x + 10, y + 32 + 11 * i, part, 8.5, "bold" if i == 0 else "regular")
+    if base_label:
+        bx = ax.px(min(p.etco2 for p in res.baseline))
+        by = max(y + 50, min(y + h - 30, ax.py(max(p.mv for p in res.baseline)) - 26))
+        for i, part in enumerate(base_label.split(" · ")):
+            pdf.text(max(x + 4, bx - 4), by + 11 * i, part, 8.5, "bold" if i == 0 else "regular")
     # legend
     lx, ly = x + 8, y + 12
     items = [("fitted", "dot")] + ([("baseline (averaged)", "ring")] if res.baseline else []) + ([("not fitted", "faint")] if res.skipped else []) + ([("excluded by hand", "cross")] if res.excluded else [])

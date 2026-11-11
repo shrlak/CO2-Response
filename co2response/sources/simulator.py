@@ -8,14 +8,17 @@ from typing import Callable
 from ..sim.core import Encoders, SimulatorCore
 from .base import Source, SourceItem
 
+#: the fastest the simulation runs (the engine processes about 25 000 samples a second)
+MAX_SPEED = 50.0
+
 
 class SimulatorSource(Source):
     kind = "simulator"
 
     def __init__(
-        self, encoders: Encoders, rail_low_v: float = 0, rail_high_v: float = 5, clock: Callable[[], float] = time.monotonic, speed: float = 1, **params
+        self, encoders: Encoders, rail_low_v: float = 0, rail_high_v: float = 5, clock: Callable[[], float] = time.monotonic, speed: float = 1, digital: bool = False, **params
     ) -> None:
-        self.core = SimulatorCore(encoders, rail_low_v, rail_high_v, **params)
+        self.core = SimulatorCore(encoders, rail_low_v, rail_high_v, digital=digital, **params)
         self._clock = clock
         #: simulated seconds per real second. The device clock in the lines runs this much
         #: faster, as in a replay at 2×–10×, so everything measured on it (RR, VT, MV, the
@@ -27,8 +30,8 @@ class SimulatorSource(Source):
 
     @property
     def run_speed(self) -> float:
-        """The speed it runs at: a stored value outside the panel's 1–10× runs at the nearest end."""
-        return min(10.0, max(1.0, self.speed))
+        """The speed it runs at: a stored value outside the panel's 1–50× runs at the nearest end."""
+        return min(MAX_SPEED, max(1.0, self.speed))
 
     @property
     def label(self) -> str:  # type: ignore[override]

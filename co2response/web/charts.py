@@ -200,6 +200,17 @@ class Sweep:
         ctx = self.fg.ctx
         d, W, H = self.fg.dpr, self.fg.W, self.fg.H
         N = self.n
+        if len(self.pending) > N // 4:
+            # more than a quarter of a screen since the last frame (a slow frame, a tab in
+            # the background): the erase gaps of an incremental draw would land on segments
+            # stroked after them and the trace would smear into a block of colour, so
+            # draw it again from the buffer instead
+            v = np.asarray(self.pending[-N:], dtype=float)
+            self.hist[(self.pos + len(self.pending) - len(v) + np.arange(len(v))) % N] = v
+            self.pos += len(self.pending)
+            self.pending.clear()
+            self._redraw()
+            return
         gap, lw = 18 * d, 3 * d
         self._pen()
         ctx.beginPath()
@@ -428,7 +439,7 @@ class ResponseChart(Plot):
         self.c.fit()
         self.x0 = math.floor((min(xs) if xs else 30) - 2)
         self.x1 = math.ceil((max(xs) if xs else 50) + 2)
-        self.y0, self.y1 = 0.0, max(10, math.ceil((max(ys) if ys else 10) * 1.2))
+        self.y0, self.y1 = 0.0, max(10, math.ceil((max(ys) if ys else 10) * 1.35))
         _, _, w, h = self.box
         xt = nice_ticks(self.x0, self.x1, max(2, int(w / self.c.dpr / 70)))
         self.frame([(x, f"{x:g}") for x in xt], nice_ticks(self.y0, self.y1, self.y_tick_count(h)), lambda v: f"{v:g}")
@@ -450,6 +461,26 @@ class ResponseChart(Plot):
             g.stroke()
             g.globalAlpha = 1
 
+        # the labels of the lab's figures: the slope and r, and the baseline average
+        from ..processing.metrics import response_labels
+
+        fit_text, base_text = response_labels(res)
+        x_l, y_t = self.px(self.x0), self.py(self.y1)
+        g.fillStyle = css_var("--text")
+        g.textAlign = "left"
+        g.textBaseline = "top"
+        for i, part in enumerate(fit_text.split(" · ") if fit_text else []):
+            g.font = f"{700 if i == 0 else 500} {15 * d}px {FONT}"
+            g.fillText(part, x_l + 12 * d, y_t + (24 + 19 * i) * d)
+        if base_text:
+            bx = self.px(min(p.etco2 for p in base)) - 6 * d
+            above = self.py(max(p.mv for p in base)) - 46 * d
+            below = self.py(min(p.mv for p in base)) + 10 * d
+            # above the baseline breaths if that leaves the slope label clear, else below them
+            by = above if above >= y_t + 64 * d or below + 38 * d > self.py(0) else below
+            for i, part in enumerate(base_text.split(" · ")):
+                g.font = f"{700 if i == 0 else 500} {15 * d}px {FONT}"
+                g.fillText(part, max(x_l + 4 * d, bx), by + 19 * i * d)
         rings(skip, 3.5, 1.5, 0.55)
         rings(base, 5, 2, 1)
         self.dots([self.px(p.etco2) for p in reb], [self.py(p.mv) for p in reb], css_var("--pneumo"), 5)
@@ -461,7 +492,7 @@ class ResponseChart(Plot):
             a, b = min(p.etco2 for p in reb), max(p.etco2 for p in reb)
             self.stroke(f"M{self.px(a)} {self.py(fit.slope * a + fit.intercept)}L{self.px(b)} {self.py(fit.slope * b + fit.intercept)}", css_var("--text"), 3)
         g.restore()
-        self.axis_titles("EtCO2 (mmHg)", "MV of each breath (L/min)")
+        self.axis_titles("etCO2 (mmHg)", "MV (liters/min)")
         self._hits = [(self.px(p.etco2), self.py(p.mv), p.key) for p in reb + base + out if p.key is not None]
         # where the clickable breaths are, in CSS pixels from the canvas corner (for tests and tools)
         self.c.el.setAttribute("data-points", ";".join(f"{x / d:.1f},{y / d:.1f}" for x, y, _ in self._hits))

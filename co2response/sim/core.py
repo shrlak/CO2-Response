@@ -21,11 +21,26 @@ class Encoders(NamedTuple):
 
 
 FIRMWARE_INFO = "I,FW,sim-1.2.0,ADC,SIMULATED,CH,3,VALVE,1,RATE,"
+#: the Uno R4 board with digital sensors (firmware/CO2ResponseR4): its data lines carry
+#: % CO2 and L/min, which UNITS tells the host
+DIGITAL_INFO = "I,FW,sim-2.0.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR,FLOW,SFM3304,CH,2,VALVE,1,REED,1,ALARM,1,RATE,"
+#: what that board sends for a sensor that is not answering
+NOT_ANSWERING = 9999.0
+#: the SprintIR reports a new CO2 value this often; the board repeats it in between
+CO2_UPDATE_HZ = 20
+#: measuring ranges of the digital sensors: % CO2, and L/min either way
+CO2_RANGE_PCT = (0.0, 20.0)
+FLOW_RANGE_LPM = 250.0
 
 
 class SimulatorCore:
-    def __init__(self, encoders: Encoders, rail_low_v: float = 0, rail_high_v: float = 5, **params) -> None:
+    def __init__(self, encoders: Encoders, rail_low_v: float = 0, rail_high_v: float = 5, digital: bool = False, **params) -> None:
         self.encoders = encoders
+        #: emulate the Uno R4 board with digital sensors (units on the line) instead of
+        #: the ADC board (volts on the line)
+        self.digital = digital
+        self._co2_held = 0.0
+        self._co2_age = 0.0
         self.model = PhysioModel(**params)
         self.rate_hz = 100
         self.streaming = True
@@ -51,6 +66,10 @@ class SimulatorCore:
         if not self.streaming or p.stop_data_on:
             return []
 
+        if self.digital:
+            volts = self._digital_values(s, p, dt)
+            return self._send(seq, volts, p, spike_v=(1.0, 10.0))
+
         # an unplugged sensor: the recommended pull-up drives its input to the high rail
         volts = [
             self._rail_high_v if s.co2_pct is None else self._clamp(self.encoders.co2(s.co2_pct)),
@@ -59,11 +78,32 @@ class SimulatorCore:
         ]
         if self.encoders.spo2 is not None:  # an oximeter on the fourth input
             volts.append(self._clamp(self.encoders.spo2(s.spo2_pct)))
+        return self._send(seq, volts, p)
+
+    def _digital_values(self, s, p, dt: float) -> list[float]:
+        """What the Uno R4 board puts on a line: % CO2 as the SprintIR last reported it
+        (20 times a second) and the SFM3304's flow in L/min. One flow sensor, so either
+        "unplugged" switch of the panel unplugs it."""
+        self._co2_age += dt
+        if self._co2_age >= 1 / CO2_UPDATE_HZ - 1e-9:
+            self._co2_age = 0.0
+            self._co2_held = NOT_ANSWERING if s.co2_pct is None else min(CO2_RANGE_PCT[1], max(CO2_RANGE_PCT[0], s.co2_pct))
+        flow = NOT_ANSWERING if p.flow_disconnected or p.pneumo_disconnected else min(FLOW_RANGE_LPM, max(-FLOW_RANGE_LPM, s.flow_lpm))
+        values = [self._co2_held, flow]
+        if self.encoders.spo2 is not None:  # an oximeter is not part of this board: its volts ride along as value 3
+            values += [0.0, self.encoders.spo2(s.spo2_pct)]
+        return values
+
+    def _send(self, seq: int, volts: list[float], p, spike_v: tuple[float, ...] = (1.0, 1.0, 1.0)) -> list[str]:
+        """One data line, with the spikes and line errors the panel asks for."""
         spikes = max(0.01 if p.scenario == "artifacts" else 0, p.spike_pct / 100)
         if spikes > 0 and self._rand() < spikes:
-            # a glitchy ADC conversion: one sample on one channel jumps by 1–2 V
-            ch = min(2, int(self._rand() * 3))
-            volts[ch] = self._clamp(volts[ch] + (1 + self._rand()) * (1 if self._rand() < 0.5 else -1))
+            # a glitchy conversion: one sample on one channel jumps (by 1–2 V on the ADC board)
+            n = len(spike_v)
+            ch = min(n - 1, int(self._rand() * n))
+            if volts[ch] != NOT_ANSWERING or not self.digital:
+                jump = spike_v[ch] * (1 + self._rand()) * (1 if self._rand() < 0.5 else -1)
+                volts[ch] = volts[ch] + jump if self.digital else self._clamp(volts[ch] + jump)
         line = format_data_line(seq, self._t_ms, volts)
 
         # lost and corrupted lines: the "noisy" scenario drops 0.5 % and corrupts 1 %
@@ -93,8 +133,14 @@ class SimulatorCore:
             self.valve_to_bag = arg == "1"
             return [f"A,VALVE,{arg}"]
         if name == "INFO":
-            info = FIRMWARE_INFO.replace("CH,3", "CH,4") if self.encoders.spo2 is not None else FIRMWARE_INFO
+            if self.digital:
+                info = DIGITAL_INFO.replace("CH,2", "CH,4") if self.encoders.spo2 is not None else DIGITAL_INFO
+            else:
+                info = FIRMWARE_INFO.replace("CH,3", "CH,4") if self.encoders.spo2 is not None else FIRMWARE_INFO
             return [info + str(self.rate_hz)]
+        if self.digital and name in ("ALARM", "PUMP", "HEAT"):
+            # the alarm LED and buzzer, the sample pump and the flow sensor's heater
+            return [f"A,{name},{arg}"] if arg.isdigit() else ["E,UNKNOWN_CMD"]
         if name == "START":
             self.streaming = True
             return ["A,START"]
