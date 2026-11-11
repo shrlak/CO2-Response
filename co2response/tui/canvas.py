@@ -310,7 +310,9 @@ def draw_trend(cv: Canvas, t: Sequence[float], v: Sequence[float], t0: float, t1
             for y in range(4 * ax.r0, 4 * ax.r1, 2):
                 cv.dot(x, y, "grey62")
             cv.text(min(ax.c1 - 1, x // 2 + 1), ax.r0, label[: max(1, ax.c1 - x // 2 - 1)], "grey62")
+    # a line graph: the breaths joined by a line, each breath a dot on it
     prev = None
+    dots = []
     for a, b in zip(t, v):
         if not (t0 <= a <= t1 and math.isfinite(b)):
             prev = None
@@ -318,9 +320,11 @@ def draw_trend(cv: Canvas, t: Sequence[float], v: Sequence[float], t0: float, t1
         p = (ax.px(a), ax.py(min(ymax, b)))
         if prev is not None:
             cv.line(*prev, *p, style)
-        else:
-            cv.dot(round(p[0]), round(p[1]), style)
         prev = p
+        dots.append((int(p[0]) // 2, int(p[1]) // 4))
+    for c, r in dots:
+        if ax.c0 <= c < ax.c1 and ax.r0 <= r < ax.r1:
+            cv.text(c, r, "●", f"bold {style}")
 
 
 # ------------------------------------------------------------------ big digits

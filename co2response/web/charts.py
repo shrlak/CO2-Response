@@ -4,6 +4,7 @@ and the zoomable review charts."""
 from __future__ import annotations
 
 import math
+import time
 from typing import Callable
 
 import js
@@ -14,24 +15,91 @@ from .dom import css_var, proxy
 FONT = '"Barlow Semi Condensed", "Arial Narrow", sans-serif'
 
 
+#: the largest backing store a canvas gets, in pixels: Safari refuses a canvas over
+#: 16.7 million pixels (it then draws nothing at all), so stay well under that
+MAX_CANVAS_PIXELS = 8_000_000
+
+#: every canvas on the page, so they can all be redrawn when the browser has thrown
+#: their pixels away (a graphics reset, memory pressure, a tab back from the background)
+_ALL: list["Canvas"] = []
+
+
+def _mark_all_dirty(*_args) -> None:
+    for c in list(_ALL):
+        if not c.el.isConnected:
+            _ALL.remove(c)
+        else:
+            c.dirty = True
+
+
+_listening = False
+
+
+def _listen_page() -> None:
+    global _listening
+    if _listening:
+        return
+    _listening = True
+    js.document.addEventListener("visibilitychange", proxy(lambda e: _mark_all_dirty() if js.document.visibilityState == "visible" else None))
+    js.window.addEventListener("pageshow", proxy(_mark_all_dirty))
+
+
 class Canvas:
-    """A canvas whose backing store follows its on-screen size × devicePixelRatio."""
+    """A canvas whose backing store follows its panel's size × devicePixelRatio.
+
+    The size comes from the layout (the parent's client size), not from the canvas's
+    own measured rectangle, so a canvas is never sized from a stale or transformed
+    measurement; nothing is drawn until its panel has a size. ``dirty`` is set when the
+    browser discards the canvas's pixels, and the next ``fit`` then reports a change so
+    everything on it is drawn again."""
 
     def __init__(self, el) -> None:
         self.el = el
         self.ctx = el.getContext("2d")
         self.W = self.H = 0
         self.dpr = 1.0
+        self.dirty = False
+        _ALL.append(self)
+        _listen_page()
+        try:
+            el.addEventListener("contextlost", proxy(lambda e: setattr(self, "dirty", True)))
+            el.addEventListener("contextrestored", proxy(lambda e: setattr(self, "dirty", True)))
+        except Exception:  # noqa: BLE001  (an old browser without these events)
+            pass
+
+    @property
+    def ready(self) -> bool:
+        """Laid out with a size: there is something to draw on."""
+        return self.W > 2 and self.H > 2
 
     def fit(self) -> bool:
-        r = self.el.getBoundingClientRect()
+        """Match the backing store to the panel. True when it changed (or the canvas
+        lost its pixels), so whatever is on it must be drawn again."""
+        box = self.el.parentElement or self.el
+        cw, ch = float(box.clientWidth or 0), float(box.clientHeight or 0)
+        if cw <= 0 or ch <= 0:
+            r = self.el.getBoundingClientRect()
+            cw, ch = float(r.width), float(r.height)
         dpr = float(js.window.devicePixelRatio or 1)
-        W, H = max(1, round(r.width * dpr)), max(1, round(r.height * dpr))
-        if (W, H, dpr) == (self.W, self.H, self.dpr):
+        if not (math.isfinite(dpr) and 0.25 <= dpr <= 8):
+            dpr = 1.0
+        if cw * ch * dpr * dpr > MAX_CANVAS_PIXELS and cw * ch > 0:
+            dpr = max(0.5, math.sqrt(MAX_CANVAS_PIXELS / (cw * ch)))
+        W, H = max(1, round(cw * dpr)), max(1, round(ch * dpr))
+        if (W, H, dpr) == (self.W, self.H, self.dpr) and int(self.el.width) == W and int(self.el.height) == H and not self.dirty:
             return False
-        self.el.width, self.el.height = W, H
+        self.dirty = False
+        self.el.width, self.el.height = W, H  # also clears it and resets the drawing state
         self.W, self.H, self.dpr = W, H, dpr
+        self.reset()
         return True
+
+    def reset(self) -> None:
+        """A clean drawing state: no transform, clip, transparency or dash left over."""
+        g = self.ctx
+        g.setTransform(1, 0, 0, 1, 0, 0)
+        g.globalAlpha = 1
+        g.setLineDash(js.Array.new())
 
 
 def nice_ticks(lo: float, hi: float, n: int = 5) -> list[float]:
@@ -91,6 +159,8 @@ class Sweep:
         self.last: tuple[float, float] | None = None
         self.color = "#fff"
         self._opts = None
+        #: when the whole trace was last drawn again from the buffer
+        self._full_at = 0.0
 
     def set_options(self, vmin, vmax, ticks, signed, limit, seconds, rate, theme: str) -> None:
         opts = (vmin, vmax, tuple(ticks), signed, limit, seconds, rate, theme)
@@ -115,6 +185,7 @@ class Sweep:
     def draw_background(self) -> None:
         self.fg.fit()
         self.bg.fit()
+        self.bg.reset()
         g = self.bg.ctx
         d, W = self.bg.dpr, self.bg.W
         g.clearRect(0, 0, W, self.bg.H)
@@ -162,6 +233,16 @@ class Sweep:
         self.pos = 0
         self.last = None
 
+    def _take_pending(self) -> None:
+        """Move the waiting samples into the buffer without drawing them."""
+        if not self.pending:
+            return
+        N = self.n
+        v = np.asarray(self.pending[-N:], dtype=float)
+        self.hist[(self.pos + len(self.pending) - len(v) + np.arange(len(v))) % N] = v
+        self.pos += len(self.pending)
+        self.pending.clear()
+
     def _pen(self) -> None:
         ctx = self.fg.ctx
         ctx.strokeStyle = self.color
@@ -171,6 +252,7 @@ class Sweep:
 
     def _redraw(self) -> None:
         """Draw the whole trace again from the buffer (after a resize or rescale)."""
+        self.fg.reset()
         ctx = self.fg.ctx
         W, H, N = self.fg.W, self.fg.H, self.n
         ctx.clearRect(0, 0, W, H)
@@ -191,11 +273,23 @@ class Sweep:
         if pos != 0 and math.isfinite(self.hist[last]):
             self.last = (last / N * W, self._y(float(self.hist[last])))
 
+    #: every so often the whole graph is drawn again from the buffer, so anything the
+    #: browser lost or garbled on the canvas is back within this many seconds
+    FULL_REDRAW_SEC = 2.0
+
     def draw(self) -> None:
-        if self.fg.fit():
+        changed = self.fg.fit()
+        changed = self.bg.fit() or changed
+        if not self.fg.ready:
+            return  # not laid out yet: the samples wait in the buffer
+        now = time.monotonic()
+        if changed or now - self._full_at >= self.FULL_REDRAW_SEC:
+            self._full_at = now
             self.draw_background()
+            self._take_pending()
             self._redraw()
-        if not self.pending or not self.fg.W:
+            return
+        if not self.pending:
             return
         ctx = self.fg.ctx
         d, W, H = self.fg.dpr, self.fg.W, self.fg.H
@@ -205,10 +299,7 @@ class Sweep:
             # the background): the erase gaps of an incremental draw would land on segments
             # stroked after them and the trace would smear into a block of colour, so
             # draw it again from the buffer instead
-            v = np.asarray(self.pending[-N:], dtype=float)
-            self.hist[(self.pos + len(self.pending) - len(v) + np.arange(len(v))) % N] = v
-            self.pos += len(self.pending)
-            self.pending.clear()
+            self._take_pending()
             self._redraw()
             return
         gap, lw = 18 * d, 3 * d
@@ -267,7 +358,9 @@ class Plot:
     def frame(self, xlabels: list[tuple[float, str]], yticks: list[float], yfmt: Callable[[float], str], right_ticks=None) -> None:
         g = self.c.ctx
         d = self.c.dpr
-        g.clearRect(0, 0, self.c.W, self.c.H)
+        # setting the width clears the canvas and resets its whole drawing state, so a
+        # clip, transform or saved state left by a draw that stopped half-way cannot carry over
+        self.c.el.width = self.c.W
         left, top, w, h = self.box
         grid, muted = css_var("--grid"), css_var("--muted")
         g.font = f"600 {15 * d}px {FONT}"

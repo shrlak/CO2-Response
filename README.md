@@ -172,7 +172,7 @@ Press **Simulation** (the soft key next to Settings) to open the simulation pane
   | Signal quality | sensor noise, ADC spikes, partial breaths, serial line errors |
   | Flow sensor calibration | gain (% of true flow) and zero offset |
 
-- **Set vs Monitor:** a table at the top shows each value the simulator is producing next to what the monitor measures (EtCO2, FiCO2, RR, VT, MV, peak inspiratory flow). The monitor measures its numbers from the simulated waveforms, the same way it does from real sensors, so its numbers, waveforms, trend and alarms all agree. A new EtCO2 is on the next breath (or on the breath being drawn, if it is still inspiring). The large EtCO2 is the median of 3 breaths, RR averages 4 breaths and MV the last minute, so those follow a little later; raise **Speed** to get there sooner. A rise rate much above about 12 mmHg/min outruns MV's one-minute average, so the response plot under-reads the slope; use Speed rather than a faster rise to run a test quickly.
+- **Set vs Monitor:** a table at the top shows each value the simulator is producing next to what the monitor measures (EtCO2, FiCO2, RR, VT, MV, peak inspiratory flow). The monitor measures its numbers from the simulated waveforms, the same way it does from real sensors, so its numbers, waveforms, trend and alarms all agree. A new EtCO2 is on the next breath (or on the breath being drawn, if it is still inspiring). The large EtCO2 is the median of 3 breaths and RR averages 4 breaths, so those follow a little later; MV is the last breath's own (VT × 60 / its length), so it follows at once. Raise **Speed** to get there sooner.
 - If the values chosen would push flow past a sensor's range (about ±100 L/min with the default calibration), the panel warns that the signal will clip at the ADC rail.
 
 **Settings > Connection > Simulator** offers the same situations in a drop-down. The simulator's values are saved and come back next time.
@@ -284,7 +284,7 @@ If the USB cable comes out, the device-disconnected alarm sounds. Plugging the s
 - **Numbers:**
   - EtCO2 with its limits beside it (warning / stop, and low), RR, live flow, VT and MV (FiCO2 and peak inspiratory flow are no longer on the monitor; they are still in every recording and the simulation panel's read-back)
   - SpO2 with its low limit, when an oximeter is connected ([§5.2](#52-hardware))
-  - under VT, the expired volume of the same breath; MV is the average over the last 60 s
+  - under VT, the expired volume of the same breath; MV is the last breath's own minute ventilation (VT × 60 / its length), not an average over a minute
   - a channel with no valid data for 2 s shows `---`
   - when the last breath was left out as noisy, the EtCO2 tile says so
 - **Test keys** (under the trend tabs): **Start baseline**, **Start rebreathing**, **End test** and **Emergency stop**, and beside them where the test stands: `BASELINE 0:45 · steady (EtCO2 ±0.4 mmHg, MV ±6 % in the last minute)`, `REBREATHING 2:31 of 5:00`, `TEST ENDED after 3:40 of rebreathing`. It adds `NOT RECORDING` if nothing is being recorded, and where the valve is when the app switches it (`valve to the bag`, `VALVE ON ROOM AIR`).
@@ -487,10 +487,10 @@ A flow dropout shorter than 0.5 s is bridged with the last valid value instead o
 | --- | --- |
 | EtCO2 | Median of the last 3 breaths |
 | RR | 60 / mean breath period of the last 4 breaths |
-| MV | ΣVT / Σbreath period over the last 60 s, in L/min. This is correct from the first minute, rather than under-reading until 60 s have passed. |
+| MV | The last breath's own minute ventilation: VT × 60 / its length, in L/min. The MV trend plots the same value for every breath, as a line with a dot per breath. (The 60 s average, ΣVT / Σbreath period over the last 60 s, is still written to the recording as `mv_lpm`.) |
 | Ventilatory response | Ordinary least-squares fit of each breath's own MV against its EtCO2 over the trend window (`processing/metrics.py` → `co2_response`); slope in L/min per mmHg, r, x-intercept and n, plus the baseline means |
 
-**Which breaths the response uses.** The 60 s average MV shown on the monitor lags the EtCO2 it would be paired with, and for the first minute of rebreathing it still contains baseline breaths. So the fit uses each breath's own MV, as CHOP's breath-by-breath analysis does. From the markers (`test_window`):
+**Which breaths the response uses.** A 60 s average MV would lag the EtCO2 it is paired with, and for the first minute of rebreathing it would still contain baseline breaths. So the fit uses each breath's own MV, the same value the monitor shows, as CHOP's breath-by-breath analysis does. From the markers (`test_window`):
 
 | Breaths | What happens to them |
 | --- | --- |

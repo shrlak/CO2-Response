@@ -234,6 +234,14 @@ def test_braille_canvas_and_graphs_draw():
     assert "●" in text and "○" in text and "SUBJECT X" in text
     assert big_digits("38")[0] == "███ ███"
 
+    # the trend is a line graph with a dot on every breath
+    from co2response.tui.canvas import draw_trend
+
+    cv = Canvas(60, 12)
+    draw_trend(cv, [0, 10, 20, 30], [7.0, 8.0, 7.5, 9.0], 0, 40, 12, "green", "MV (L/min) per breath")
+    text = cv.render().plain
+    assert text.count("●") == 4 and any("\u2800" < ch <= "\u28ff" for ch in text)
+
 
 def test_terminal_monitor_runs_a_whole_test(tmp_path, monkeypatch):
     pytest.importorskip("textual")

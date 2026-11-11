@@ -169,7 +169,7 @@ def install_alarm_actions(app: "WebApp") -> None:
 
 TILE_IDS = ("etco2", "rr", "flow", "spo2", "vt", "mv")
 #: what the trend tab can plot against time: setting value → (tab text, caption)
-SERIES = {"etco2": ("EtCO2 trend", "EtCO2"), "mv": ("MV trend", "MV (L/min, 60 s average)"), "rr": ("RR trend", "RR (/min)")}
+SERIES = {"etco2": ("EtCO2 trend", "EtCO2"), "mv": ("MV trend", "MV of each breath (L/min)"), "rr": ("RR trend", "RR (/min)")}
 
 
 def tile_html(tid: str, label: str, unit: str, value: str, big=False, stale=False, alarm=None, flash=False, limits=None, qualifier="", raw="") -> str:
@@ -362,7 +362,7 @@ class MonitorView:
                 "vt", "VT", "mL", sv(sc["pneumo"], n.vt), stale=sc["pneumo"], raw=raw("pneumo"),
                 qualifier="" if sc["pneumo"] else (f"exp {fmt(n.vte)} mL" if math.isfinite(n.vte) else "") + ("" if s.single_flow else f" · flow {fmt(n.pneumo_flow)} L/min"),
             ),  # fmt: skip
-            "mv": tile_html("mv", "MV", "L/min", sv(sc["pneumo"], n.mv, 1), stale=sc["pneumo"], qualifier="" if sc["pneumo"] else "60 s average"),
+            "mv": tile_html("mv", "MV", "L/min", sv(sc["pneumo"], n.mv, 1), stale=sc["pneumo"], qualifier="" if sc["pneumo"] else "this breath: VT × 60 / its length"),
         }
         # the oximeter's tile is there only while the SpO2 channel is switched on
         o = st.spo2
@@ -523,7 +523,7 @@ class MonitorView:
                     [a for a, _ in fin], [b for _, b in fin], tt, [disp(v) for v in vv], join, markers, alarms, pct, stop=stop,
                 )  # fmt: skip
             else:
-                fin = [(q.t, q.mv if series == "mv" else q.rr) for q in pts if math.isfinite(q.mv if series == "mv" else q.rr)]
+                fin = [(q.t, q.mv_breath if series == "mv" else q.rr) for q in pts if math.isfinite(q.mv_breath if series == "mv" else q.rr)]
                 ymax = max(10.0, math.ceil(max((v for _, v in fin), default=10) * 1.2))
                 self.trend.draw(
                     t0, now_s, ymax, None, None, [a for a, _ in fin], [b for _, b in fin], [], [], [], markers, alarms, False,

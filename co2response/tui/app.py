@@ -113,7 +113,7 @@ class NumbersPanel(Panel):
         row("RR", "/min", fmt(n.rr), COLOR["co2"] if not apnea else rr_style, "apnea!" if apnea else "")
         row("Flow", "L/min", "---" if s.stale["flow"] else fmt(n.flow), COLOR["flow"], "live")
         row("VT", "mL", "---" if s.stale["pneumo"] else fmt(n.vt), COLOR["pneumo"], f"exp {fmt(n.vte)} mL" if math.isfinite(n.vte) else "")
-        row("MV", "L/min", "---" if s.stale["pneumo"] else fmt(n.mv, 1), COLOR["pneumo"], "60 s average")
+        row("MV", "L/min", "---" if s.stale["pneumo"] else fmt(n.mv, 1), COLOR["pneumo"], "this breath")
         if st.spo2.enabled:
             row("SpO2", "%", fmt(n.spo2), "white", f"low {fmt(st.spo2.low_pct)}" if st.spo2.low_pct > 0 else "")
         lines = out.split("\n")[:h]

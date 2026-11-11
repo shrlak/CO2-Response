@@ -1838,7 +1838,8 @@ class MonitorEngine:
             pneumo_flow=NAN if stale["pneumo"] or L is None else L.pneumo_lpm,
             pneumo_pa=NAN if stale["pneumo"] or L is None else L.pneumo_pa,
             vt=NAN if breath_stale or stale["pneumo"] else last_b.vt_ml,
-            mv=NAN if breath_stale or stale["pneumo"] or L is None else minute_ventilation(self.good, L.t_sec),
+            # the last breath's own minute ventilation (VT x 60 / its length), not a 60 s average
+            mv=NAN if breath_stale or stale["pneumo"] else last_b.mv_lpm,
             volts=list(L.volts) if L else [],
             rejected=f"{last_any.quality}: {last_any.reason}" if connected and last_any is not None and last_any.quality != "ok" else "",
             vte=NAN if breath_stale or stale["pneumo"] else last_b.vte_ml,

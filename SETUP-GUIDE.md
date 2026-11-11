@@ -328,7 +328,7 @@ Otherwise the keys only place markers labelled **Baseline**, **Rebreathing** and
 | Alarm strip | The most important alarm: red flashing = high priority, amber = medium (technical), blue = information. "+N more" lists the rest. |
 | CO2 row | Capnogram (yellow, with the warning limit dashed), **EtCO2** (large, with its limits beside it: warning / stop, and low), RR, FiCO2 |
 | Flow row | Flow-sensor waveform (cyan), live flow, peak inspiratory flow, and SpO2 with its low limit when an oximeter is connected |
-| Pneumotach row | Pneumotach flow (green), VT (with the expired volume under it), MV (the 60 s average) |
+| Pneumotach row | Pneumotach flow (green), VT (with the expired volume under it), MV (the last breath's own: VT × 60 / its length) |
 | Bottom chart | The trend: EtCO2, MV or RR per breath (the drop-down beside **Window**) over 5 min to the whole session, with the warning limit dashed, the stop limit solid, and alarm and event markers. The **Ventilatory response** tab plots each breath's own MV against its EtCO2 (see above). |
 
 A number shows `---` when its sensor has sent no valid data for 2 s.
