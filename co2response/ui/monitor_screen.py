@@ -435,7 +435,7 @@ class MonitorScreen(QWidget):
         exp = f"exp {fmt(n.vte)} mL · " if n.vte == n.vte else ""
         vq = exp.rstrip(" ·") if s.single_flow else f"{exp}flow {fmt(n.pneumo_flow)} L/min"
         t["vt"].set(stale_val(s.stale["pneumo"], n.vt), stale=s.stale["pneumo"], raw=raw("pneumo"), qualifier="" if s.stale["pneumo"] else vq)
-        t["mv"].set(stale_val(s.stale["pneumo"], n.mv, 1), stale=s.stale["pneumo"], qualifier="" if s.stale["pneumo"] else "60 s average")
+        t["mv"].set(stale_val(s.stale["pneumo"], n.mv, 1), stale=s.stale["pneumo"], qualifier="" if s.stale["pneumo"] else "this breath: VT × 60 / its length")
 
         disconnected = s.status in ("idle", "error")
         if disconnected and self.focus == "trend":

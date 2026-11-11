@@ -209,7 +209,7 @@ def test_test_keys_trends_and_taking_a_breath_out_by_hand(page, site_url):
     # the trend tab can plot MV and RR as well as EtCO2
     page.select_option("#trend-series", "mv")
     sync_api.expect(page.locator("#tab-trend")).to_have_text("MV trend")
-    sync_api.expect(page.locator("#trend-meta")).to_contain_text("MV (L/min, 60 s average)")
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text("MV of each breath (L/min)")
     page.select_option("#trend-series", "rr")
     sync_api.expect(page.locator("#tab-trend")).to_have_text("RR trend")
     page.select_option("#trend-series", "etco2")
@@ -567,3 +567,40 @@ def test_vendored_build_fetches_nothing_from_the_cdn(tmp_path):
     assert all((out / "pyodide" / n).exists() for n in names)
     html = (out / "index.html").read_text()
     assert "cdn.jsdelivr.net" not in html and 'src="pyodide/pyodide.js"' in html
+
+
+INK = """(id) => {
+  // how many pixels of a canvas have anything drawn on them
+  const c = document.getElementById(id);
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let n = 0;
+  for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+  return n;
+}"""
+
+
+def test_waveforms_come_back_after_the_browser_drops_or_resizes_the_canvases(page, site_url):
+    """A graphics reset, memory pressure or a tab back from the background can leave a
+    canvas blank, or with a backing store that no longer matches the panel (the trace then
+    shows as stretched bars). The monitor draws everything again within 2 s."""
+    boot(page, site_url + "?sim")
+    numbers_ok(page)
+    for cid in ("bg-co2", "fg-co2", "fg-flow"):
+        assert page.evaluate(INK, cid) > 500, cid
+    # wipe every canvas, and give one a garbled 4-pixel-tall backing store
+    page.evaluate("""() => {
+      for (const c of document.querySelectorAll('canvas')) c.getContext('2d').clearRect(0, 0, c.width, c.height);
+      document.getElementById('fg-flow').height = 4;
+      document.getElementById('trend-canvas').height = 4;
+    }""")
+    assert page.evaluate(INK, "bg-co2") == 0
+    page.wait_for_timeout(2600)
+    for cid in ("bg-co2", "fg-co2", "bg-flow", "fg-flow", "trend-canvas"):
+        assert page.evaluate(INK, cid) > 500, cid
+    h = page.evaluate("() => [document.getElementById('fg-flow').height, document.getElementById('fg-flow').parentElement.clientHeight]")
+    assert h[0] >= h[1] > 50
+    # the MV trend: one dot per breath, the MV of that breath (not a 60 s average)
+    page.select_option("#trend-series", "mv")
+    sync_api.expect(page.locator("#trend-meta")).to_contain_text("MV of each breath")
+    sync_api.expect(page.locator("[data-testid=tile-mv] .qual")).to_contain_text("this breath")
+    assert not page.errors, page.errors

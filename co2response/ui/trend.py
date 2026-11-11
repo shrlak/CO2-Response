@@ -32,7 +32,7 @@ from .theme import ui_font
 from .widgets import button, fmt, label, set_combo, set_prop
 
 #: what the trend tab can plot against time: setting value → (tab text, axis label)
-SERIES = {"etco2": ("ETCO2 TREND", "EtCO2"), "mv": ("MV TREND", "MV (L/min, 60 s average)"), "rr": ("RR TREND", "RR (/min)")}
+SERIES = {"etco2": ("ETCO2 TREND", "EtCO2"), "mv": ("MV TREND", "MV of each breath (L/min)"), "rr": ("RR TREND", "RR (/min)")}
 
 
 class TrendPanel(QFrame):
@@ -259,7 +259,7 @@ class TrendPanel(QFrame):
                 fin = [(q.t, disp(q.etco2)) for q in pts if math.isfinite(q.etco2)]
                 color = p.co2
             else:
-                fin = [(q.t, q.mv if series == "mv" else q.rr) for q in pts if math.isfinite(q.mv if series == "mv" else q.rr)]
+                fin = [(q.t, q.mv_breath if series == "mv" else q.rr) for q in pts if math.isfinite(q.mv_breath if series == "mv" else q.rr)]
                 ymax = max(10.0, math.ceil(max((v for _, v in fin), default=10) * 1.2))
                 color = p.pneumo if series == "mv" else p.text
                 self.joined.setPen(pg.mkPen(color, width=2))
