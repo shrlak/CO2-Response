@@ -24,7 +24,7 @@ def load_fonts() -> None:
             QFontDatabase.addApplicationFont(str(f))
 
 
-def run(sim: bool = False, port: str | None = None, replay: str | None = None, argv: list[str] | None = None, exit_after: float | None = None) -> int:
+def run(sim: bool = False, port: str | None = None, replay: str | None = None, argv: list[str] | None = None, exit_after: float | None = None, situation: str | None = None, speed: float | None = None) -> int:
     app = QApplication.instance() or QApplication(argv or sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("CMU BME")
@@ -39,7 +39,11 @@ def run(sim: bool = False, port: str | None = None, replay: str | None = None, a
         if recovered:
             n = len(recovered)
             win.toast(f"Recovered {n} recording{'s' if n > 1 else ''} left unfinished when the app closed. Find {'them' if n > 1 else 'it'} in Settings > Data & recordings.", 9000)
-        if sim:
+        if speed is not None:
+            engine.set_sim(speed=float(speed))
+        if situation:
+            engine.apply_situation(situation)
+        elif sim:
             engine.connect("simulator")
         elif port:
             if not engine.connect("serial", port=port):

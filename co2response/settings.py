@@ -212,6 +212,8 @@ class SimSettings:
     #: the subject's oxygen saturation, % (falls during apnea). Simulated only while
     #: the SpO2 channel is switched on.
     spo2: float = 98
+    #: breath-to-breath variability of tidal volume, % (0 = every breath alike)
+    variability_pct: float = 0
     #: simulated seconds per real second (1 = real time). Not part of a situation.
     speed: float = 1
     #: record a whole simulated test as a session, so the review charts and the PDF

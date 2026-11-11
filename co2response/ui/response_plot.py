@@ -13,7 +13,7 @@ from typing import Callable
 import pyqtgraph as pg
 from PySide6.QtGui import QColor, QFont
 
-from ..processing.metrics import CO2Response
+from ..processing.metrics import CO2Response, response_labels
 from . import theme
 from .theme import ui_font
 
@@ -51,8 +51,13 @@ class ResponsePlot(pg.PlotWidget):
             pi.addItem(it)
         for it in (self.base, self.fitted, self.out):
             it.sigClicked.connect(self.point_clicked)
-        pi.setLabel("bottom", "EtCO2 (mmHg)")
-        pi.setLabel("left", "MV of each breath (L/min)")
+        pi.setLabel("bottom", "etCO2 (mmHg)")
+        pi.setLabel("left", "MV (liters/min)")
+        # the labels of the lab's figures: the slope and r, and the baseline average
+        self.fit_label = pg.TextItem(anchor=(0, 0))
+        self.base_label = pg.TextItem(anchor=(0, 1))
+        for it in (self.fit_label, self.base_label):
+            pi.addItem(it, ignoreBounds=True)
         self.apply_theme()
 
     def point_clicked(self, _item, points, _ev=None) -> None:
@@ -74,6 +79,9 @@ class ResponsePlot(pg.PlotWidget):
         self.out.setBrush(pg.mkBrush(p.alarm_high))
         self.out.setPen(pg.mkPen(p.alarm_high))
         self.fit.setPen(pg.mkPen(p.text, width=3))
+        for it in (self.fit_label, self.base_label):
+            it.setColor(QColor(p.text))
+            it.setFont(ui_font(15, QFont.Weight.DemiBold))
         for ax in ("left", "bottom"):
             lab = self.getPlotItem().getAxis(ax).label
             lab.setDefaultTextColor(QColor(p.muted))
@@ -97,5 +105,13 @@ class ResponsePlot(pg.PlotWidget):
         xs = [q.etco2 for q in every]
         ys = [q.mv for q in every]
         pi = self.getPlotItem()
-        pi.setXRange(math.floor((min(xs) if xs else 30) - 2), math.ceil((max(xs) if xs else 50) + 2), padding=0)
-        pi.setYRange(0, max(10, math.ceil((max(ys) if ys else 10) * 1.2)), padding=0)
+        x0, x1 = math.floor((min(xs) if xs else 30) - 2), math.ceil((max(xs) if xs else 50) + 2)
+        y1 = max(10, math.ceil((max(ys) if ys else 10) * 1.35))
+        pi.setXRange(x0, x1, padding=0)
+        pi.setYRange(0, y1, padding=0)
+        fit_text, base_text = response_labels(res)
+        self.fit_label.setText(fit_text.replace(" · ", "\n"))
+        self.fit_label.setPos(x0 + 0.03 * (x1 - x0), y1 * 0.97)
+        self.base_label.setText(base_text.replace(" · ", "\n"))
+        if res.baseline:
+            self.base_label.setPos(min(q.etco2 for q in res.baseline) - 0.5, min(y1 * 0.9, max(q.mv for q in res.baseline) + 0.08 * y1))

@@ -9,6 +9,10 @@ from ..sim.core import Encoders, SimulatorCore
 from .base import Source, SourceItem
 
 
+#: the fastest the simulation runs (the engine processes about 25 000 samples a second)
+MAX_SPEED = 50.0
+
+
 class SimulatorSource(Source):
     kind = "simulator"
 
@@ -27,8 +31,8 @@ class SimulatorSource(Source):
 
     @property
     def run_speed(self) -> float:
-        """The speed it runs at: a stored value outside the panel's 1–10× runs at the nearest end."""
-        return min(10.0, max(1.0, self.speed))
+        """The speed it runs at: a stored value outside the panel's 1–50× runs at the nearest end."""
+        return min(MAX_SPEED, max(1.0, self.speed))
 
     @property
     def label(self) -> str:  # type: ignore[override]

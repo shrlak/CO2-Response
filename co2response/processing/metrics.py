@@ -316,3 +316,15 @@ def stability(points: Sequence[tuple[float, float]], min_breaths: int = 6, etco2
     cv = math.sqrt(sum((b - mm) ** 2 for _, b in pts) / (n - 1)) / mm if mm > 0 else math.inf
     ok = sd <= etco2_sd and cv <= mv_cv
     return ok, f"EtCO2 ±{sd:.1f} mmHg, MV ±{cv * 100:.0f} %"
+
+
+def response_labels(res: CO2Response) -> tuple[str, str]:
+    """The two labels drawn on the MV-vs-EtCO2 graph, worded as in the lab's figures:
+
+        Response slope = 1.244 (L/min)/mmHg · r = 0.848
+        Baseline Ave = 43.64 mmHg · MV = 6.63 L/min
+
+    Either is "" when there is nothing to say (no fit; no baseline breaths)."""
+    fit = f"Response slope = {res.slope:.3f} (L/min)/mmHg · r = {res.r:.3f}" if res.fit else ""
+    base = f"Baseline Ave = {res.baseline_etco2:.2f} mmHg · MV = {res.baseline_mv:.2f} L/min" if res.baseline else ""
+    return fit, base

@@ -294,8 +294,8 @@ def test_speed_runs_simulated_time_faster(tmp_path):
     text = e.stop_recording().path.read_text(encoding="utf-8")  # session files are UTF-8 on every OS
     assert "# source,Simulator (5× speed)" in text and "SIM_SPEED 1" in text
     # a stored speed out of range runs at the nearest end
-    e.set_sim(speed=50)
-    assert e.source.run_speed == 10
+    e.set_sim(speed=500)
+    assert e.source.run_speed == 50
 
 
 def test_the_panel_warns_when_flow_would_clip(tmp_path):
