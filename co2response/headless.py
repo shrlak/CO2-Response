@@ -9,6 +9,7 @@ report is written next to it, and the MV-vs-EtCO2 graph is printed in the termin
 
 from __future__ import annotations
 
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -56,6 +57,18 @@ def run_fast_test(kind: str = "normal", out_dir: str | Path | None = None, board
     return e, res.path, pdf
 
 
+def utf8_stdout() -> None:
+    """Make sure the graph's characters (braille, ● ○) can be printed: a Windows console on
+    an old code page (cp1252) cannot encode them and would stop the program."""
+    out = sys.stdout
+    try:
+        "\u284f\u25cf\u25cb\u2500".encode(out.encoding or "ascii")
+    except (UnicodeEncodeError, LookupError):
+        reconfigure = getattr(out, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def print_result(e: MonitorEngine, csv: Path | None, pdf: Path | None) -> None:
     from rich.console import Console
     from rich.panel import Panel
@@ -63,6 +76,7 @@ def print_result(e: MonitorEngine, csv: Path | None, pdf: Path | None) -> None:
     from .processing.metrics import co2_response_summary
     from .tui.canvas import Canvas, draw_response
 
+    utf8_stdout()
     con = Console()
     width = min(110, max(60, con.width - 4))
     cv = Canvas(width, 24)

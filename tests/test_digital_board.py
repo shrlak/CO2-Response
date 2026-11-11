@@ -279,6 +279,22 @@ def test_command_line_fast_test_and_situations(tmp_path, capsys, monkeypatch):
     assert list((tmp_path / "s").glob("*.pdf"))
 
 
+def test_fast_test_prints_on_a_console_that_cannot_encode_braille(tmp_path, monkeypatch):
+    # a Windows console on code page 1252 (as on the release build machine)
+    import io
+    import sys
+
+    from co2response.__main__ import main
+
+    raw = io.BytesIO()
+    console = io.TextIOWrapper(raw, encoding="cp1252", errors="strict")
+    monkeypatch.setattr(sys, "stdout", console)
+    monkeypatch.setenv("CO2R_HOME", str(tmp_path / "home"))
+    assert main(["--fast-test", "normal", "--sessions", str(tmp_path / "s")]) == 0
+    sys.stdout.flush()
+    assert "Response slope".encode() in raw.getvalue()
+
+
 def test_both_firmwares_format_lines_the_same_way():
     a = (ROOT / "firmware" / "CO2Response" / "line_format.h").read_text()
     b = (ROOT / "firmware" / "CO2ResponseR4" / "line_format.h").read_text()
