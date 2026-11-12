@@ -330,7 +330,7 @@ def test_r4_firmware_matches_the_wiring():
 
 
 def test_the_response_curve_bends_with_the_data_and_ignores_an_outlier():
-    from co2response.processing.metrics import breath_path, lowess_curve
+    from co2response.processing.metrics import lowess_curve
 
     xs = [40 + 0.5 * i for i in range(40)]
     ys = [5 + 0.05 * (x - 40) ** 2 for x in xs]  # a response that steepens
@@ -343,9 +343,16 @@ def test_the_response_curve_bends_with_the_data_and_ignores_an_outlier():
     assert slopes[-1] > 2 * slopes[5]  # steeper at the top: a curve, not a line
     assert lowess_curve([38] * 6, [7] * 6) == ([], [])  # no spread in EtCO2: no curve
     assert lowess_curve([38, 39, 40], [7, 8, 9]) == ([], [])  # too few breaths
-    pts = [(3, 45, 12), (1, 38, 7), (2, 40, 8)]
-    res = co2_response(pts, None)
-    assert breath_path(res) == ([38, 40, 45], [7, 8, 12])  # in the order they were taken
+    # breath-to-breath scatter does not make it wiggle: it changes direction at most once
+    import random
+
+    rnd = random.Random(3)
+    sx = [40 + 0.4 * i for i in range(60)]
+    sy = [8 + 0.5 * (x - 40) + rnd.gauss(0, 2.5) for x in sx]
+    gx, gy = lowess_curve(sx, sy)
+    d = [b - a for a, b in zip(gy, gy[1:])]
+    turns = sum(1 for a, b in zip(d, d[1:]) if (a > 0) != (b > 0))
+    assert turns <= 1 and gy[-1] > gy[0] + 5
 
 
 def test_update_pulls_a_repository_copy_or_reinstalls_from_github(monkeypatch, capsys):

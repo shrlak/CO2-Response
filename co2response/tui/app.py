@@ -28,7 +28,7 @@ from ..engine.monitor import MonitorEngine, Snapshot
 from ..processing.co2 import mmhg_to_pct
 from ..processing.metrics import co2_response_summary
 from ..sim.controls import SITUATIONS, situation_label
-from .canvas import Canvas, SweepBuffer, big_digits, digits_size, draw_response, draw_sweep, draw_trend
+from .canvas import Canvas, SweepBuffer, big_digits, digits_size, draw_response, draw_sweep, draw_trend, render_sweep_fill
 
 #: colours of the three channels, as on the desktop monitor
 COLOR = {"co2": "yellow1", "flow": "deep_sky_blue1", "pneumo": "spring_green2"}
@@ -65,8 +65,13 @@ class WavePanel(Panel):
         self.cid = cid
         self.sweep = SweepBuffer()
 
-    def draw(self, vmin: float, vmax: float, ticks, signed: bool, limit: float | None) -> None:
+    def draw(self, vmin: float, vmax: float, ticks, signed: bool, limit: float | None, style: str = "fill") -> None:
+        """``style`` "fill": a solid filled shape from eighth blocks (smooth in any font);
+        "line": a thin braille line."""
         w, h = self.area()
+        if style == "fill":
+            self.update(render_sweep_fill(self.sweep, w, h, vmin, vmax, COLOR[self.cid], ticks, signed, limit))
+            return
         cv = Canvas(w, h)
         draw_sweep(cv, self.sweep, vmin, vmax, COLOR[self.cid], ticks=ticks, signed=signed, limit=limit)
         self.update(cv.render())
@@ -360,6 +365,7 @@ class MonitorApp(App):
         Binding("c", "record", "Record"),
         Binding("v", "view", "Graph"),
         Binding("f", "freeze", "Freeze", show=False),
+        Binding("l", "wave_style", "Line/fill", show=False),
         Binding("a", "arm_audio", "Audio", show=False),
         Binding("h", "hardware", "Board", show=False),
         Binding("k", "capnostream", "Capnostream"),
@@ -373,6 +379,8 @@ class MonitorApp(App):
         self.engine = MonitorEngine(audio=AlarmAudio(fallback_beep=self._bell))
         self.engine.arm_audio(confirm=False)
         self.graph_mode = "response"
+        #: the waveforms: "fill" (solid, smooth) or "line" (thin braille line); the l key switches
+        self.wave_style = "fill"
         self._epoch = -1
         self._flash = False
         self._last_print = ""
@@ -510,11 +518,11 @@ class MonitorApp(App):
         panels["co2"].border_title = f"CO2 {unit}{tag}{' · FROZEN' if s.frozen else ''}"
         ticks = [0, 2, 4, 6, 8, 10] if pct else [0, 20, 40, 60, 80]
         lim = st.alarms.high_mm_hg
-        panels["co2"].draw(0, co2_max, [t for t in ticks if t <= co2_max], False, mmhg_to_pct(lim, pb, wv) if pct else lim)
+        panels["co2"].draw(0, co2_max, [t for t in ticks if t <= co2_max], False, mmhg_to_pct(lim, pb, wv) if pct else lim, self.wave_style)
         fs = st.flow_scale_lpm
         for cid in ("flow", "pneumo"):
             if panels[cid].display:
-                panels[cid].draw(-fs, fs, [-fs, 0, fs], True, None)
+                panels[cid].draw(-fs, fs, [-fs, 0, fs], True, None, self.wave_style)
 
     # ---------- keys
 
@@ -651,6 +659,10 @@ class MonitorApp(App):
             self.notify("Capnostream off" if not new.enabled else f"CO2 from the Capnostream on {new.port}" + ("" if isinstance(e.source, type(None)) else " (applies at the next connection)" if e.source is not None and e.source.kind != "simulator" else ""), timeout=5)
 
         self.push_screen(Picker("Capnostream 35 as the CO2 source", opts, note), done)
+
+    def action_wave_style(self) -> None:
+        self.wave_style = "line" if self.wave_style == "fill" else "fill"
+        self.notify("Waveforms: " + ("solid fill" if self.wave_style == "fill" else "thin line"), timeout=2)
 
     def action_view(self) -> None:
         order = ["response", "etco2", "mv", "breaths"]

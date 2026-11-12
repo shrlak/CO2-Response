@@ -583,12 +583,8 @@ class ResponseChart(Plot):
             for i, part in enumerate(base_text.split(" · ")):
                 g.font = f"{700 if i == 0 else 500} {15 * d}px {FONT}"
                 g.fillText(part, bx, by + 19 * i * d)
-        from ..processing.metrics import breath_path, lowess_curve
+        from ..processing.metrics import lowess_curve
 
-        # the breaths joined in the order they were taken
-        px_, py_ = breath_path(res)
-        if len(px_) > 1:
-            self.stroke(path_d([self.px(v) for v in px_], [self.py(v) for v in py_]), css_var("--pneumo"), 1.5, 0.45)
         rings(skip, 3.5, 1.5, 0.55)
         rings(base, 5, 2, 1)
         self.dots([self.px(p.etco2) for p in reb], [self.py(p.mv) for p in reb], css_var("--pneumo"), 5)

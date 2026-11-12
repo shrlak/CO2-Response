@@ -14,7 +14,7 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
 
-from ..processing.metrics import CO2Response, breath_path, lowess_curve, response_labels
+from ..processing.metrics import CO2Response, lowess_curve, response_labels
 from . import theme
 from .theme import ui_font
 
@@ -48,11 +48,10 @@ class ResponsePlot(pg.PlotWidget):
         # breaths taken out by hand: crosses
         self.out = pg.ScatterPlotItem(size=12, symbol="x")
         self.fit = pg.PlotCurveItem()
-        # the breaths joined in the order they were taken, and the curve (LOWESS) through
-        # the rebreathing breaths; the straight least-squares line stays, dashed
-        self.path = pg.PlotCurveItem()
+        # the curve (LOWESS) through the rebreathing breaths; the straight least-squares
+        # line the slope comes from stays, dashed
         self.curve = pg.PlotCurveItem()
-        for it in (self.path, self.skip, self.base, self.fitted, self.out, self.fit, self.curve):
+        for it in (self.skip, self.base, self.fitted, self.out, self.fit, self.curve):
             pi.addItem(it)
         for it in (self.base, self.fitted, self.out):
             it.sigClicked.connect(self.point_clicked)
@@ -85,9 +84,7 @@ class ResponsePlot(pg.PlotWidget):
         self.out.setPen(pg.mkPen(p.alarm_high))
         self.fit.setPen(pg.mkPen(p.muted, width=1.5, style=Qt.PenStyle.DashLine))
         self.curve.setPen(pg.mkPen(p.text, width=3))
-        joined = QColor(p.pneumo)
-        joined.setAlphaF(0.45)
-        self.path.setPen(pg.mkPen(joined, width=1.5))
+
         for it in (self.fit_label, self.base_label):
             it.setColor(QColor(p.text))
             it.setFont(ui_font(15, QFont.Weight.DemiBold))
@@ -113,8 +110,7 @@ class ResponsePlot(pg.PlotWidget):
         else:
             self.fit.setData([], [])
             self.curve.setData([], [])
-        px_, py_ = breath_path(res)
-        self.path.setData(px_, py_)
+
         every = res.baseline + res.rebreathing + res.skipped + res.excluded
         xs = [q.etco2 for q in every]
         ys = [q.mv for q in every]
