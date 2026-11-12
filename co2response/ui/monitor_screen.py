@@ -35,6 +35,8 @@ def capno_note(s: Snapshot, key: str, disp=None, digits: int = 0) -> str:
 
 #: relative heights of the CO2, flow and pneumotach rows
 ROW_STRETCH = (130, 100, 100)
+#: with one flow sensor (the Uno R4 board) there is no pneumotach row: EtCO2 and MV on top, taller
+ROW_STRETCH_SINGLE = (155, 100, 0)
 
 
 class SoftKey(QPushButton):
@@ -227,15 +229,18 @@ class MonitorScreen(QWidget):
             "flow": NumericTile("flow", "Flow", "L/min"),
             "spo2": NumericTile("flow", "SpO2", "%"),
             "vt": NumericTile("pneumo", "VT", "mL"),
-            "mv": NumericTile("pneumo", "MV", "L/min"),
+            "mv": NumericTile("pneumo", "MV", "L/min", big=True),  # EtCO2 and MV: the two big values
         }
         co2nums = QGridLayout()
         co2nums.setSpacing(6)
         co2nums.addWidget(self.tiles["etco2"], 0, 0)
-        co2nums.addWidget(self.tiles["rr"], 0, 1)
-        co2nums.setColumnStretch(0, 135)
-        co2nums.setColumnStretch(1, 100)
-        rows = [("co2", co2nums), ("flow", hbox(self.tiles["flow"], self.tiles["spo2"], spacing=6)), ("pneumo", hbox(self.tiles["vt"], self.tiles["mv"], spacing=6))]
+        co2nums.addWidget(self.tiles["mv"], 0, 1)
+        co2nums.setColumnStretch(0, 1)
+        co2nums.setColumnStretch(1, 1)
+        # EtCO2 and MV on top, large; RR, Flow, SpO2 (and VT) side by side below them
+        self.flow_nums = hbox(self.tiles["flow"], self.tiles["rr"], self.tiles["spo2"], spacing=6)
+        self.pneumo_nums = hbox(self.tiles["vt"], spacing=6)
+        rows = [("co2", co2nums), ("flow", self.flow_nums), ("pneumo", self.pneumo_nums)]
         self.holders: dict[str, QWidget] = {}
         for r, (cid, nums) in enumerate(rows):
             grid.addWidget(self.sweeps[cid], r, 0)
@@ -246,8 +251,8 @@ class MonitorScreen(QWidget):
             self.holders[cid] = holder
             self.sweeps[cid].on_expand = lambda cid=cid: self.toggle_focus(cid)
         # the graphs take the space; the numbers keep a readable column
-        grid.setColumnStretch(0, 73)
-        grid.setColumnStretch(1, 27)
+        grid.setColumnStretch(0, 62)
+        grid.setColumnStretch(1, 38)
         self.grid = grid
         for r, s in enumerate(ROW_STRETCH):
             grid.setRowStretch(r, s)
@@ -258,8 +263,8 @@ class MonitorScreen(QWidget):
         self.trend.expand.clicked.connect(lambda _=False: self.toggle_focus("trend"))
         left = QVBoxLayout()
         left.setSpacing(6)
-        left.addWidget(self.rows, 19)
-        left.addWidget(self.trend, 10)
+        left.addWidget(self.rows, 10)
+        left.addWidget(self.trend, 13)  # the graph takes more than half the height
         body = QHBoxLayout()
         body.setSpacing(6)
         body.addLayout(left, 1)
@@ -324,13 +329,12 @@ class MonitorScreen(QWidget):
         self.set_focus(None if self.focus == target else target)
 
     def _layout_flow(self, single: bool) -> None:
-        """With one flow sensor the Flow waveform takes the pneumotach's row as well;
-        VT and MV stay beside it, since they are computed from that same flow."""
+        """With one flow sensor there is no pneumotach row: VT, computed from the Flow
+        waveform, sits beside it with RR and Flow."""
         if single == self._single:
             return
         self._single = single
-        self.grid.removeWidget(self.sweeps["flow"])
-        self.grid.addWidget(self.sweeps["flow"], 1, 0, 2 if single else 1, 1)
+        (self.flow_nums if single else self.pneumo_nums).addWidget(self.tiles["vt"])
         self.set_focus(None if single and self.focus == "pneumo" else self.focus)
 
     def set_focus(self, target: str | None) -> None:
@@ -338,11 +342,11 @@ class MonitorScreen(QWidget):
         self.focus = target
         single = bool(self._single)
         for r, (cid, sw) in enumerate(self.sweeps.items()):
-            show = target in (None, cid) or (single and cid == "pneumo" and target == "flow")
-            sw.setVisible(show and not (single and cid == "pneumo"))
+            show = target in (None, cid) and not (single and cid == "pneumo")
+            sw.setVisible(show)
             self.holders[cid].setVisible(show)
             sw.expand.setChecked(target == cid)
-            self.grid.setRowStretch(r, ROW_STRETCH[r] if show else 0)
+            self.grid.setRowStretch(r, (ROW_STRETCH_SINGLE if single else ROW_STRETCH)[r] if show else 0)
         self.rows.setVisible(target != "trend")
         self.trend.setVisible(target in (None, "trend"))
         self.trend.expand.setChecked(target == "trend")

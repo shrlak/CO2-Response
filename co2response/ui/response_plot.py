@@ -7,14 +7,13 @@ faint rings, and breaths taken out by hand are crosses. A click on a breath call
 
 from __future__ import annotations
 
-import math
 from typing import Callable
 
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
 
-from ..processing.metrics import CO2Response, lowess_curve, response_labels
+from ..processing.metrics import CO2Response, lowess_curve, response_axes, response_labels
 from . import theme
 from .theme import ui_font
 
@@ -111,14 +110,10 @@ class ResponsePlot(pg.PlotWidget):
             self.fit.setData([], [])
             self.curve.setData([], [])
 
-        every = res.baseline + res.rebreathing + res.skipped + res.excluded
-        xs = [q.etco2 for q in every]
-        ys = [q.mv for q in every]
         pi = self.getPlotItem()
-        x0, x1 = math.floor((min(xs) if xs else 30) - 2), math.ceil((max(xs) if xs else 50) + 2)
-        y1 = max(10, math.ceil((max(ys) if ys else 10) * 1.35))
+        x0, x1, y0, y1 = response_axes(res)  # both axes scale to the breaths
         pi.setXRange(x0, x1, padding=0)
-        pi.setYRange(0, y1, padding=0)
+        pi.setYRange(y0, y1, padding=0)
         fit_text, base_text = response_labels(res)
         self.fit_label.setText(fit_text.replace(" · ", "\n"))
         self.fit_label.setPos(x0 + 0.03 * (x1 - x0), y1 * 0.97)

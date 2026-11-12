@@ -99,11 +99,12 @@ def header_html(s: Snapshot) -> str:
     if s.replay_progress is not None:
         extra += f" · {round(s.replay_progress * 100)} %"
     rec = f'<span class="rec on">● REC {duration(s.now - s.recording.started_at)}</span>' if s.recording.active else '<span class="rec">Not recording</span>'
+    runtime = f"Running {duration(s.now - s.started_at)}" + (f" · <b>REBREATHING TEST {mss(s.test.elapsed_sec * 1000)}</b>" if s.test.phase == "rebreathing" else "")
+    runtime = f'<span class="runtime{" testing" if s.test.phase == "rebreathing" else ""}">{runtime}</span>'
     return (
-        '<span class="ruo-tag">RESEARCH USE ONLY</span>'
         f'<span class="hgroup">Study <b>{esc(s.settings.study_code or "—")}</b></span>'
         f'<span class="hgroup" title="{esc(s.status_detail)}"><span class="dot {s.status}"></span><b>{status}</b>{extra}</span>'
-        f'<span class="hspacer"></span>{rec}<span class="pill {pill[0]}">{pill[1]}</span><span class="clock">{hms(s.now)}</span>'
+        f'<span class="hspacer"></span>{rec}<span class="pill {pill[0]}">{pill[1]}</span>{runtime}<span class="clock">{hms(s.now)}</span>'
         '<button type="button" class="fullscreen" data-act="fullscreen" title="Full screen (F); Esc leaves it" aria-label="Full screen">⛶</button>'
     )
 
@@ -213,7 +214,7 @@ class MonitorView:
         self.sweeps: dict[str, Sweep] = {}
         self.trend: TrendChart | None = None
         self.resp: ResponseChart | None = None
-        self.tab = "trend"
+        self.tab = "response"  # the ventilatory response is what the screen opens with
         self.drawer = False
         #: one graph enlarged to fill the monitor ("co2", "flow", "pneumo", "trend"), or None
         self.focus: str | None = None
@@ -230,17 +231,18 @@ class MonitorView:
 
         self._single = single = self.app.engine.single_flow
         if single:
-            # one flow sensor: VT and MV are computed from the Flow waveform, so they sit beside it
-            nums = {"co2": slots("etco2", "rr"), "flow": slots("flow", "spo2", "vt", "mv")}
+            # one flow sensor: VT and MV are computed from the Flow waveform. EtCO2 and MV, the two
+            # values that matter most, are the two big tiles at the top
+            nums = {"co2": slots("etco2", "mv"), "flow": slots("flow", "rr", "vt", "spo2")}
             layout = (("co2", "CO2", "mmHg"), ("flow", "Flow", "L/min"))
         else:
-            nums = {"co2": slots("etco2", "rr"), "flow": slots("flow", "spo2"), "pneumo": slots("vt", "mv")}
+            nums = {"co2": slots("etco2", "mv"), "flow": slots("flow", "rr", "spo2"), "pneumo": slots("vt")}
             layout = (("co2", "CO2", "mmHg"), ("flow", "Flow", "L/min"), ("pneumo", "Pneumotach", "L/min"))
         rows = "".join(f'<section class="row {cid}" id="row-{cid}">{wave_html(cid, label, unit)}{nums[cid]}</section>' for cid, label, unit in layout)
         trend = (
             '<section class="trend"><div class="trend-head" role="tablist">'
-            '<button class="tab" role="tab" data-act="trend-tab" data-arg="trend" id="tab-trend">EtCO2 trend</button>'
             '<button class="tab" role="tab" data-act="trend-tab" data-arg="response" id="tab-response">Ventilatory response</button>'
+            '<button class="tab" role="tab" data-act="trend-tab" data-arg="trend" id="tab-trend">EtCO2 trend</button>'
             '<span class="trend-meta"><span id="trend-meta"></span>'
             '<select id="trend-series" data-change="trend-series" aria-label="Trend of" title="What the trend tab plots against time">'
             '<option value="etco2">EtCO2</option><option value="mv">MV</option><option value="rr">RR</option></select>'
@@ -376,7 +378,7 @@ class MonitorView:
                 "vt", "VT", "mL", sv(sc["pneumo"], n.vt), stale=sc["pneumo"], raw=raw("pneumo"),
                 qualifier="" if sc["pneumo"] else (f"exp {fmt(n.vte)} mL" if math.isfinite(n.vte) else "") + ("" if s.single_flow else f" · flow {fmt(n.pneumo_flow)} L/min"),
             ),  # fmt: skip
-            "mv": tile_html("mv", "MV", "L/min", sv(sc["pneumo"], n.mv, 1), stale=sc["pneumo"], qualifier="" if sc["pneumo"] else "this breath: VT × 60 / its length"),
+            "mv": tile_html("mv", "MV", "L/min", sv(sc["pneumo"], n.mv, 1), big=True, stale=sc["pneumo"], qualifier="" if sc["pneumo"] else "this breath: VT × 60 / its length"),
         }
         # the oximeter's tile is there only while the SpO2 channel is switched on
         o = st.spo2

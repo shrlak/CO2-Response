@@ -45,6 +45,12 @@ def fmt(v: float, d: int = 0) -> str:
     return "--" if v is None or not math.isfinite(v) else f"{v:.{d}f}"
 
 
+def hms_(ms: float) -> str:
+    """How long, as h:mm:ss, from milliseconds."""
+    sec = max(0, int(ms // 1000))
+    return f"{sec // 3600}:{sec // 60 % 60:02d}:{sec % 60:02d}"
+
+
 def mss(sec: float) -> str:
     sec = max(0, int(sec))
     return f"{sec // 60}:{sec % 60:02d}"
@@ -132,7 +138,7 @@ def on_screen(w) -> bool:
     return True
 
 
-TILES = ("etco2", "rr", "flow", "spo2", "vt", "mv", "vt2", "mv2")
+TILES = ("etco2", "mv", "rr", "flow", "spo2", "vt", "vt2")
 
 
 def draw_tiles(tiles: dict[str, Tile], s: Snapshot, flash: bool, single: bool) -> None:
@@ -173,21 +179,22 @@ def draw_tiles(tiles: dict[str, Tile], s: Snapshot, flash: bool, single: bool) -
     mv = "---" if s.stale["pneumo"] else fmt(n.mv, 1)
     for k in ("vt", "vt2"):
         tiles[k].set(vt, "VT mL", note=vt_note)
-    for k in ("mv", "mv2"):
-        tiles[k].set(mv, "MV L/min", note="this breath")
+    tiles["mv"].set(mv, "MV L/min", note="this breath")
     tiles["spo2"].set(fmt(n.spo2), "SpO2 %", note=f"low {fmt(st.spo2.low_pct)}" if st.spo2.low_pct > 0 else "")
-    shown = [t for t in tiles.values() if on_screen(t)]
-    # one digit size for all of them: the largest that fits the smallest tile showing
-    size = min((t.fit_size() for t in shown), default=0.0)
-    for t in tiles.values():
-        t.paint(size)
+    shown = {k: t for k, t in tiles.items() if on_screen(t)}
+    # EtCO2 and MV, the two values that matter most, in the largest digits that fit both; the
+    # others (RR, Flow, VT, SpO2) one size together, never larger than those
+    top = min((t.fit_size() for k, t in shown.items() if k in ("etco2", "mv")), default=0.0)
+    rest = min((t.fit_size() for k, t in shown.items() if k not in ("etco2", "mv")), default=top)
+    rest = min(rest, top)
+    for k, t in tiles.items():
+        t.paint(top if k in ("etco2", "mv") else rest)
 
 
 class StatusBar(Static):
     def draw(self, s: Snapshot, engine: MonitorEngine) -> None:
         t = Text(no_wrap=True, overflow="ellipsis")
         t.append(f" {APP_NAME} {__version__} ", "bold black on dark_orange")
-        t.append(" RESEARCH USE ONLY ", "bold dark_orange")
         dot = {"connected": ("●", "green3"), "connecting": ("●", "gold1"), "error": ("●", "red")}.get(s.status, ("○", "grey50"))
         t.append(f" {dot[0]} ", dot[1])
         if s.status == "connected":
@@ -203,6 +210,9 @@ class StatusBar(Static):
         rec = s.recording
         if rec.active:
             t.append(f"   ● REC {mss((s.now - rec.started_at) / 1000)} {rec.file_name}", "bold red")
+        t.append(f"   Running {hms_(s.now - s.started_at)}", "grey62")
+        if s.test.phase == "rebreathing":
+            t.append(f" · REBREATHING TEST {mss(s.test.elapsed_sec)}", "bold #ff9f0a")
         t.append("   " + time.strftime("%H:%M:%S"), "bold")
         self.update(t)
 
@@ -502,21 +512,21 @@ class MonitorApp(App):
     CSS = """
     Screen { layout: vertical; background: #000000; }
     StatusBar, AlarmBar, TestBar { height: 1; }
-    #main { height: 3fr; }
+    #main { height: 4fr; }
     .row { height: 1fr; }
-    #row-co2 { height: 13fr; }
-    #row-flow { height: 20fr; }
+    #row-co2 { height: 20fr; }
+    #row-flow { height: 13fr; }
     #row-pneumo { height: 10fr; }
     WavePanel { width: 5fr; height: 100%; border: round #333333; border-title-color: $text; }
     .nums { width: 3fr; height: 100%; }
     Tile { width: 1fr; height: 100%; border: round #262626; background: #0d1117; border-title-style: bold; border-subtitle-color: #8b949e; }
     PicWave { width: 5fr; height: 100%; }
     PicTile { width: 1fr; height: 100%; }
-    PicGraph { height: 2fr; min-height: 12; }
+    PicGraph { height: 5fr; min-height: 14; }
     #t-etco2, #t-rr { border-title-color: #ffd60a; }
     #t-flow, #t-vt, #t-mv, #t-spo2 { border-title-color: #33d1f5; }
-    #t-vt2, #t-mv2 { border-title-color: #57e389; }
-    #graph { height: 2fr; min-height: 12; border: round #333333; border-title-color: #ffd60a; border-subtitle-color: #8b949e; }
+    #t-vt2 { border-title-color: #57e389; }
+    #graph { height: 5fr; min-height: 14; border: round #333333; border-title-color: #ffd60a; border-subtitle-color: #8b949e; }
     """
     BINDINGS = [
         Binding("o", "connect", "Connect"),
@@ -575,19 +585,18 @@ class MonitorApp(App):
                 yield W("co2", "CO2 mmHg", id="w-co2")
                 with Horizontal(classes="nums"):
                     yield T("EtCO2 mmHg", COLOR["co2"], id="t-etco2")
-                    yield T("RR /min", COLOR["co2"], id="t-rr")
+                    yield T("MV L/min", COLOR["flow"], id="t-mv")
             with Horizontal(id="row-flow", classes="row"):
                 yield W("flow", "Flow L/min", id="w-flow")
                 with Horizontal(classes="nums"):
                     yield T("Flow L/min", COLOR["flow"], id="t-flow")
+                    yield T("RR /min", COLOR["co2"], id="t-rr")
                     yield T("SpO2 %", "white", id="t-spo2")
                     yield T("VT mL", COLOR["flow"], id="t-vt")
-                    yield T("MV L/min", COLOR["flow"], id="t-mv")
             with Horizontal(id="row-pneumo", classes="row"):
                 yield W("pneumo", "Pneumotach L/min", id="w-pneumo")
                 with Horizontal(classes="nums"):
                     yield T("VT mL", COLOR["pneumo"], id="t-vt2")
-                    yield T("MV L/min", COLOR["pneumo"], id="t-mv2")
         yield TestBar(id="test")
         yield G(id="graph")
         yield Footer()
@@ -669,9 +678,9 @@ class MonitorApp(App):
         row = self.query_one("#row-pneumo")
         row.display = not single
         self.w_waves["pneumo"].display = not single
-        t["vt"].display = t["mv"].display = single
+        t["vt"].display = single
         t["spo2"].display = spo2
-        self.query_one("#row-flow").styles.height = "20fr" if single else "10fr"
+        self.query_one("#row-flow").styles.height = "13fr" if single else "10fr"
 
     def _frame(self) -> None:
         e = self.engine

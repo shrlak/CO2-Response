@@ -385,13 +385,12 @@ def draw_response(cv: Canvas, res, title: str = "") -> None:
     from ..processing.metrics import response_labels
 
     every = res.baseline + res.rebreathing + res.skipped + res.excluded
-    xs = [p.etco2 for p in every] or [30.0, 50.0]
-    ys = [p.mv for p in every] or [0.0, 10.0]
-    x0, x1 = math.floor(min(xs) - 2), math.ceil(max(xs) + 2)
-    y1 = max(10.0, math.ceil(max(ys) * 1.4))
+    from ..processing.metrics import response_axes
+
+    x0, x1, y0, y1 = response_axes(res)
     top = 1 if title else 0
-    ax = Axes(cv, x0, x1, 0, y1, left=5, bottom=2, top=top + 1)
-    ax.frame(nice_ticks(x0, x1, max(2, (ax.c1 - ax.c0) // 8)), nice_ticks(0, y1, max(2, (ax.r1 - ax.r0) // 2)), xlabel="etCO2 (mmHg)", ylabel="MV (L/min)")
+    ax = Axes(cv, x0, x1, y0, y1, left=5, bottom=2, top=top + 1)
+    ax.frame(nice_ticks(x0, x1, max(2, (ax.c1 - ax.c0) // 8)), nice_ticks(y0, y1, max(2, (ax.r1 - ax.r0) // 2)), xlabel="etCO2 (mmHg)", ylabel="MV (L/min)")
     if title:
         cv.text(max(0, cv.w // 2 - len(title) // 2), 0, title, "bold")
     from ..processing.metrics import lowess_curve
@@ -416,7 +415,7 @@ def draw_response(cv: Canvas, res, title: str = "") -> None:
     if base_text:
         c, r = ax.cell(min(p.etco2 for p in res.baseline), max(p.mv for p in res.baseline))
         parts = base_text.split(" · ")
-        lowest = ax.cell(0, min(p.mv for p in res.baseline))[1]
+        lowest = ax.cell(x0, min(p.mv for p in res.baseline))[1]
         # above the baseline breaths when there is room under the slope label, else below them
         r = r - len(parts) - 1 if r - len(parts) - 1 >= ax.r0 + 3 else min(ax.r1 - len(parts), lowest + 2)
         for i, part in enumerate(parts):

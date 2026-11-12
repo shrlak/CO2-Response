@@ -514,6 +514,9 @@ class TrendChart(Plot):
         g.restore()
 
 
+from ..processing.metrics import response_axes  # noqa: E402
+
+
 class ResponseChart(Plot):
     def __init__(self, el) -> None:
         super().__init__(el)
@@ -526,13 +529,8 @@ class ResponseChart(Plot):
         the fit (the first seconds, after the end) as faint rings; the ones taken out
         by hand as crosses. ``res`` is a ``CO2Response``."""
         reb, base, skip, out, fit = res.rebreathing, res.baseline, res.skipped, res.excluded, res.fit
-        every = reb + base + skip + out
-        xs = [p.etco2 for p in every]
-        ys = [p.mv for p in every]
         self.c.fit()
-        self.x0 = math.floor((min(xs) if xs else 30) - 2)
-        self.x1 = math.ceil((max(xs) if xs else 50) + 2)
-        self.y0, self.y1 = 0.0, max(10, math.ceil((max(ys) if ys else 10) * 1.35))
+        self.x0, self.x1, self.y0, self.y1 = response_axes(res)  # both axes scale to the breaths
         _, _, w, h = self.box
         xt = nice_ticks(self.x0, self.x1, max(2, int(w / self.c.dpr / 70)))
         self.frame([(x, f"{x:g}") for x in xt], nice_ticks(self.y0, self.y1, self.y_tick_count(h)), lambda v: f"{v:g}")
@@ -574,7 +572,7 @@ class ResponseChart(Plot):
             bx = max(x_l + 4 * d, bx)
             if above >= y_t + 64 * d:
                 by = above
-            elif below + 38 * d <= self.py(0):
+            elif below + 38 * d <= self.py(self.y0):
                 by = below
             else:
                 g.font = f"700 {15 * d}px {FONT}"

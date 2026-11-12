@@ -224,12 +224,11 @@ def response(w: int, h: int, res, title: str = "") -> Image.Image:
     p = Pic(w, h, PANEL)
     reb, base, skip, out, fit = res.rebreathing, res.baseline, res.skipped, res.excluded, res.fit
     every = reb + base + skip + out
-    xs = [q.etco2 for q in every] or [30.0, 50.0]
-    ys = [q.mv for q in every] or [0.0, 10.0]
-    x0, x1 = math.floor(min(xs) - 2), math.ceil(max(xs) + 2)
-    y1 = max(10.0, math.ceil(max(ys) * 1.35))
-    ax = Axes(p, x0, x1, 0, y1)
-    ax.frame([(t, _fmt(t)) for t in nice_ticks(x0, x1, max(2, int(ax.W / 70)))], nice_ticks(0, y1, max(3, int(ax.H / 55))), "etCO2 (mmHg)", "MV (liters/min)")
+    from ..processing.metrics import response_axes
+
+    x0, x1, y0, y1 = response_axes(res)
+    ax = Axes(p, x0, x1, y0, y1)
+    ax.frame([(t, _fmt(t)) for t in nice_ticks(x0, x1, max(2, int(ax.W / 70)))], nice_ticks(y0, y1, max(3, int(ax.H / 55))), "etCO2 (mmHg)", "MV (liters/min)")
     if title:
         p.text(w / 2, 8, title, 15, TEXT, "Bold", anchor="ma")
     for q in skip:

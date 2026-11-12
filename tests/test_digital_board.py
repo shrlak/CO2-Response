@@ -267,7 +267,9 @@ def test_terminal_monitor_runs_a_whole_test(tmp_path, monkeypatch):
             tiles = {t.id: t for t in app.query(Tile) if on_screen(t)}
             assert set(tiles) == {"t-etco2", "t-rr", "t-flow", "t-vt", "t-mv"}
             sizes = {k: t._key[-1] for k, t in tiles.items()}
-            assert len(set(sizes.values())) == 1 and min(sizes.values()) >= 2 * CH, sizes
+            # EtCO2 and MV, the two that matter most, are the large pair; the others are no larger
+            assert sizes["t-etco2"] == sizes["t-mv"] >= max(sizes.values()) and min(sizes.values()) >= CH, sizes
+            assert sizes["t-rr"] == sizes["t-flow"] == sizes["t-vt"]
             for k in ("t-mv", "t-rr"):
                 drawn = str(tiles[k].render())
                 assert any(g in drawn for g in GLYPHS), k  # smooth edges from block characters

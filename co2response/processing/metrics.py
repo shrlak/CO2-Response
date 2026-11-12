@@ -374,3 +374,30 @@ def lowess_curve(xs: Sequence[float], ys: Sequence[float], frac: float = 0.85, i
     grid = np.linspace(x[0], x[-1], n_out)
     return grid.tolist(), [at(v) for v in grid]
 
+
+
+def response_axes(res: CO2Response) -> tuple[float, float, float, float]:
+    """The ranges of the MV-vs-EtCO2 graph, scaled to the breaths on it (x0, x1, y0, y1):
+    each axis runs from the lowest to the highest value, with a tenth of the spread kept
+    free on both sides, rounded out to a whole mmHg (x) or half L/min (y). The curve is
+    included, so it is never cut off. With no breaths yet, a typical range."""
+    every = res.baseline + res.rebreathing + res.skipped + res.excluded
+    xs = [p.etco2 for p in every]
+    ys = [p.mv for p in every]
+    if res.rebreathing:
+        cx, cy = lowess_curve([p.etco2 for p in res.rebreathing], [p.mv for p in res.rebreathing])
+        xs += cx
+        ys += cy
+    if not xs:
+        return 30.0, 50.0, 0.0, 10.0
+    # a margin of a tenth of the spread, and never narrower than 8 mmHg / 5 L/min: a few
+    # breaths close together are not blown up to fill the graph
+    cx0, cx1, cy0, cy1 = min(xs), max(xs), min(ys), max(ys)
+    px, py = (cx1 - cx0) * 0.1, (cy1 - cy0) * 0.12
+    x0, x1 = cx0 - px, cx1 + px
+    y0, y1 = cy0 - py, cy1 + py
+    if x1 - x0 < 8:
+        x0, x1 = (x0 + x1) / 2 - 4, (x0 + x1) / 2 + 4
+    if y1 - y0 < 5:
+        y0, y1 = (y0 + y1) / 2 - 2.5, (y0 + y1) / 2 + 2.5
+    return float(math.floor(x0)), float(math.ceil(x1)), max(0.0, math.floor(y0 * 2) / 2), float(math.ceil(y1 * 2) / 2)

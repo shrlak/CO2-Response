@@ -76,28 +76,21 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .app {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 6px;
   height: 100%;
   min-width: 1100px;
   padding: 8px 12px;
 }
 
-/* ---------- research banner ---------- */
-.ruo-banner {
-  display: flex; align-items: center; gap: 12px;
-  padding: 6px 12px; border: 1px solid var(--alarm-med); border-radius: var(--radius);
-  color: var(--alarm-med); font-weight: 600; letter-spacing: 0.02em;
-}
-.ruo-banner span { flex: 1; }
-.ruo-banner button { background: none; border: 1px solid currentColor; color: inherit; border-radius: 3px; padding: 2px 10px; }
 
 /* ---------- header ---------- */
+.runtime { color: var(--muted); font-size: 15px; font-weight: 600; white-space: nowrap; }
+.runtime.testing { color: var(--alarm-med); }
 .header {
   display: flex; align-items: center; gap: 18px;
   background: var(--panel); border-radius: var(--radius); padding: 6px 12px; min-height: 46px;
 }
-.ruo-tag { font-weight: 700; font-size: 13px; letter-spacing: 0.1em; color: var(--alarm-med); border: 1px solid var(--alarm-med); padding: 2px 8px; border-radius: 3px; white-space: nowrap; }
 .hgroup { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
 .hgroup b { color: var(--text); font-weight: 600; }
 .hspacer { flex: 1; }
@@ -159,7 +152,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .monitor-screen {
   display: grid; gap: 6px; min-height: 0; position: relative;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: minmax(0, 1.9fr) minmax(150px, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) minmax(260px, 1.25fr) auto;
   grid-template-areas: 'main side' 'trend side' 'keys keys';
 }
 .monitor-screen > .monitor { grid-area: main; }
@@ -174,7 +167,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .monitor-screen[data-focus='co2'] .monitor, .monitor-screen[data-focus='flow'] .monitor, .monitor-screen[data-focus='pneumo'] .monitor { grid-template-rows: minmax(0, 1fr); }
 .monitor-screen[data-focus='co2'] .row:not(.co2), .monitor-screen[data-focus='flow'] .row:not(.flow), .monitor-screen[data-focus='pneumo'] .row:not(.pneumo) { display: none; }
 .monitor { display: grid; grid-template-rows: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px; min-height: 0; position: relative; }
-.row { display: grid; grid-template-columns: minmax(0, 73fr) minmax(0, 27fr); gap: 6px; min-height: 0; }
+.row { display: grid; grid-template-columns: minmax(0, 62fr) minmax(0, 38fr); gap: 6px; min-height: 0; }
 .wave { position: relative; background: var(--wave-bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; min-height: 0; }
 .wave canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .wlabel { position: absolute; top: 4px; left: 10px; z-index: 2; display: flex; align-items: center; font-weight: 700; font-size: 18px; letter-spacing: 0.1em; text-transform: uppercase; }
@@ -192,14 +185,16 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .row.in-alarm .wave { border: 2px solid var(--alarm-high); }
 
 .nums { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-height: 0; }
-.row.co2 .nums { grid-template-columns: 1.35fr 1fr; grid-template-rows: 1fr; }
-/* a third tile (SpO2) appears in the flow row while the oximeter channel is on */
-.row.flow .nums:has(#t-spo2 > .tile) { grid-template-columns: 1fr 1fr 1fr; }
-/* one flow sensor (the Uno R4 board): the Flow row is twice as tall and carries VT and MV */
-.monitor.single { grid-template-rows: minmax(0, 1.3fr) minmax(0, 2fr); }
-.monitor.single .row.flow .nums, .monitor.single .row.flow .nums:has(#t-spo2 > .tile) { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
-/* no empty cell: without the SpO2 tile, MV takes the whole width under Flow and VT */
-.monitor.single .row.flow .nums:not(:has(#t-spo2 > .tile)) #t-mv > .tile { grid-column: 1 / -1; }
+.row.co2 .nums { grid-template-rows: 1fr; }
+/* the second row: RR, Flow, VT (and SpO2 while the oximeter channel is on) side by side, equal widths */
+.row.flow .nums, .row.pneumo .nums { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-rows: 1fr; }
+/* one flow sensor (the Uno R4 board): the top row (CO2, EtCO2 and MV, the two values that matter most) is the taller one */
+.monitor.single { grid-template-rows: minmax(0, 1.55fr) minmax(0, 1fr); }
+/* each value keeps its own colour wherever it sits: VT and MV follow the pneumotach (green), or the one flow sensor (cyan) */
+#t-etco2 .val, #t-etco2 .tlabel b, #t-rr .val, #t-rr .tlabel b { color: var(--co2); }
+#t-flow .val, #t-flow .tlabel b, #t-spo2 .val, #t-spo2 .tlabel b { color: var(--flow); }
+#t-vt .val, #t-vt .tlabel b, #t-mv .val, #t-mv .tlabel b { color: var(--pneumo); }
+.monitor.single #t-vt .val, .monitor.single #t-vt .tlabel b, .monitor.single #t-mv .val, .monitor.single #t-mv .tlabel b { color: var(--flow); }
 .tile { background: var(--panel); border-radius: var(--radius); padding: 6px 12px; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
 .tile.big { grid-row: auto; }
 .tlabel { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; font-size: 14px; }

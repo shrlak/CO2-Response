@@ -1,4 +1,4 @@
-"""The main window: banner, header, alarm strip, and the monitor / settings / review screens.
+"""The main window: header, alarm strip, and the monitor / settings / review screens.
 
 Timers drive everything: the engine reads the source every 20 ms, runs its alarm checks
 4 times a second, and the waveforms are redrawn about 30 times a second.
@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 from .. import APP_NAME
 from ..engine.monitor import MonitorEngine
 from . import theme
-from .header import AlarmStrip, Banner, Header
+from .header import AlarmStrip, Header
 from .monitor_screen import MonitorScreen
 from .port_dialog import PortDialog
 from .widgets import Toast
@@ -41,13 +41,12 @@ class MainWindow(QMainWindow):
         lay = QVBoxLayout(root)
         lay.setContentsMargins(12, 8, 12, 8)
         lay.setSpacing(6)
-        self.banner = Banner()
         self.header = Header()
         self.strip = AlarmStrip()
         self.strip.acknowledge.connect(engine.acknowledge)
         self.strip.arm_audio.connect(lambda: engine.arm_audio())
         self.stack = QStackedWidget()
-        for w in (self.banner, self.header, self.strip):
+        for w in (self.header, self.strip):
             lay.addWidget(w)
         lay.addWidget(self.stack, 1)
         self.setCentralWidget(root)
@@ -162,7 +161,6 @@ class MainWindow(QMainWindow):
         theme.current = pal
         self.setProperty("themed", True)
         QApplication.instance().setStyleSheet(theme.stylesheet(pal))
-        self.banner.apply_theme()
         self.monitor.trend.apply_theme()
         if self.review is not None:
             self.review.apply_theme()

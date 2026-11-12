@@ -472,3 +472,17 @@ def test_btps_and_the_bag_gas_factor_scale_the_pneumotach_volumes():
     assert p.flow_factor == approx(0.9)
     vts = [out.breath.vt_ml for t, v in lines if (out := p.process(t, v, 0)) is not None and out.breath]
     assert vts[-1] == approx(plain[-1].vt_ml * 0.9, rel=0.005)
+
+
+def test_response_axes_scale_to_the_breaths():
+    from co2response.processing.metrics import co2_response, response_axes
+
+    # no breaths yet: a typical range; then both axes follow the data, y not forced to zero
+    assert response_axes(co2_response([], None)) == (30.0, 50.0, 0.0, 10.0)
+    pts = [(i * 2.0, 40 + i * 0.5, 14 + i * 0.3, i) for i in range(30)]
+    res = co2_response(pts, 20.0)
+    x0, x1, y0, y1 = response_axes(res)
+    xs = [p.etco2 for p in res.baseline + res.rebreathing + res.skipped + res.excluded]
+    ys = [p.mv for p in res.baseline + res.rebreathing + res.skipped + res.excluded]
+    assert x0 <= min(xs) and x1 >= max(xs) and y0 <= min(ys) and y1 >= max(ys)
+    assert x1 - x0 < (max(xs) - min(xs)) * 1.5 and y0 > 5 and y1 - y0 < (max(ys) - min(ys)) * 1.6  # tight, not 0 to 1.35 x max

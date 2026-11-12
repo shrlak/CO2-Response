@@ -48,14 +48,15 @@ class TrendPanel(QFrame):
         head = QHBoxLayout()
         head.setSpacing(16)
         self.tabs = QButtonGroup(self)
-        for i, text in enumerate(("ETCO2 TREND", "VENTILATORY RESPONSE")):
-            b = QPushButton(text)
+        names = ("ETCO2 TREND", "VENTILATORY RESPONSE")
+        for i in (1, 0):  # the ventilatory response first (button 1), the trend second (button 0)
+            b = QPushButton(names[i])
             b.setCheckable(True)
             b.setProperty("tab", True)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             self.tabs.addButton(b, i)
             head.addWidget(b)
-        self.tabs.button(0).setChecked(True)
+        self.tabs.button(1).setChecked(True)
         self.tabs.idClicked.connect(self._tab)
         head.addStretch(1)
         self.meta = QLabel()
@@ -111,6 +112,7 @@ class TrendPanel(QFrame):
         self.trend.getPlotItem().getViewBox().setMouseEnabled(False, False)
         for pw in (self.trend, self.resp):
             self.stack.addWidget(pw)
+        self.stack.setCurrentIndex(1)  # opens on the ventilatory response
         lay.addWidget(self.stack, 1)
 
         ti = self.trend.getPlotItem()

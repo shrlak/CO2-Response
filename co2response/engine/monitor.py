@@ -309,6 +309,8 @@ class Snapshot:
     #: the Capnostream's own numbers (etco2, fico2, rr, spo2, pr) while one is the CO2
     #: source, from its last 5 s; None without one
     capno: dict | None = None
+    #: when the program started (same clock as ``now``)
+    started_at: float = 0.0
 
 
 @dataclass
@@ -390,6 +392,8 @@ class MonitorEngine:
         library_factory: Callable[..., SessionLibrary] = SessionLibrary,
     ) -> None:
         self.clock = clock
+        #: when the program started (the engine's clock, ms): the header shows how long it has run
+        self.started_at = clock()
         self.store = store or SettingsStore()
         self.settings = self.store.load_settings()
         #: the saved calibration of each board; ``channels`` is the one in use
@@ -1978,6 +1982,7 @@ class MonitorEngine:
             hardware=self.hardware,
             single_flow=self.single_flow,
             capno=self._merge.fresh_numbers if self._merge is not None else None,
+            started_at=self.started_at,
         )
 
     def settings_json(self) -> dict:

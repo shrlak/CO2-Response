@@ -134,8 +134,6 @@ QFrame[card="true"][accent="pneumo"] {{ border-top: 3px solid {p.pneumo}; }}
 QFrame[stat="true"] {{ background: {p.panel2}; border-radius: 4px; }}
 QFrame[stat="inner"] {{ background: {p.panel}; border-radius: 4px; }}
 QFrame[rule="true"] {{ background: {p.grid}; border: none; }}
-QFrame#banner {{ border: 1px solid {p.alarm_med}; border-radius: 4px; }}
-QFrame#banner QLabel {{ color: {p.alarm_med}; font-weight: 600; }}
 QFrame#overlayCard, QFrame#drawer, QFrame#popover {{ background: {p.panel}; border: 1px solid {p.border}; border-radius: 6px; }}
 QFrame#toast {{ background: {p.panel3}; border: 1px solid {p.border}; border-radius: 4px; }}
 QWidget#backdrop {{ background: rgba(0, 0, 0, 110); }}
