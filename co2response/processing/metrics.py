@@ -390,7 +390,14 @@ def response_axes(res: CO2Response) -> tuple[float, float, float, float]:
         ys += cy
     if not xs:
         return 30.0, 50.0, 0.0, 10.0
-    px, py = max(1.0, (max(xs) - min(xs)) * 0.1), max(0.5, (max(ys) - min(ys)) * 0.12)
-    x0, x1 = math.floor(min(xs) - px), math.ceil(max(xs) + px)
-    y0, y1 = math.floor((min(ys) - py) * 2) / 2, math.ceil((max(ys) + py) * 2) / 2
-    return float(x0), float(x1), max(0.0, y0), float(y1)
+    # a margin of a tenth of the spread, and never narrower than 8 mmHg / 5 L/min: a few
+    # breaths close together are not blown up to fill the graph
+    cx0, cx1, cy0, cy1 = min(xs), max(xs), min(ys), max(ys)
+    px, py = (cx1 - cx0) * 0.1, (cy1 - cy0) * 0.12
+    x0, x1 = cx0 - px, cx1 + px
+    y0, y1 = cy0 - py, cy1 + py
+    if x1 - x0 < 8:
+        x0, x1 = (x0 + x1) / 2 - 4, (x0 + x1) / 2 + 4
+    if y1 - y0 < 5:
+        y0, y1 = (y0 + y1) / 2 - 2.5, (y0 + y1) / 2 + 2.5
+    return float(math.floor(x0)), float(math.ceil(x1)), max(0.0, math.floor(y0 * 2) / 2), float(math.ceil(y1 * 2) / 2)

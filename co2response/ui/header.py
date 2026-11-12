@@ -38,7 +38,6 @@ class Header(QFrame):
         lay = QHBoxLayout(self)
         lay.setContentsMargins(12, 4, 12, 4)
         lay.setSpacing(18)
-        self.ruo = QLabel("RESEARCH USE ONLY")
         self.study = QLabel()
         self.dot = QLabel("●")
         self.status = QLabel()
@@ -46,6 +45,8 @@ class Header(QFrame):
         self.rec = QLabel()
         self.pill = QLabel()
         self.pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.runtime = QLabel()  # how long the program has run, and the test's time while one is on
+        self.runtime.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.clock = QLabel()
         self.clock.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.clock.setMinimumWidth(110)
@@ -53,11 +54,10 @@ class Header(QFrame):
         st.setSpacing(8)
         st.addWidget(self.dot)
         st.addWidget(self.status)
-        for w in (self.ruo, self.study):
-            lay.addWidget(w)
+        lay.addWidget(self.study)
         lay.addLayout(st)
         lay.addStretch(1)
-        for w in (self.rec, self.pill, self.clock):
+        for w in (self.rec, self.pill, self.runtime, self.clock):
             lay.addWidget(w)
         self._style_key = None
 
@@ -79,7 +79,6 @@ class Header(QFrame):
         key = (p.name, pill[0], s.status, s.recording.active)
         if key != self._style_key:
             self._style_key = key
-            self.ruo.setStyleSheet(f"font-weight:700; font-size:13px; letter-spacing:1.3px; color:{p.alarm_med}; border:1px solid {p.alarm_med}; padding:2px 8px; border-radius:3px;")
             dot = {"connected": p.ok, "connecting": p.alarm_med, "error": p.alarm_high}.get(s.status, p.muted)
             self.dot.setStyleSheet(f"color:{dot}; font-size:14px;")
             self.rec.setStyleSheet(f"font-weight:600; color:{p.alarm_high if s.recording.active else p.muted};")
@@ -114,6 +113,14 @@ class Header(QFrame):
         self.rec.setText(f"● REC {duration(s.now - s.recording.started_at)}" if s.recording.active else "Not recording")
         self.pill.setText(pill[1])
         self.clock.setText(hms(s.now))
+        text = f"Running {duration(s.now - s.started_at)}"
+        if s.test.phase == "rebreathing":
+            text += f"   ·   REBREATHING TEST {mss(s.test.elapsed_sec * 1000)}"
+        self.runtime.setText(text)
+        testing = s.test.phase == "rebreathing"
+        if (p.name, testing) != getattr(self, "_rt_style", None):
+            self._rt_style = (p.name, testing)  # amber while a rebreathing test is on
+            self.runtime.setStyleSheet(f"font-size:15px; font-weight:600; color:{p.alarm_med if testing else p.muted};")
 
 
 class AlarmStrip(QFrame):
@@ -234,30 +241,6 @@ class AlarmStrip(QFrame):
                 act.triggered.connect(lambda _=False, aid=a.id: self.acknowledge.emit(aid))
         menu.setToolTipsVisible(True)
         menu.exec(self.more.mapToGlobal(self.more.rect().bottomLeft()))
-
-
-class Banner(QFrame):
-    """Research-use notice; dismissed for the rest of this run."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setObjectName("banner")
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(12, 4, 6, 4)
-        msg = QLabel(
-            "Research use only. Not a medical device and not for clinical decision-making. Keep a certified monitor as the primary alarm; "
-            "this alarm works only while this program is running, the computer is awake and sound is on."
-        )
-        msg.setWordWrap(True)
-        ok = QPushButton("I understand")
-        ok.setCursor(Qt.CursorShape.PointingHandCursor)
-        ok.clicked.connect(self.hide)
-        lay.addWidget(msg, 1)
-        lay.addWidget(ok)
-
-    def apply_theme(self) -> None:
-        p = theme.current
-        self.findChild(QPushButton).setStyleSheet(f"background:none; border:1px solid {p.alarm_med}; color:{p.alarm_med}; min-height:24px; padding:0 10px;")
 
 
 def spacer() -> QWidget:

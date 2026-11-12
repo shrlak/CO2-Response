@@ -51,16 +51,9 @@ class WebApp:
 
     def render_shell(self) -> None:
         byid("root").innerHTML = (
-            '<div class="app"><div class="ruo-banner" role="note" id="ruo"><span>Research use only. Not a medical device and not for clinical decision-making. '
-            "Keep a certified monitor as the primary alarm; this alarm works only while this tab is open, the computer is awake and audio is armed.</span>"
-            '<button data-act="ruo-ok">I understand</button></div><header class="header" id="hdr"></header><div id="alarmslot"></div><div id="screen" style="min-height:0;display:grid"></div>'
+            '<div class="app"><header class="header" id="hdr"></header><div id="alarmslot"></div><div id="screen" style="min-height:0;display:grid"></div>'
             '<div class="toast" id="toast" role="status" hidden></div></div>'
         )
-        try:
-            if js.sessionStorage.getItem("co2r.ruo") == "1":
-                byid("ruo").remove()
-        except Exception:  # noqa: BLE001
-            pass
         dom.forget()
 
     def show(self, screen: str, arg: str | None = None) -> None:
@@ -243,7 +236,6 @@ def _install_actions(app: WebApp) -> None:
         record=lambda el: app.toggle_recording(),
         reconnect=lambda el: app.reconnect(),
         **{
-            "ruo-ok": lambda el: (js.sessionStorage.setItem("co2r.ruo", "1"), byid("ruo").remove()),
             "alarm-more": lambda el: (setattr(app, "alarm_list_open", not app.alarm_list_open), app.refresh()),
             "arm-audio": lambda el: (e.arm_audio(), app.refresh()),
             "start-sim": lambda el: (e.connect("simulator"), app.monitor.sim.bump(), app.show("monitor")),

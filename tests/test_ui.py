@@ -563,3 +563,17 @@ def test_a_labchart_export_is_imported_from_the_data_page(win, tmp_path):
     stats = {st.k.text(): st.v.text() for st in win.review.findChildren(Stat)}
     assert stats["CO2 RESPONSE"].startswith("slope 0.") and stats["BASELINE"].startswith("EtCO2 38.")
     assert win.review.resp.fitted.data.size >= 15
+
+
+def test_header_shows_how_long_the_program_has_run_and_the_test_time(win):
+    e, tr = win.engine, win.monitor.trend
+    e.connect("simulator")
+    advance(win, 30)
+    assert win.header.runtime.text().startswith("Running 00:00:") and "TEST" not in win.header.runtime.text()
+    tr.k_baseline.click()
+    advance(win, 20)
+    tr.k_start.click()
+    advance(win, 75)
+    text = win.header.runtime.text()
+    assert "Running 00:02:" in text or "Running 00:01:" in text  # the program's time keeps counting
+    assert "REBREATHING TEST 1:" in text  # and the test's own time, from when the valve was turned
