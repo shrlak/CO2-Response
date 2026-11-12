@@ -258,8 +258,8 @@ class MonitorScreen(QWidget):
         self.trend.expand.clicked.connect(lambda _=False: self.toggle_focus("trend"))
         left = QVBoxLayout()
         left.setSpacing(6)
-        left.addWidget(self.rows, 19)
-        left.addWidget(self.trend, 10)
+        left.addWidget(self.rows, 13)
+        left.addWidget(self.trend, 12)  # the graph takes nearly half the height
         body = QHBoxLayout()
         body.setSpacing(6)
         body.addLayout(left, 1)

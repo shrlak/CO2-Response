@@ -1,8 +1,15 @@
-# Builds the standalone desktop app (no Python needed on the computer) for Windows,
-# macOS and Linux with PyInstaller, and checks that each built program really runs:
-# it writes a report from the sample session and runs the simulator for a few seconds.
+# Builds the standalone desktop app (no Python needed on the computer) and checks that each
+# built program really runs: it writes a report from the sample session and runs the
+# simulator for a few seconds.
 #
-# - Pushing a tag like v0.4.0 builds the three apps and attaches them to a GitHub Release.
+#   Windows   CO2-Response.exe   one file; double-click it
+#   macOS     CO2-Response.dmg   one disk image holding a universal app (Apple-silicon and
+#                                Intel Macs): built once on each kind of Mac, merged with
+#                                lipo (scripts/fuse_macos_app.py), then packed
+#   Linux     CO2-Response-Linux.tar.gz
+#   and the terminal monitor (co2response-terminal) for each of them
+#
+# - Pushing a tag like v0.6.1 builds everything and attaches the downloads to a GitHub Release.
 # - "Run workflow" on the Actions tab builds them as downloadable artifacts only.
 # - A pull request that touches the packaging files builds them too, as a check.
 name: Standalone apps
@@ -14,6 +21,7 @@ on:
   pull_request:
     paths:
       - 'packaging/**'
+      - 'scripts/fuse_macos_app.py'
       - '.github/workflows/release.yml'
       - 'requirements.txt'
       - 'pyproject.toml'
@@ -29,9 +37,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: windows-latest, name: Windows, archive: CO2-Response-Windows.zip, terminal: CO2-Response-Terminal-Windows.zip }
-          - { os: macos-latest, name: macOS, archive: CO2-Response-macOS.zip, terminal: CO2-Response-Terminal-macOS.zip }
-          - { os: ubuntu-24.04, name: Linux, archive: CO2-Response-Linux.tar.gz, terminal: CO2-Response-Terminal-Linux.tar.gz }
+          - { os: windows-latest, name: Windows, kind: windows }
+          - { os: macos-latest, name: macOS (Apple silicon), kind: mac, arch: arm64 }
+          - { os: macos-15-intel, name: macOS (Intel), kind: mac, arch: x86_64 }
+          - { os: ubuntu-24.04, name: Linux, kind: linux }
     defaults:
       run:
         shell: bash
@@ -52,29 +61,34 @@ jobs:
         run: pyinstaller --noconfirm packaging/CO2-Response.spec
       - name: The built app runs (report from the sample session, then the simulator for 12 s)
         run: |
-          APP=dist/CO2-Response/CO2-Response
-          [ "$RUNNER_OS" = "Windows" ] && APP="$APP.exe"
+          case "$RUNNER_OS" in
+            Windows) APP=dist/CO2-Response.exe ;;
+            macOS) APP=dist/CO2-Response.app/Contents/MacOS/CO2-Response ;;
+            *) APP=dist/CO2-Response/CO2-Response ;;
+          esac
           export CO2R_HOME="$RUNNER_TEMP/co2r-home"
           "$APP" --report sample-data/synthetic_session.csv --out "$RUNNER_TEMP/report.pdf"
           head -c 8 "$RUNNER_TEMP/report.pdf" | grep -q '%PDF-1.4'
           "$APP" --sim --exit-after 12
+      # Windows: the single file is the download. macOS: the app of this kind of Mac goes to
+      # the merge job below. Linux: a tar.
       - name: Pack it
         run: |
-          cd dist
+          mkdir -p out
           case "$RUNNER_OS" in
-            Windows) 7z a -bso0 "${{ matrix.archive }}" CO2-Response ;;
-            macOS) ditto -c -k --keepParent CO2-Response.app "${{ matrix.archive }}" ;;
-            *) tar czf "${{ matrix.archive }}" CO2-Response ;;
+            Windows) cp dist/CO2-Response.exe out/CO2-Response.exe ;;
+            macOS) ditto -c -k --keepParent dist/CO2-Response.app "out/CO2-Response-${{ matrix.arch }}.zip" ;;
+            *) tar czf out/CO2-Response-Linux.tar.gz -C dist CO2-Response ;;
           esac
-          ls -l "${{ matrix.archive }}"
+          ls -l out
       - uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.archive }}
-          path: dist/${{ matrix.archive }}
+          name: ${{ format('{0}-app-{1}', matrix.kind == 'mac' && 'intermediate' || 'release', matrix.arch || matrix.kind) }}
+          path: out/*
           if-no-files-found: error
       # the terminal monitor: one program file, no Qt
       - name: Build the terminal program
-        run: pip install textual && pyinstaller --noconfirm packaging/CO2-Response-Terminal.spec
+        run: pip install textual textual-image pillow && pyinstaller --noconfirm packaging/CO2-Response-Terminal.spec
       - name: The terminal program runs (a whole simulated test with its report)
         run: |
           APP=dist/co2response-terminal
@@ -84,33 +98,112 @@ jobs:
           ls "$RUNNER_TEMP"/sessions/*.pdf
       - name: Pack the terminal program
         run: |
+          mkdir -p tout
           cd dist
           case "$RUNNER_OS" in
-            Windows) 7z a -bso0 "${{ matrix.terminal }}" co2response-terminal.exe ;;
-            macOS) ditto -c -k co2response-terminal "${{ matrix.terminal }}" ;;
-            *) tar czf "${{ matrix.terminal }}" co2response-terminal ;;
+            Windows) 7z a -bso0 ../tout/CO2-Response-Terminal-Windows.zip co2response-terminal.exe ;;
+            macOS) cp co2response-terminal ../tout/co2response-terminal-${{ matrix.arch }} ;;
+            *) tar czf ../tout/CO2-Response-Terminal-Linux.tar.gz co2response-terminal ;;
           esac
       - uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.terminal }}
-          path: dist/${{ matrix.terminal }}
+          name: ${{ format('{0}-terminal-{1}', matrix.kind == 'mac' && 'intermediate' || 'release', matrix.arch || matrix.kind) }}
+          path: tout/*
           if-no-files-found: error
+
+  # One universal app for both kinds of Mac, and the .dmg that holds it.
+  macos-universal:
+    name: Build · macOS universal (.dmg)
+    needs: build
+    runs-on: macos-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: intermediate-*
+          path: parts
+          merge-multiple: true
+      - name: Merge the two apps into one universal app
+        run: |
+          mkdir -p arm64 x86_64 universal out
+          ditto -x -k parts/CO2-Response-arm64.zip arm64
+          ditto -x -k parts/CO2-Response-x86_64.zip x86_64
+          python3 scripts/fuse_macos_app.py arm64/CO2-Response.app x86_64/CO2-Response.app universal/CO2-Response.app
+          # merging changes the files, which invalidates their signatures: sign again (ad hoc)
+          codesign --force --deep --sign - universal/CO2-Response.app
+          lipo -archs universal/CO2-Response.app/Contents/MacOS/CO2-Response
+          lipo -archs universal/CO2-Response.app/Contents/MacOS/CO2-Response | grep -q arm64
+          lipo -archs universal/CO2-Response.app/Contents/MacOS/CO2-Response | grep -q x86_64
+          python3 scripts/fuse_macos_app.py parts/co2response-terminal-arm64 parts/co2response-terminal-x86_64 out/co2response-terminal
+          chmod +x out/co2response-terminal
+          codesign --force --sign - out/co2response-terminal
+          lipo -archs out/co2response-terminal
+      - name: The universal app runs on this Mac (Apple silicon)
+        run: |
+          APP=universal/CO2-Response.app/Contents/MacOS/CO2-Response
+          export CO2R_HOME="$RUNNER_TEMP/co2r-home-u"
+          "$APP" --report sample-data/synthetic_session.csv --out "$RUNNER_TEMP/report.pdf"
+          head -c 8 "$RUNNER_TEMP/report.pdf" | grep -q '%PDF-1.4'
+          "$APP" --sim --exit-after 8
+      - name: Make the .dmg (the app and a shortcut to Applications)
+        run: |
+          mkdir -p dmg
+          cp -R universal/CO2-Response.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "CO2-Response" -srcfolder dmg -ov -format UDZO out/CO2-Response.dmg
+          hdiutil verify out/CO2-Response.dmg
+          ditto -c -k out/co2response-terminal out/CO2-Response-Terminal-macOS.zip
+          rm out/co2response-terminal
+          ls -l out
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-macos-dmg
+          path: out/*
+          if-no-files-found: error
+
+  # The same disk image, opened on an Intel Mac: the Intel half of the universal app runs.
+  macos-intel-check:
+    name: Check · the .dmg on an Intel Mac
+    needs: macos-universal
+    runs-on: macos-15-intel
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-macos-dmg
+          path: dl
+      - name: Open the .dmg and run the app from it
+        run: |
+          uname -m
+          hdiutil attach dl/CO2-Response.dmg -mountpoint /Volumes/CO2-Response -nobrowse -quiet
+          APP=/Volumes/CO2-Response/CO2-Response.app/Contents/MacOS/CO2-Response
+          lipo -archs "$APP"
+          export CO2R_HOME="$RUNNER_TEMP/co2r-home-i"
+          "$APP" --report sample-data/synthetic_session.csv --out "$RUNNER_TEMP/report.pdf"
+          head -c 8 "$RUNNER_TEMP/report.pdf" | grep -q '%PDF-1.4'
+          "$APP" --sim --exit-after 8
+          hdiutil detach /Volumes/CO2-Response -quiet
 
   release:
     name: Attach to the GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, macos-universal, macos-intel-check]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v7
         with:
+          pattern: release-*
           path: apps
           merge-multiple: true
-      - name: Create the release with the three apps
+      - name: Create the release with the downloads
         env:
           GH_TOKEN: ${{ github.token }}
         run: >
           gh release create "$GITHUB_REF_NAME" apps/* --repo "$GITHUB_REPOSITORY" --title "CO2-Response $GITHUB_REF_NAME" --generate-notes
-          --notes "Standalone apps: unzip and run CO2-Response (the desktop window) or co2response-terminal (the monitor full-screen in a terminal). Research use only; not a medical device. On macOS the app is not signed: right-click it and choose Open the first time."
+          --notes "Download: CO2-Response.dmg (macOS, Apple-silicon and Intel Macs: open it and drag the app to Applications) or CO2-Response.exe (Windows: one file, double-click it). Also: the terminal monitor (co2response-terminal) and the Linux app. Research use only; not a medical device. The apps are not signed: on a Mac, right-click CO2-Response in Applications and choose Open the first time; on Windows, if SmartScreen warns, choose More info, then Run anyway."

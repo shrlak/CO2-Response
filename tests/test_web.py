@@ -206,7 +206,9 @@ def test_test_keys_trends_and_taking_a_breath_out_by_hand(page, site_url):
     bar.get_by_role("button", name="Start baseline").click()
     sync_api.expect(bar).to_contain_text(re.compile(r"BASELINE 0:0\d"))
     sync_api.expect(bar).to_contain_text("NOT RECORDING")
-    # the trend tab can plot MV and RR as well as EtCO2
+    # the screen opens on the ventilatory response; the trend tab can plot MV and RR as well as EtCO2
+    sync_api.expect(page.locator("#tab-response")).to_have_attribute("aria-selected", "true")
+    page.locator("#tab-trend").click()
     page.select_option("#trend-series", "mv")
     sync_api.expect(page.locator("#tab-trend")).to_have_text("MV trend")
     sync_api.expect(page.locator("#trend-meta")).to_contain_text("MV of each breath (L/min)")
@@ -600,6 +602,7 @@ def test_waveforms_come_back_after_the_browser_drops_or_resizes_the_canvases(pag
     h = page.evaluate("() => [document.getElementById('fg-flow').height, document.getElementById('fg-flow').parentElement.clientHeight]")
     assert h[0] >= h[1] > 50
     # the MV trend: one dot per breath, the MV of that breath (not a 60 s average)
+    page.locator("#tab-trend").click()
     page.select_option("#trend-series", "mv")
     sync_api.expect(page.locator("#trend-meta")).to_contain_text("MV of each breath")
     sync_api.expect(page.locator("[data-testid=tile-mv] .qual")).to_contain_text("this breath")

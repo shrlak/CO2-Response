@@ -502,7 +502,7 @@ class MonitorApp(App):
     CSS = """
     Screen { layout: vertical; background: #000000; }
     StatusBar, AlarmBar, TestBar { height: 1; }
-    #main { height: 3fr; }
+    #main { height: 5fr; }
     .row { height: 1fr; }
     #row-co2 { height: 13fr; }
     #row-flow { height: 20fr; }
@@ -512,11 +512,11 @@ class MonitorApp(App):
     Tile { width: 1fr; height: 100%; border: round #262626; background: #0d1117; border-title-style: bold; border-subtitle-color: #8b949e; }
     PicWave { width: 5fr; height: 100%; }
     PicTile { width: 1fr; height: 100%; }
-    PicGraph { height: 2fr; min-height: 12; }
+    PicGraph { height: 4fr; min-height: 14; }
     #t-etco2, #t-rr { border-title-color: #ffd60a; }
     #t-flow, #t-vt, #t-mv, #t-spo2 { border-title-color: #33d1f5; }
     #t-vt2, #t-mv2 { border-title-color: #57e389; }
-    #graph { height: 2fr; min-height: 12; border: round #333333; border-title-color: #ffd60a; border-subtitle-color: #8b949e; }
+    #graph { height: 4fr; min-height: 14; border: round #333333; border-title-color: #ffd60a; border-subtitle-color: #8b949e; }
     """
     BINDINGS = [
         Binding("o", "connect", "Connect"),

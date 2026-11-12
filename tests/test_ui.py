@@ -68,6 +68,9 @@ def test_simulator_drives_waveforms_and_numbers(win):
     assert 460 <= int(t["vt"].value) <= 540
     assert "Simulator" in win.header.status.text()
     assert win.monitor.sweeps["co2"]._buf[~(win.monitor.sweeps["co2"]._buf != win.monitor.sweeps["co2"]._buf)].max() > 30
+    assert win.monitor.trend.stack.currentIndex() == 1  # the screen opens on the ventilatory response
+    win.monitor.trend.tabs.button(0).click()
+    advance(win, 1)
     assert win.monitor.trend.points.data.size >= 5
     win.grab()  # paints without errors
 
@@ -324,6 +327,8 @@ def test_trend_tab_plots_mv_and_rr_and_shows_both_co2_limits(win):
     e.connect("simulator")
     advance(win, 30)
     tr = m.trend
+    tr.tabs.button(0).click()
+    advance(win, 1)
     assert tr.stop_line.isVisible() and tr.stop_line.value() == 65 and tr.high_line.value() == 60
     assert m.tiles["etco2"].limits[0] == "60 / 65"
     for series, text, lo, hi in (("mv", "MV TREND", 6.5, 8.5), ("rr", "RR TREND", 14, 16)):
@@ -460,6 +465,7 @@ def test_a_whole_simulated_test_from_the_panel_fills_the_trends_and_the_response
     tr = m.trend
     assert tr.test_text.toolTip().startswith("TEST ENDED after")
     # every graph has the test in it: the three trends, and the response plot with its line
+    tr.tabs.button(0).click()
     for series, top in (("etco2", 64), ("mv", 12), ("rr", 18)):
         e.update_settings(trend_series=series)
         advance(win, 0.3)

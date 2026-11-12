@@ -60,7 +60,7 @@ On Windows, in PowerShell:
 irm https://raw.githubusercontent.com/shrlak/CO2-Response/main/scripts/install.ps1 | iex
 ```
 
-From a downloaded copy of the repository, run `./scripts/install.sh` (or `.\scripts\install.ps1`). Add `--terminal-only` (`-TerminalOnly`) to leave out the Qt desktop window. Or, with [pipx](https://pipx.pypa.io): `pipx install "co2response[desktop] @ git+https://github.com/shrlak/CO2-Response"`. A [GitHub Release](https://github.com/shrlak/CO2-Response/releases) also has `co2response-terminal`, a single program file that needs no Python at all.
+From a downloaded copy of the repository, run `./scripts/install.sh` (or `.\scripts\install.ps1`). Add `--terminal-only` (`-TerminalOnly`) to leave out the Qt desktop window. Or, with [pipx](https://pipx.pypa.io): `pipx install "co2response[desktop] @ git+https://github.com/shrlak/CO2-Response"`. A [GitHub Release](https://github.com/shrlak/CO2-Response/releases) also has `co2response-terminal`, a single program file that needs no Python at all (see [Download the app](#download-the-app) below).
 
 Then:
 
@@ -108,7 +108,7 @@ The whole monitor is drawn in the terminal, so it works in the terminal panel of
 | `+` / `-` | Simulation speed, 1× to 50× |
 | `b`, `r`, `e`, `x` | Start baseline, start rebreathing, end the test, emergency stop |
 | `m`, `space`, `c` | Mark an event, silence alarms, start/stop recording (stopping also writes the PDF report next to the CSV) |
-| `v` | The graph: ventilatory response, EtCO2 trend, MV trend |
+| `v` | The graph: ventilatory response (the default), EtCO2 trend, MV trend |
 | `k` | Capnostream 35 as the CO2 source: a serial port, simulated, or off |
 | `l` | In text mode: waveforms as a thin smooth line (the default) or a solid filled shape |
 | `f`, `a`, `h`, `q` | Freeze the waveforms, arm the alarm sound, switch the expected board, quit |
@@ -130,6 +130,17 @@ Open **<https://shrlak.github.io/CO2-Response/>** and press **Start simulator**.
 The first load downloads the Python runtime (Pyodide, about 10 MB) and takes 10 to 30 seconds. After that it is cached.
 
 The simulator breathes like a person, so every screen, alarm and recording feature can be tried without hardware. **Replay the sample session** plays a recorded session back through the monitor.
+
+### Download the app
+
+No Python needed. On the [Releases page](https://github.com/shrlak/CO2-Response/releases), under the newest version:
+
+| Computer | Download | Then |
+| --- | --- | --- |
+| **Mac** (Apple silicon and Intel: one file for both) | `CO2-Response.dmg` | Open it, drag **CO2-Response** onto **Applications**, then open it from there. The first time, right-click it and choose **Open** (the app is not signed by Apple). |
+| **Windows** | `CO2-Response.exe` | Double-click it; no installation. It takes a few seconds to start. If Windows SmartScreen warns, choose **More info**, then **Run anyway**. |
+
+The same page has the terminal monitor (`CO2-Response-Terminal-…`) and a Linux app. The `.dmg` is built on an Apple-silicon and an Intel Mac and merged into one universal app (`scripts/fuse_macos_app.py`), and every release is built and started on both kinds of Mac before it is published.
 
 ### On your computer
 
@@ -322,7 +333,7 @@ If the USB cable comes out, the device-disconnected alarm sounds. Plugging the s
   - for EtCO2: the continuous CO2 trace behind the points, the warning limit (dashed) and stop limit (solid) with their bands
   - alarm marks and your event markers
   - the caption counts breaths left out as noisy
-- **Ventilatory response tab:** each clean breath's own minute ventilation (VT × 60 / its length) against its EtCO2, labelled like the lab's figures: "Response slope = 1.244 (L/min)/mmHg · r = 0.848" over the fitted line and "Baseline Ave = 43.64 mmHg · MV = 6.63 L/min" by the baseline breaths. Once rebreathing is marked:
+- **Ventilatory response tab** (the screen opens on it, and the graph takes nearly half the height): both axes scale to the breaths, from the lowest to the highest value with a margin, and follow as new breaths arrive. Each clean breath's own minute ventilation (VT × 60 / its length) against its EtCO2, labelled like the lab's figures: "Response slope = 1.244 (L/min)/mmHg · r = 0.848" over the fitted line and "Baseline Ave = 43.64 mmHg · MV = 6.63 L/min" by the baseline breaths. Once rebreathing is marked:
   - baseline breaths are hollow rings, summarized as the baseline (mean EtCO2 and MV)
   - the least-squares line is fitted to the rebreathing breaths only, the way CHOP reports the test
   - breaths in the first 30 s of rebreathing and after the end of the test are faint rings and are not fitted
@@ -684,7 +695,7 @@ It is seeded, so the tests and the sample session are reproducible. `sample-data
 
 Both front ends use the same `co2response` engine, processing, alarms, session-file and report code; only the drawing and the platform adapters differ. The alarm, signal-processing and test/subject forms are described once, in `co2response/forms.py`, and each front end builds its form from that list (`ui/spec_form.py`, `web/spec_form.py`), so a setting is added, worded and limited in one place. The calibration and connection screens are still written separately for each front end.
 
-**The standalone desktop app.** `.github/workflows/release.yml` builds the desktop app with PyInstaller for Windows, macOS and Linux (`packaging/CO2-Response.spec`) and checks that each built program writes a report and runs the simulator. Pushing a tag like `v0.5.0` attaches the three apps to a GitHub Release; a lab computer then needs no Python. To build one locally: `pip install pyinstaller` and `pyinstaller --noconfirm packaging/CO2-Response.spec`.
+**The standalone desktop app.** `.github/workflows/release.yml` builds the desktop app with PyInstaller for Windows, macOS and Linux (`packaging/CO2-Response.spec`) and checks that each built program writes a report and runs the simulator. Pushing a tag like `v0.7.0` attaches the downloads to a GitHub Release: `CO2-Response.exe` (Windows, one file), `CO2-Response.dmg` (macOS, one universal app for Apple-silicon and Intel Macs) and the Linux app; a lab computer then needs no Python. To build one locally: `pip install pyinstaller` and `pyinstaller --noconfirm packaging/CO2-Response.spec`.
 
 **How the browser version works.** `site/index.html` and the small service worker `site/sw.js` are the only JavaScript:
 

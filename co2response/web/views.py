@@ -213,7 +213,7 @@ class MonitorView:
         self.sweeps: dict[str, Sweep] = {}
         self.trend: TrendChart | None = None
         self.resp: ResponseChart | None = None
-        self.tab = "trend"
+        self.tab = "response"  # the ventilatory response is what the screen opens with
         self.drawer = False
         #: one graph enlarged to fill the monitor ("co2", "flow", "pneumo", "trend"), or None
         self.focus: str | None = None
@@ -239,8 +239,8 @@ class MonitorView:
         rows = "".join(f'<section class="row {cid}" id="row-{cid}">{wave_html(cid, label, unit)}{nums[cid]}</section>' for cid, label, unit in layout)
         trend = (
             '<section class="trend"><div class="trend-head" role="tablist">'
-            '<button class="tab" role="tab" data-act="trend-tab" data-arg="trend" id="tab-trend">EtCO2 trend</button>'
             '<button class="tab" role="tab" data-act="trend-tab" data-arg="response" id="tab-response">Ventilatory response</button>'
+            '<button class="tab" role="tab" data-act="trend-tab" data-arg="trend" id="tab-trend">EtCO2 trend</button>'
             '<span class="trend-meta"><span id="trend-meta"></span>'
             '<select id="trend-series" data-change="trend-series" aria-label="Trend of" title="What the trend tab plots against time">'
             '<option value="etco2">EtCO2</option><option value="mv">MV</option><option value="rr">RR</option></select>'
