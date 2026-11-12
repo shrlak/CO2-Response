@@ -89,7 +89,10 @@ class Tile(Panel):
         self.style_ = color
         self.note = ""
 
-    def set(self, value: str, title: str | None = None, style: str | None = None, note: str = "") -> None:
+    def set(self, value: str, title: str | None = None, style: str | None = None, note: str = "", alarm: str | None = None) -> None:
+        if alarm != getattr(self, "_alarm", None):
+            self._alarm = alarm
+            self.styles.border = ("heavy", alarm) if alarm else ("round", "#262626")
         self.value = value
         if title is not None:
             self.border_title = title
@@ -146,23 +149,24 @@ def draw_tiles(tiles: dict[str, Tile], s: Snapshot, flash: bool, single: bool) -
     digits = 1 if pct else 0
     co2_alarm = next((a for a in s.alarms if a.id in ("co2Stop", "co2High", "co2Low") and a.state == "active"), None)
     apnea = next((a for a in s.alarms if a.id == "apnea" and a.state == "active"), None)
-    style = None
+    # an alarm colours the digits and the tile's border (a background colour would fill
+    # the whole block behind the block digits); unacknowledged, the digits blink
+    style = alarm_col = None
     if co2_alarm:
-        style = "white on red3" if co2_alarm.priority == "high" else "black on gold1"
-        if flash and not co2_alarm.acknowledged:
-            style = "red3"
+        alarm_col = "#ff3b30" if co2_alarm.priority == "high" else "#ff9f0a"
+        style = alarm_col if not (flash and not co2_alarm.acknowledged) else COLOR["co2"]
     a = st.alarms
     stop = f"/{fmt(disp(a.stop_mm_hg))}" if a.stop_mm_hg is not None else ""
     capno = s.capno or {}
     note = "no CO2 signal" if s.stale["co2"] else f"left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br {fmt(disp(n.etco2_median), digits)}"
     if "etco2" in capno:
         note += f" · Capnostream {fmt(disp(capno['etco2']), digits)}"
-    tiles["etco2"].set("---" if s.stale["co2"] else fmt(disp(n.etco2), digits), f"EtCO2 {'%' if pct else 'mmHg'} · {fmt(disp(a.high_mm_hg))}{stop}", style, note)
-    rr_style = ("white on red3" if not flash or apnea.acknowledged else "red3") if apnea else None
+    tiles["etco2"].set("---" if s.stale["co2"] else fmt(disp(n.etco2), digits), f"EtCO2 {'%' if pct else 'mmHg'} · {fmt(disp(a.high_mm_hg))}{stop}", style, note, alarm_col)
+    rr_style = ("#ff3b30" if not flash or apnea.acknowledged else COLOR["co2"]) if apnea else None
     rr_note = "apnea" if apnea else "no breath detected" if n.rr != n.rr and s.status == "connected" else ""
     if "rr" in capno:
         rr_note = (rr_note + " · " if rr_note else "") + f"Capnostream {fmt(capno['rr'])}"
-    tiles["rr"].set(fmt(n.rr), "RR /min", rr_style, rr_note)
+    tiles["rr"].set(fmt(n.rr), "RR /min", rr_style, rr_note, "#ff3b30" if apnea else None)
     tiles["flow"].set("---" if s.stale["flow"] else fmt(n.flow), "Flow L/min", note="live")
     vt = "---" if s.stale["pneumo"] else fmt(n.vt)
     vt_note = f"exp {fmt(n.vte)} mL" if math.isfinite(n.vte) else ""

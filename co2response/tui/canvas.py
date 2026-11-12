@@ -173,7 +173,7 @@ _EIGHTHS = (" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█")
 
 
 def render_sweep_fill(
-    sweep: SweepBuffer, w: int, h: int, vmin: float, vmax: float, color: str, ticks: Iterable[float] = (), signed: bool = False, limit: float | None = None, baseline: float = 0.0, gutter: int = 6, bg: str = "black"
+    sweep: SweepBuffer, w: int, h: int, vmin: float, vmax: float, color: str, ticks: Iterable[float] = (), signed: bool = False, limit: float | None = None, baseline: float = 0.0, gutter: int = 6, bg: str = "#000000"
 ) -> Text:
     """The waveform as a solid filled shape between ``baseline`` and the signal, built
     from eighth-block characters: eight height steps in every character row and no gaps,
@@ -217,7 +217,7 @@ def render_sweep_fill(
     for r in range(H):  # r = 0 is the top row
         lo_cell = (H - 1 - r) * 8
         hi_cell = lo_cell + 8
-        t = Text(no_wrap=True, overflow="crop")
+        row = Text(no_wrap=True, overflow="crop")
         run: list[str] = []
         run_style = ""
         for c in range(W):
@@ -237,18 +237,18 @@ def render_sweep_fill(
             if ch == " " and r == limit_row:
                 ch, st = "╌", "red"
             if st != run_style and run:
-                t.append("".join(run), run_style or None)
+                row.append("".join(run), run_style or None)
                 run = []
             run_style = st
             run.append(ch)
         if run:
-            t.append("".join(run), run_style or None)
+            row.append("".join(run), run_style or None)
         label = tick_rows.get(r, "")
         style = "bold red" if r == limit_row and not label else "grey50"
         if r == limit_row and limit is not None and not label:
             label = f"{limit:g}"
-        t.append(label.rjust(gutter)[:gutter], style)
-        lines.append(t)
+        row.append(label.rjust(gutter)[:gutter], style)
+        lines.append(row)
     return Text("\n", no_wrap=True).join(lines)
 
 
