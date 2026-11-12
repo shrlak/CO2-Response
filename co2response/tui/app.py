@@ -10,6 +10,7 @@ processing, breaths, alarms, test keys and recordings); only the drawing differs
 from __future__ import annotations
 
 import math
+import os
 import sys
 import time
 from pathlib import Path
@@ -29,10 +30,14 @@ from ..engine.monitor import MonitorEngine, Snapshot
 from ..processing.co2 import mmhg_to_pct
 from ..processing.metrics import co2_response_summary
 from ..sim.controls import SITUATIONS, situation_label
-from .canvas import Canvas, SweepBuffer, big_digits, digits_size, draw_response, draw_sweep, draw_trend, render_sweep_fill
+from . import cells
+from .canvas import Canvas, SweepBuffer, draw_response, draw_trend, render_sweep_fill
+from .cells import colour_of, number, number_size
 
 #: colours of the three channels, as on the desktop monitor
 COLOR = {"co2": "yellow1", "flow": "deep_sky_blue1", "pneumo": "spring_green2"}
+#: the tiles' background (as in the CSS below)
+TILE_BG = (13, 17, 23)
 PRIORITY_STYLE = {"high": "bold white on red3", "medium": "bold black on gold1", "advisory": "bold white on dodger_blue3"}
 
 
@@ -66,16 +71,14 @@ class WavePanel(Panel):
         self.cid = cid
         self.sweep = SweepBuffer()
 
-    def draw(self, vmin: float, vmax: float, ticks, signed: bool, limit: float | None, style: str = "fill") -> None:
-        """``style`` "fill": a solid filled shape from eighth blocks (smooth in any font);
-        "line": a thin braille line."""
+    def draw(self, vmin: float, vmax: float, ticks, signed: bool, limit: float | None, style: str = "line") -> None:
+        """``style`` "line": a thin smooth line, as the browser draws it; "fill": a solid
+        filled shape from eighth blocks."""
         w, h = self.area()
         if style == "fill":
             self.update(render_sweep_fill(self.sweep, w, h, vmin, vmax, COLOR[self.cid], ticks, signed, limit))
             return
-        cv = Canvas(w, h)
-        draw_sweep(cv, self.sweep, vmin, vmax, COLOR[self.cid], ticks=ticks, signed=signed, limit=limit)
-        self.update(cv.render())
+        self.update(cells.wave(self.sweep, w, h, vmin, vmax, colour_of(COLOR[self.cid]), ticks, signed, limit))
 
 
 class Tile(Panel):
@@ -101,26 +104,22 @@ class Tile(Panel):
         self.note = note
         self.border_subtitle = note
 
-    def scale_fits(self, scale: int) -> bool:
+    def fit_size(self) -> float:
+        """The largest digits (a font size) that fit this tile, sized for at least three."""
         w, h = self.area()
-        dw, dh = digits_size(self.value if len(self.value) >= 3 else "000", scale)
-        return dw <= w and dh <= h
+        return number_size(self.value if len(self.value) >= 3 else "000", w, h)
 
-    def paint(self, scale: int) -> None:
+    def paint(self, size: float) -> None:
+        """The number at ``size`` (the same in every tile), in the browser's font."""
         w, h = self.area()
-        if scale >= 1 and self.scale_fits(scale):
-            lines = big_digits(self.value, scale)
-        else:
-            lines = [self.value]  # too small for block digits: plain bold
-        top = max(0, (h - len(lines)) // 2)
-        out = Text(no_wrap=True, overflow="crop")
-        for _ in range(top):
-            out.append("\n")
-        for i, line in enumerate(lines):
-            out.append(line.rjust(w - 1) + " ", f"bold {self.style_}")
-            if i < len(lines) - 1:
-                out.append("\n")
-        self.update(out)
+        key = (w, h, self.value, self.style_, round(size, 1))
+        if key == getattr(self, "_key", None):
+            return
+        self._key = key
+        if h < 2 or size < 12:  # too small for drawn digits: plain bold
+            self.update(Text(self.value.rjust(w - 1) + " ", f"bold {self.style_}"))
+            return
+        self.update(number(self.value, w, h, colour_of(self.style_), TILE_BG, size))
 
 
 def on_screen(w) -> bool:
@@ -178,13 +177,10 @@ def draw_tiles(tiles: dict[str, Tile], s: Snapshot, flash: bool, single: bool) -
         tiles[k].set(mv, "MV L/min", note="this breath")
     tiles["spo2"].set(fmt(n.spo2), "SpO2 %", note=f"low {fmt(st.spo2.low_pct)}" if st.spo2.low_pct > 0 else "")
     shown = [t for t in tiles.values() if on_screen(t)]
-    scale = 0
-    for sc in (4, 3, 2, 1):
-        if shown and all(t.scale_fits(sc) for t in shown):
-            scale = sc
-            break
+    # one digit size for all of them: the largest that fits the smallest tile showing
+    size = min((t.fit_size() for t in shown), default=0.0)
     for t in tiles.values():
-        t.paint(scale)
+        t.paint(size)
 
 
 class StatusBar(Static):
@@ -274,7 +270,7 @@ class GraphPanel(Panel):
 
     def draw(self, s: Snapshot, engine: MonitorEngine, mode: str) -> None:
         w, h = self.area()
-        cv = Canvas(w, h)
+        cv = Canvas(w, h, smooth=True)
         # the tabs in the border, the one showing in brackets (v moves along)
         self.border_title = "  ".join(f"[reverse] {name} [/]" if key == mode else name for key, name in self.TABS) + "   (v)"
         if mode == "breaths":
@@ -414,10 +410,10 @@ class PicTile(PicBox):
         if title is not None:
             self.title = title
 
-    def scale_fits(self, scale: int) -> bool:
-        return True
+    def fit_size(self) -> float:
+        return 0.0  # a picture sizes its own number
 
-    def paint(self, scale: int) -> None:
+    def paint(self, size: float) -> None:
         w, h = self.pixels()
         key = (w, h, self.value, self.title, self.style_, self.note, self.alarm)
         if key == self._key or w < 40 or h < 30:
@@ -555,7 +551,7 @@ class MonitorApp(App):
         self.engine.arm_audio(confirm=False)
         self.graph_mode = "response"
         #: the waveforms: "fill" (solid, smooth) or "line" (thin braille line); the l key switches
-        self.wave_style = "fill"
+        self.wave_style = "line"
         self._epoch = -1
         self._flash = False
         self._last_print = ""
@@ -597,6 +593,11 @@ class MonitorApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        # 24-bit colour: smooth edges in in-between colours; 256 colours (macOS Terminal):
+        # exact shapes in two colours to a cell
+        cells.BLEND = self.console.color_system == "truecolor"
+        # macOS Terminal draws block characters shorter than the cell (see cells.set_gap)
+        cells.set_gap(*((3 / 16, 1 / 16) if os.environ.get("TERM_PROGRAM") == "Apple_Terminal" else (0.0, 0.0)))
         # kept by reference: while a picker is open, queries would search the picker's screen
         self.w_status = self.query_one(StatusBar)
         self.w_alarms = self.query_one(AlarmBar)
@@ -695,8 +696,8 @@ class MonitorApp(App):
         panels["co2"].border_title = f"CO2 {unit}{tag}{' · FROZEN' if s.frozen else ''}"
         panels["co2"].tag = (tag.replace(" · SIMULATED", "SIMULATED").replace(" per screen", "/screen").replace(" · REPLAY", "REPLAY") + (" · FROZEN" if s.frozen else "")).strip(" ·")
         self._frame_n += 1
-        if self.graphics and self._frame_n % 2:
-            return  # pictures: about 6 a second is smooth, and cheaper to send
+        if (self.graphics or self.wave_style == "line") and self._frame_n % 2:
+            return  # pictures and smooth lines: about 6 a second is smooth, and cheaper to draw
         ticks = [0, 2, 4, 6, 8, 10] if pct else [0, 20, 40, 60, 80]
         lim = st.alarms.high_mm_hg
         panels["co2"].draw(0, co2_max, [t for t in ticks if t <= co2_max], False, mmhg_to_pct(lim, pb, wv) if pct else lim, self.wave_style)
@@ -843,7 +844,7 @@ class MonitorApp(App):
 
     def action_wave_style(self) -> None:
         self.wave_style = "line" if self.wave_style == "fill" else "fill"
-        self.notify("Waveforms: " + ("solid fill" if self.wave_style == "fill" else "thin line"), timeout=2)
+        self.notify("Waveforms: " + ("solid fill" if self.wave_style == "fill" else "smooth line"), timeout=2)
 
     def action_view(self) -> None:
         order = ["response", "etco2", "mv", "breaths"]
@@ -890,6 +891,10 @@ def detect_graphics(mode: str = "auto") -> str | None:
     Terminal, foot, xterm -ti vt340) or Kitty's graphics protocol (Kitty, Ghostty). The
     terminal is asked once, before the full-screen display starts."""
     if mode == "off":
+        return None
+    if mode == "auto" and os.environ.get("TERM_PROGRAM") == "Apple_Terminal":
+        # macOS Terminal shows no pictures, and would print the image library's question
+        # to the terminal ("Gi=…;AAAA") on the screen instead of answering it
         return None
     try:
         import textual_image.widget  # noqa: F401  (asks the terminal for its cell size)

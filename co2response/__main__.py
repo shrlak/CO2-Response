@@ -135,7 +135,6 @@ def update(run=None) -> int:
     from pathlib import Path
 
     run = run or subprocess.call
-    print(f"{APP_NAME} {__version__} now.")
     root = Path(__file__).resolve().parents[1]
     if (root / ".git").exists():
         print(f"Updating the copy of the repository in {root} (git pull) …")
@@ -150,13 +149,22 @@ def update(run=None) -> int:
     except ImportError:
         extra = ""
     spec = f"co2response{extra} @ git+{REPO_URL}"
-    print(f"Reinstalling from {REPO_URL} …")
+    print(f"Updating {APP_NAME} {__version__} from GitHub …", flush=True)
+    # quiet: pip says nothing unless something goes wrong
+    pip = [sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "--upgrade"]
     # the package itself always (same version number or not), then whatever it now needs
-    code = run([sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall", "--no-deps", spec])
+    code = run([*pip, "--force-reinstall", "--no-deps", spec])
     if code == 0:
-        code = run([sys.executable, "-m", "pip", "install", "--upgrade", spec])
-    print("Updated: run co2response --version to see the version." if code == 0 else "The update did not finish; see the messages above.")
-    return code
+        code = run([*pip, spec])
+    if code != 0:
+        print("The update did not finish; see the messages above.")
+        return code
+    try:
+        new = subprocess.run([sys.executable, "-c", "import co2response; print(co2response.__version__)"], capture_output=True, text=True, timeout=60).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        new = ""
+    print(f"Updated: {APP_NAME} {new or 'is up to date'}." if new else "Updated.")
+    return 0
 
 
 def save_capno(args) -> None:

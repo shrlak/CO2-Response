@@ -23,11 +23,23 @@ class Canvas:
     """``w`` x ``h`` character cells; dots are addressed in (2w) x (4h) pixels with
     y = 0 at the top."""
 
-    def __init__(self, w: int, h: int) -> None:
+    def __init__(self, w: int, h: int, smooth: bool = False, bg=(0, 0, 0)) -> None:
+        """``smooth``: the lines and dots are drawn as a smooth picture in block characters
+        (``cells.Smooth``) instead of braille dots; the text stays text."""
         self.w, self.h = max(1, w), max(1, h)
         self.bits = [[0] * self.w for _ in range(self.h)]
         self.dot_style: list[list[str | None]] = [[None] * self.w for _ in range(self.h)]
         self.chars: dict[tuple[int, int], tuple[str, str]] = {}
+        self.sm = None
+        if smooth:
+            from .cells import Smooth
+
+            self.sm = Smooth(self.w, self.h, bg)
+
+    @staticmethod
+    def _cell(x: float, y: float) -> tuple[float, float]:
+        """A dot's centre in cell units."""
+        return (x + 0.5) / 2, (y + 0.5) / 4
 
     @property
     def px_w(self) -> int:
@@ -38,12 +50,20 @@ class Canvas:
         return 4 * self.h
 
     def dot(self, x: int, y: int, style: str) -> None:
+        if self.sm is not None:
+            from .cells import colour_of
+
+            self.sm.dot(*self._cell(x, y), 0.22, colour_of(style))
+            return
         if 0 <= x < 2 * self.w and 0 <= y < 4 * self.h:
             r, c = y >> 2, x >> 1
             self.bits[r][c] |= _BITS[x & 1][y & 3]
             self.dot_style[r][c] = style
 
     def vline(self, x: int, y0: int, y1: int, style: str) -> None:
+        if self.sm is not None:
+            self.line(x, y0, x, y1, style)
+            return
         if y0 > y1:
             y0, y1 = y1, y0
         for y in range(max(0, y0), min(4 * self.h - 1, y1) + 1):
@@ -52,6 +72,16 @@ class Canvas:
     def line(self, x0: float, y0: float, x1: float, y1: float, style: str, dash: tuple[int, int] | None = None, thick: bool = False) -> None:
         """A straight line in dot coordinates (``dash``: dots on, dots off). ``thick``
         draws it two dots wide, which reads as a solid line rather than a dotted one."""
+        if self.sm is not None:
+            from .cells import colour_of
+
+            a, b = self._cell(x0, y0), self._cell(x1, y1)
+            width = 0.2 if thick else 0.1
+            if dash is None:
+                self.sm.line([a, b], colour_of(style), width)
+            else:
+                self.sm.dashed_line(a, b, colour_of(style), width, dash[0] / 2, dash[1] / 2)
+            return
         if thick:
             self.line(x0, y0 + 1, x1, y1 + 1, style, dash)
             self.line(x0 + 1, y0, x1 + 1, y1, style, dash)
@@ -75,6 +105,12 @@ class Canvas:
     def hdash(self, y: int, style: str, x0: int = 0, x1: int | None = None, on: int = 3, off: int = 2) -> None:
         """A dashed horizontal line (an alarm limit)."""
         x1 = 2 * self.w if x1 is None else x1
+        if self.sm is not None:
+            from .cells import colour_of
+
+            yy = (y + 0.5) / 4
+            self.sm.dashed_line((x0 / 2, yy), (x1 / 2, yy), colour_of(style), 0.12, on / 2, off / 2)
+            return
         for x in range(x0, x1):
             if (x - x0) % (on + off) < on:
                 self.dot(x, y, style)
@@ -114,6 +150,9 @@ class Canvas:
         return out
 
     def render(self) -> Text:
+        if self.sm is not None:
+            self.sm.overlay = dict(self.chars)
+            return self.sm.render()
         return Text("\n", no_wrap=True).join(self.lines())
 
 
