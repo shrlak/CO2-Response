@@ -16,9 +16,9 @@ PKG = ROOT / "co2response"
 a = Analysis(
     [str(ROOT / "packaging" / "co2response_terminal.py")],
     pathex=[str(ROOT)],
-    datas=[(str(PKG / "config"), "co2response/config"), (str(ROOT / "sample-data"), "sample-data")] + collect_data_files("textual"),
+    datas=[(str(PKG / "config"), "co2response/config"), (str(PKG / "fonts"), "co2response/fonts"), (str(ROOT / "sample-data"), "sample-data")] + collect_data_files("textual"),
     # Textual and rich import some of their modules lazily, by name
-    hiddenimports=collect_submodules("textual.widgets") + collect_submodules("rich._unicode_data") + ["co2response.tui.app", "co2response.headless"],
+    hiddenimports=collect_submodules("textual.widgets") + collect_submodules("rich._unicode_data") + collect_submodules("textual_image") + ["co2response.tui.app", "co2response.tui.pixels", "co2response.headless"],
     # the desktop window and the browser front end are not part of the terminal program
     excludes=["co2response.ui", "co2response.web", "PySide6", "pyqtgraph", "tkinter", "pytest"],
 )

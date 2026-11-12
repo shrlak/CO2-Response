@@ -282,6 +282,42 @@ def test_terminal_monitor_runs_a_whole_test(tmp_path, monkeypatch):
     asyncio.run(go())
 
 
+def test_terminal_pictures_look_like_the_web(tmp_path, monkeypatch):
+    # in a terminal that can show images, the panels are pictures drawn like the web page
+    pytest.importorskip("textual_image")
+    from co2response.tui import pixels as px
+    from co2response.tui.app import MonitorApp, PicGraph, PicTile, PicWave, detect_graphics
+
+    assert detect_graphics("off") is None
+    monkeypatch.setenv("CO2R_HOME", str(tmp_path))
+    monkeypatch.setenv("CO2R_HARDWARE", "digital")
+
+    def has(img, colour):
+        return any(abs(r - colour[0]) + abs(g - colour[1]) + abs(b - colour[2]) < 30 for _, (r, g, b) in img.convert("RGB").getcolors(1 << 20))
+
+    async def go():
+        app = MonitorApp(situation="test_normal", speed=50, graphics=True)
+        async with app.run_test(size=(150, 46)) as pilot:
+            await pilot.pause(5)
+            co2 = app.query_one("#w-co2", PicWave).query_one(".pic").image
+            assert co2 is not None and has(co2, px.CO2)  # the yellow CO2 waveform
+            tile = app.query_one("#t-mv", PicTile).query_one(".pic").image
+            assert tile is not None and has(tile, px.FLOW)
+            graph = app.query_one(PicGraph).query_one(".pic").image
+            assert graph is not None and has(graph, px.PNEUMO)  # the green breath dots
+            await pilot.press("v", "v", "v")  # the breath table stays text
+            await pilot.pause(0.4)
+            assert app.query_one(PicGraph).query_one(".txt").display
+            await pilot.press("q")
+
+    asyncio.run(go())
+
+    # each picture is drawn at twice the size and scaled down: smooth edges, not pixels
+    img = px.tile(300, 200, "MV", "L/min", "18.1", px.FLOW)
+    assert img.size == (300, 200)
+    assert len(img.convert("RGB").getcolors(1 << 20)) > 20  # in-between shades on the digits' edges
+
+
 # ---------- command line and firmware
 
 

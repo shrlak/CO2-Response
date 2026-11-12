@@ -30,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", metavar="PDF", help="where --report writes (default: next to the session file)")
     ap.add_argument("--skip", type=float, default=None, metavar="SEC", help="with --report: seconds of rebreathing left out of the fit (default: what the file's header says)")
     ap.add_argument("--tui", action="store_true", help="run the monitor full-screen in this terminal (works in the VS Code terminal and over SSH)")
+    ap.add_argument("--graphics", choices=("auto", "on", "off"), default="auto", help="with --tui: draw the waveforms, numbers and graphs as pictures like the browser page (auto: where the terminal can show images: iTerm2, VS Code with images on, Kitty, WezTerm, Ghostty, Windows Terminal), or text (off)")
     ap.add_argument("--situation", metavar="ID", help="start the simulator in a situation, e.g. test_normal (a whole rebreathing test); --list-situations shows them")
     ap.add_argument("--list-situations", action="store_true", help="list the simulation situations and exit")
     ap.add_argument("--speed", type=float, default=None, metavar="X", help="simulation speed, 1 to 50 times real time")
@@ -114,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     if tui:
         from .tui.app import run as run_tui
 
-        return run_tui(sim=args.sim, port=args.port, replay=args.replay, situation=args.situation, speed=args.speed, exit_after=args.exit_after)
+        return run_tui(sim=args.sim, port=args.port, replay=args.replay, situation=args.situation, speed=args.speed, exit_after=args.exit_after, graphics=args.graphics)
 
     from .ui.app import run
 
