@@ -10,7 +10,8 @@
 #   and the terminal monitor (co2response-terminal) for each of them
 #
 # - Pushing a tag like v0.6.1 builds everything and attaches the downloads to a GitHub Release.
-# - "Run workflow" on the Actions tab builds them as downloadable artifacts only.
+# - "Run workflow" on the Actions tab builds them as downloadable artifacts only, or, with a
+#   tag name in "publish_tag", also creates that tag on main and the GitHub Release.
 # - A pull request that touches the packaging files builds them too, as a check.
 name: Standalone apps
 
@@ -18,6 +19,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      publish_tag:
+        description: 'Also publish a GitHub Release with this tag (e.g. v0.7.0), created on the latest main. Leave empty to only build the downloads.'
+        required: false
+        default: ''
   pull_request:
     paths:
       - 'packaging/**'
@@ -190,7 +196,7 @@ jobs:
 
   release:
     name: Attach to the GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_tag != '')
     needs: [build, macos-universal, macos-intel-check]
     runs-on: ubuntu-24.04
     permissions:
@@ -204,6 +210,8 @@ jobs:
       - name: Create the release with the downloads
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.publish_tag || github.ref_name }}
+          TARGET: ${{ inputs.publish_tag && 'main' || github.sha }}
         run: >
-          gh release create "$GITHUB_REF_NAME" apps/* --repo "$GITHUB_REPOSITORY" --title "CO2-Response $GITHUB_REF_NAME" --generate-notes
+          gh release create "$TAG" apps/* --repo "$GITHUB_REPOSITORY" --target "$TARGET" --title "CO2-Response $TAG" --generate-notes
           --notes "Download: CO2-Response.dmg (macOS, Apple-silicon and Intel Macs: open it and drag the app to Applications) or CO2-Response.exe (Windows: one file, double-click it). Also: the terminal monitor (co2response-terminal) and the Linux app. Research use only; not a medical device. The apps are not signed: on a Mac, right-click CO2-Response in Applications and choose Open the first time; on Windows, if SmartScreen warns, choose More info, then Run anyway."
