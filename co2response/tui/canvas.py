@@ -49,8 +49,12 @@ class Canvas:
         for y in range(max(0, y0), min(4 * self.h - 1, y1) + 1):
             self.dot(x, y, style)
 
-    def line(self, x0: float, y0: float, x1: float, y1: float, style: str, dash: tuple[int, int] | None = None) -> None:
-        """A straight line in dot coordinates (``dash``: dots on, dots off)."""
+    def line(self, x0: float, y0: float, x1: float, y1: float, style: str, dash: tuple[int, int] | None = None, thick: bool = False) -> None:
+        """A straight line in dot coordinates (``dash``: dots on, dots off). ``thick``
+        draws it two dots wide, which reads as a solid line rather than a dotted one."""
+        if thick:
+            self.line(x0, y0 + 1, x1, y1 + 1, style, dash)
+            self.line(x0 + 1, y0, x1 + 1, y1, style, dash)
         x0, y0, x1, y1 = round(x0), round(y0), round(x1), round(y1)
         dx, dy = abs(x1 - x0), -abs(y1 - y0)
         sx, sy = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
@@ -164,6 +168,90 @@ class SweepBuffer:
         self.pos = (self.pos + len(values)) % self.n
 
 
+# lower eighth blocks: index k fills the lowest k/8 of a character cell
+_EIGHTHS = (" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█")
+
+
+def render_sweep_fill(
+    sweep: SweepBuffer, w: int, h: int, vmin: float, vmax: float, color: str, ticks: Iterable[float] = (), signed: bool = False, limit: float | None = None, baseline: float = 0.0, gutter: int = 6, bg: str = "#000000"
+) -> Text:
+    """The waveform as a solid filled shape between ``baseline`` and the signal, built
+    from eighth-block characters: eight height steps in every character row and no gaps,
+    so it reads smooth in any terminal font (braille dots look dotted in many). Each
+    column shows the sample farthest from the baseline among those it covers, so peaks
+    survive. A partial cell at the top of a fill is a lower block; at the bottom of a
+    fill below the baseline it is the same block drawn in reverse (background on colour)."""
+    W = max(1, w - gutter)
+    H = max(1, h)
+    levels = 8 * H
+    top_pad = 2  # eighths kept clear at the top (the title sits there)
+
+    def level(v: float) -> float:
+        c = min(vmax, max(vmin, v))
+        return (c - vmin) / (vmax - vmin) * (levels - top_pad)
+
+    n = sweep.n
+    buf = sweep.buf.copy()
+    gap = max(1, math.ceil(0.03 * n))
+    buf[(sweep.pos + np.arange(gap)) % n] = np.nan
+    edges = (np.arange(W + 1) * n) // W
+    base = level(baseline)
+    cols: list[tuple[float, float] | None] = []
+    for i in range(W):
+        seg = buf[edges[i] : max(edges[i] + 1, edges[i + 1])]
+        seg = seg[np.isfinite(seg)]
+        if not len(seg):
+            cols.append(None)
+            continue
+        v = float(seg[np.argmax(np.abs(seg - baseline))])
+        lv = level(v)
+        cols.append((min(base, lv), max(base, lv)))
+    tick_rows = {}
+    for t in ticks:
+        r = H - 1 - int(level(t) // 8)
+        tick_rows[max(0, min(H - 1, r))] = ("+" if signed and t > 0 else "") + (f"{t:g}")
+    limit_row = None
+    if limit is not None and vmin < limit < vmax:
+        limit_row = max(0, min(H - 1, H - 1 - int(level(limit) // 8)))
+    lines = []
+    for r in range(H):  # r = 0 is the top row
+        lo_cell = (H - 1 - r) * 8
+        hi_cell = lo_cell + 8
+        row = Text(no_wrap=True, overflow="crop")
+        run: list[str] = []
+        run_style = ""
+        for c in range(W):
+            span = cols[c]
+            ch, st = " ", ""
+            if span is not None:
+                a, b = span
+                a8, b8 = max(a, lo_cell), min(b, hi_cell)
+                k = int(round(b8 - a8))
+                if b8 > a8 and k > 0:
+                    if k >= 8:
+                        ch, st = "█", color
+                    elif a8 <= lo_cell + 0.5:  # filled from the bottom of the cell
+                        ch, st = _EIGHTHS[k], color
+                    else:  # filled from the top of the cell: the inverse block
+                        ch, st = _EIGHTHS[8 - k], f"{bg} on {color}"
+            if ch == " " and r == limit_row:
+                ch, st = "╌", "red"
+            if st != run_style and run:
+                row.append("".join(run), run_style or None)
+                run = []
+            run_style = st
+            run.append(ch)
+        if run:
+            row.append("".join(run), run_style or None)
+        label = tick_rows.get(r, "")
+        style = "bold red" if r == limit_row and not label else "grey50"
+        if r == limit_row and limit is not None and not label:
+            label = f"{limit:g}"
+        row.append(label.rjust(gutter)[:gutter], style)
+        lines.append(row)
+    return Text("\n", no_wrap=True).join(lines)
+
+
 def draw_sweep(cv: Canvas, sweep: SweepBuffer, vmin: float, vmax: float, style: str, gutter: int = 6, ticks: Iterable[float] = (), signed: bool = False, limit: float | None = None) -> None:
     """The waveform on ``cv``, leaving ``gutter`` cells at the right for the scale."""
     W = max(2, 2 * (cv.w - gutter))
@@ -267,12 +355,8 @@ def draw_response(cv: Canvas, res, title: str = "") -> None:
     ax.frame(nice_ticks(x0, x1, max(2, (ax.c1 - ax.c0) // 8)), nice_ticks(0, y1, max(2, (ax.r1 - ax.r0) // 2)), xlabel="etCO2 (mmHg)", ylabel="MV (L/min)")
     if title:
         cv.text(max(0, cv.w // 2 - len(title) // 2), 0, title, "bold")
-    from ..processing.metrics import breath_path, lowess_curve
+    from ..processing.metrics import lowess_curve
 
-    # the breaths joined in the order they were taken
-    bx, by = breath_path(res)
-    for i in range(1, len(bx)):
-        cv.line(ax.px(bx[i - 1]), ax.py(min(y1, by[i - 1])), ax.px(bx[i]), ax.py(min(y1, by[i])), "dark_sea_green4")
     if res.fit and res.rebreathing:
         # the least-squares line the slope comes from (dashed), and over it the curve (LOWESS)
         a = min(p.etco2 for p in res.rebreathing)
@@ -281,7 +365,7 @@ def draw_response(cv: Canvas, res, title: str = "") -> None:
         cv.line(ax.px(a), ax.py(f.slope * a + f.intercept), ax.px(b), ax.py(f.slope * b + f.intercept), "grey50", dash=(2, 3))
         cx, cy = lowess_curve([p.etco2 for p in res.rebreathing], [p.mv for p in res.rebreathing])
         for i in range(1, len(cx)):
-            cv.line(ax.px(cx[i - 1]), ax.py(min(y1, cy[i - 1])), ax.px(cx[i]), ax.py(min(y1, cy[i])), "bold white")
+            cv.line(ax.px(cx[i - 1]), ax.py(min(y1, cy[i - 1])), ax.px(cx[i]), ax.py(min(y1, cy[i])), "bold white", thick=True)
     for pts, ch, st in ((res.skipped, "·", "grey50"), (res.baseline, "○", "bold grey85"), (res.rebreathing, "●", "bold green3"), (res.excluded, "x", "bold red")):
         for p in pts:
             c, r = ax.cell(p.etco2, min(y1, p.mv))
@@ -330,7 +414,7 @@ def draw_trend(cv: Canvas, t: Sequence[float], v: Sequence[float], t0: float, t1
             continue
         p = (ax.px(a), ax.py(min(ymax, b)))
         if prev is not None:
-            cv.line(*prev, *p, style)
+            cv.line(*prev, *p, style, thick=True)
         prev = p
         dots.append((int(p[0]) // 2, int(p[1]) // 4))
     for c, r in dots:

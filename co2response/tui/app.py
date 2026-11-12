@@ -13,6 +13,7 @@ import math
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -28,7 +29,7 @@ from ..engine.monitor import MonitorEngine, Snapshot
 from ..processing.co2 import mmhg_to_pct
 from ..processing.metrics import co2_response_summary
 from ..sim.controls import SITUATIONS, situation_label
-from .canvas import Canvas, SweepBuffer, big_digits, digits_size, draw_response, draw_sweep, draw_trend
+from .canvas import Canvas, SweepBuffer, big_digits, digits_size, draw_response, draw_sweep, draw_trend, render_sweep_fill
 
 #: colours of the three channels, as on the desktop monitor
 COLOR = {"co2": "yellow1", "flow": "deep_sky_blue1", "pneumo": "spring_green2"}
@@ -65,8 +66,13 @@ class WavePanel(Panel):
         self.cid = cid
         self.sweep = SweepBuffer()
 
-    def draw(self, vmin: float, vmax: float, ticks, signed: bool, limit: float | None) -> None:
+    def draw(self, vmin: float, vmax: float, ticks, signed: bool, limit: float | None, style: str = "fill") -> None:
+        """``style`` "fill": a solid filled shape from eighth blocks (smooth in any font);
+        "line": a thin braille line."""
         w, h = self.area()
+        if style == "fill":
+            self.update(render_sweep_fill(self.sweep, w, h, vmin, vmax, COLOR[self.cid], ticks, signed, limit))
+            return
         cv = Canvas(w, h)
         draw_sweep(cv, self.sweep, vmin, vmax, COLOR[self.cid], ticks=ticks, signed=signed, limit=limit)
         self.update(cv.render())
@@ -84,7 +90,10 @@ class Tile(Panel):
         self.style_ = color
         self.note = ""
 
-    def set(self, value: str, title: str | None = None, style: str | None = None, note: str = "") -> None:
+    def set(self, value: str, title: str | None = None, style: str | None = None, note: str = "", alarm: str | None = None) -> None:
+        if alarm != getattr(self, "_alarm", None):
+            self._alarm = alarm
+            self.styles.border = ("heavy", alarm) if alarm else ("round", "#262626")
         self.value = value
         if title is not None:
             self.border_title = title
@@ -141,23 +150,24 @@ def draw_tiles(tiles: dict[str, Tile], s: Snapshot, flash: bool, single: bool) -
     digits = 1 if pct else 0
     co2_alarm = next((a for a in s.alarms if a.id in ("co2Stop", "co2High", "co2Low") and a.state == "active"), None)
     apnea = next((a for a in s.alarms if a.id == "apnea" and a.state == "active"), None)
-    style = None
+    # an alarm colours the digits and the tile's border (a background colour would fill
+    # the whole block behind the block digits); unacknowledged, the digits blink
+    style = alarm_col = None
     if co2_alarm:
-        style = "white on red3" if co2_alarm.priority == "high" else "black on gold1"
-        if flash and not co2_alarm.acknowledged:
-            style = "red3"
+        alarm_col = "#ff3b30" if co2_alarm.priority == "high" else "#ff9f0a"
+        style = alarm_col if not (flash and not co2_alarm.acknowledged) else COLOR["co2"]
     a = st.alarms
     stop = f"/{fmt(disp(a.stop_mm_hg))}" if a.stop_mm_hg is not None else ""
     capno = s.capno or {}
     note = "no CO2 signal" if s.stale["co2"] else f"left out ({n.rejected.split(':')[0]})" if n.rejected else f"median 3 br {fmt(disp(n.etco2_median), digits)}"
     if "etco2" in capno:
         note += f" · Capnostream {fmt(disp(capno['etco2']), digits)}"
-    tiles["etco2"].set("---" if s.stale["co2"] else fmt(disp(n.etco2), digits), f"EtCO2 {'%' if pct else 'mmHg'} · {fmt(disp(a.high_mm_hg))}{stop}", style, note)
-    rr_style = ("white on red3" if not flash or apnea.acknowledged else "red3") if apnea else None
+    tiles["etco2"].set("---" if s.stale["co2"] else fmt(disp(n.etco2), digits), f"EtCO2 {'%' if pct else 'mmHg'} · {fmt(disp(a.high_mm_hg))}{stop}", style, note, alarm_col)
+    rr_style = ("#ff3b30" if not flash or apnea.acknowledged else COLOR["co2"]) if apnea else None
     rr_note = "apnea" if apnea else "no breath detected" if n.rr != n.rr and s.status == "connected" else ""
     if "rr" in capno:
         rr_note = (rr_note + " · " if rr_note else "") + f"Capnostream {fmt(capno['rr'])}"
-    tiles["rr"].set(fmt(n.rr), "RR /min", rr_style, rr_note)
+    tiles["rr"].set(fmt(n.rr), "RR /min", rr_style, rr_note, "#ff3b30" if apnea else None)
     tiles["flow"].set("---" if s.stale["flow"] else fmt(n.flow), "Flow L/min", note="live")
     vt = "---" if s.stale["pneumo"] else fmt(n.vt)
     vt_note = f"exp {fmt(n.vte)} mL" if math.isfinite(n.vte) else ""
@@ -188,6 +198,8 @@ class StatusBar(Static):
             t.append(s.source_label, "bold")
             t.append(f" · {s.measured_rate_hz:.0f} Hz · {s.dropped} dropped", "grey62")
             t.append(f" · {'Uno R4, digital sensors' if s.hardware == 'digital' else 'ADC board'}", "grey62")
+            if not getattr(self.app, "graphics", False):
+                t.append(" · text mode", "grey50")
             if s.capno is not None:
                 t.append(" · CO2 from the Capnostream 35", "grey62")
         else:
@@ -293,6 +305,167 @@ class GraphPanel(Panel):
         self.update(cv.render())
 
 
+# ------------------------------------------------------------------ pictures (graphics mode)
+
+
+def rgb(colour) -> tuple[int, int, int]:
+    """A rich colour name or #hex as (r, g, b)."""
+    if isinstance(colour, tuple):
+        return colour
+    from . import pixels as px
+
+    # the terminal colour names stand for the browser's colours
+    web = {COLOR["co2"]: px.CO2, COLOR["flow"]: px.FLOW, COLOR["pneumo"]: px.PNEUMO, "white": px.TEXT}
+    if colour in web:
+        return web[colour]
+    from rich.color import Color
+
+    c = Color.parse(str(colour).split()[-1]).get_truecolor()
+    return (c.red, c.green, c.blue)
+
+
+def cell_pixels() -> tuple[int, int]:
+    """The size of one character cell in pixels, as the terminal reported it."""
+    try:
+        from textual_image._terminal import get_cell_size
+
+        c = get_cell_size()
+        if c.width > 0 and c.height > 0:
+            return int(c.width), int(c.height)
+    except Exception:  # noqa: BLE001
+        pass
+    return 10, 20
+
+
+class PicBox(Vertical):
+    """A panel shown as a picture (in terminals that can show images); ``text`` shows
+    text instead (the breath table)."""
+
+    DEFAULT_CSS = """
+    PicBox { padding: 0; border: none; }
+    PicBox > .pic { width: auto; height: auto; }
+    PicBox > .txt { width: 100%; height: 100%; }
+    """
+
+    def __init__(self, **kw) -> None:
+        super().__init__(**kw)
+        self._key: tuple | None = None
+        self.border_title = ""
+        self.border_subtitle = ""
+
+    def compose(self) -> ComposeResult:
+        from textual_image.widget import Image as TImage
+
+        yield TImage(classes="pic")
+        yield Static("", classes="txt")
+
+    def area(self) -> tuple[int, int]:
+        s = self.content_size
+        return max(1, s.width), max(1, s.height)
+
+    def pixels(self) -> tuple[int, int]:
+        w, h = self.area()
+        cw, ch = cell_pixels()
+        return w * cw, h * ch
+
+    def show(self, img) -> None:
+        pic: Any = self.query_one(".pic")
+        txt = self.query_one(".txt", Static)
+        txt.display = False
+        pic.display = True
+        pic.image = img
+
+    def text(self, t) -> None:
+        pic, txt = self.query_one(".pic"), self.query_one(".txt", Static)
+        pic.display = False
+        txt.display = True
+        txt.update(t)
+
+
+class PicWave(PicBox):
+    def __init__(self, cid: str, title: str, **kw) -> None:
+        super().__init__(**kw)
+        self.cid = cid
+        self.sweep = SweepBuffer()
+        self.label, _, self.unit = title.partition(" ")
+        self.tag = ""
+        self.in_alarm = False
+
+    def draw(self, vmin: float, vmax: float, ticks, signed: bool, limit: float | None, style: str = "fill") -> None:
+        w, h = self.pixels()
+        if w < 40 or h < 30:
+            return
+        from . import pixels as px
+
+        self.show(px.wave(self.sweep, w, h, vmin, vmax, rgb(COLOR[self.cid]), self.label, self.unit, ticks, signed, limit, self.tag, self.in_alarm))
+
+
+class PicTile(PicBox):
+    """A number tile as a picture, with the methods of ``Tile``."""
+
+    def __init__(self, title: str, color: str, **kw) -> None:
+        super().__init__(**kw)
+        self.color = color
+        self.alarm: str | None = None
+        self.value, self.title, self.style_, self.note = "--", title, color, ""
+
+    def set(self, value: str, title: str | None = None, style: str | None = None, note: str = "", alarm: str | None = None) -> None:
+        self.value, self.style_, self.note, self.alarm = value, style or self.color, note, alarm
+        if title is not None:
+            self.title = title
+
+    def scale_fits(self, scale: int) -> bool:
+        return True
+
+    def paint(self, scale: int) -> None:
+        w, h = self.pixels()
+        key = (w, h, self.value, self.title, self.style_, self.note, self.alarm)
+        if key == self._key or w < 40 or h < 30:
+            return
+        self._key = key
+        from . import pixels as px
+
+        head, _, limits = self.title.partition(" · ")
+        label, _, unit = head.partition(" ")
+        self.show(px.tile(w, h, label, unit, self.value, rgb(self.style_), self.note, limits.replace("/", " / "), rgb(self.alarm) if self.alarm else None))
+
+
+class PicGraph(PicBox):
+    """The trend / response panel as a picture (the breath table stays text)."""
+
+    TABS = GraphPanel.TABS
+
+    def draw(self, s: Snapshot, engine: MonitorEngine, mode: str) -> None:
+        self.border_title = "  ".join(f"[reverse] {name} [/]" if key == mode else name for key, name in self.TABS) + "   (v)"
+        w, h = self.area()
+        if mode == "breaths":
+            self.text(breath_table(engine, w, h))
+            return
+        pw, ph = self.pixels()
+        key = (pw, ph, mode, s.trend_version, int(s.now // 1000), s.settings.study_code)
+        if key == self._key or pw < 80 or ph < 60:
+            return
+        self._key = key
+        from . import pixels as px
+
+        if mode == "response":
+            self.show(px.response(pw, ph, engine.co2_response(), s.settings.study_code))
+            return
+        series = {"etco2": ("EtCO2 (mmHg)", "etco2", px.CO2), "mv": ("MV of each breath (L/min)", "mv_breath", px.FLOW)}[mode]
+        pts = engine.trend
+        now = s.now / 1000
+        t1 = max(now, pts[-1].t if pts else now)
+        t0 = t1 - max(60.0, min(30 * 60.0, t1 - (pts[0].t if pts else t1)))
+        ok = [q for q in pts if q.quality == "ok"]
+        vals = [getattr(q, series[1]) for q in ok]
+        top = max([v for v in vals if math.isfinite(v)] + [10.0])
+        ymax = max(80.0, s.settings.co2_scale_max_mm_hg) if mode == "etco2" else max(10.0, math.ceil(top * 1.2))
+        a = s.settings.alarms
+        limits = ([(a.high_mm_hg, px.ALARM_MED)] + ([(a.stop_mm_hg, px.ALARM_HIGH)] if a.stop_mm_hg is not None else [])) if mode == "etco2" else []
+        markers = [(m.t / 1000, m.label) for m in engine.markers]
+        self.show(px.trend(pw, ph, [q.t for q in ok], vals, t0, t1, ymax, series[2], series[0], limits, markers))
+
+
 # ------------------------------------------------------------------ pickers
 
 
@@ -341,6 +514,9 @@ class MonitorApp(App):
     WavePanel { width: 5fr; height: 100%; border: round #333333; border-title-color: $text; }
     .nums { width: 3fr; height: 100%; }
     Tile { width: 1fr; height: 100%; border: round #262626; background: #0d1117; border-title-style: bold; border-subtitle-color: #8b949e; }
+    PicWave { width: 5fr; height: 100%; }
+    PicTile { width: 1fr; height: 100%; }
+    PicGraph { height: 2fr; min-height: 12; }
     #t-etco2, #t-rr { border-title-color: #ffd60a; }
     #t-flow, #t-vt, #t-mv, #t-spo2 { border-title-color: #33d1f5; }
     #t-vt2, #t-mv2 { border-title-color: #57e389; }
@@ -360,19 +536,26 @@ class MonitorApp(App):
         Binding("c", "record", "Record"),
         Binding("v", "view", "Graph"),
         Binding("f", "freeze", "Freeze", show=False),
+        Binding("l", "wave_style", "Line/fill", show=False),
         Binding("a", "arm_audio", "Audio", show=False),
         Binding("h", "hardware", "Board", show=False),
         Binding("k", "capnostream", "Capnostream"),
         Binding("q", "quit", "Quit"),
     ]
 
-    def __init__(self, sim: bool = False, port: str | None = None, replay: str | None = None, situation: str | None = None, speed: float | None = None, exit_after: float | None = None) -> None:
+    def __init__(self, sim: bool = False, port: str | None = None, replay: str | None = None, situation: str | None = None, speed: float | None = None, exit_after: float | None = None, graphics: bool = False) -> None:
         super().__init__()
+        #: draw the waveforms, numbers and graphs as pictures, like the browser page
+        #: (in terminals that can show images: see ``detect_graphics``)
+        self.graphics = graphics
+        self._frame_n = 0
         self.start = (sim, port, replay, situation, speed)
         self.exit_after = exit_after
         self.engine = MonitorEngine(audio=AlarmAudio(fallback_beep=self._bell))
         self.engine.arm_audio(confirm=False)
         self.graph_mode = "response"
+        #: the waveforms: "fill" (solid, smooth) or "line" (thin braille line); the l key switches
+        self.wave_style = "fill"
         self._epoch = -1
         self._flash = False
         self._last_print = ""
@@ -387,28 +570,30 @@ class MonitorApp(App):
                 pass
 
     def compose(self) -> ComposeResult:
+        # graphics mode: the same layout with each panel drawn as a picture
+        W, T, G = (PicWave, PicTile, PicGraph) if self.graphics else (WavePanel, Tile, GraphPanel)
         yield StatusBar(id="status")
         yield AlarmBar(id="alarms")
         with Vertical(id="main"):
             with Horizontal(id="row-co2", classes="row"):
-                yield WavePanel("co2", "CO2 mmHg", id="w-co2")
+                yield W("co2", "CO2 mmHg", id="w-co2")
                 with Horizontal(classes="nums"):
-                    yield Tile("EtCO2 mmHg", COLOR["co2"], id="t-etco2")
-                    yield Tile("RR /min", COLOR["co2"], id="t-rr")
+                    yield T("EtCO2 mmHg", COLOR["co2"], id="t-etco2")
+                    yield T("RR /min", COLOR["co2"], id="t-rr")
             with Horizontal(id="row-flow", classes="row"):
-                yield WavePanel("flow", "Flow L/min", id="w-flow")
+                yield W("flow", "Flow L/min", id="w-flow")
                 with Horizontal(classes="nums"):
-                    yield Tile("Flow L/min", COLOR["flow"], id="t-flow")
-                    yield Tile("SpO2 %", "white", id="t-spo2")
-                    yield Tile("VT mL", COLOR["flow"], id="t-vt")
-                    yield Tile("MV L/min", COLOR["flow"], id="t-mv")
+                    yield T("Flow L/min", COLOR["flow"], id="t-flow")
+                    yield T("SpO2 %", "white", id="t-spo2")
+                    yield T("VT mL", COLOR["flow"], id="t-vt")
+                    yield T("MV L/min", COLOR["flow"], id="t-mv")
             with Horizontal(id="row-pneumo", classes="row"):
-                yield WavePanel("pneumo", "Pneumotach L/min", id="w-pneumo")
+                yield W("pneumo", "Pneumotach L/min", id="w-pneumo")
                 with Horizontal(classes="nums"):
-                    yield Tile("VT mL", COLOR["pneumo"], id="t-vt2")
-                    yield Tile("MV L/min", COLOR["pneumo"], id="t-mv2")
+                    yield T("VT mL", COLOR["pneumo"], id="t-vt2")
+                    yield T("MV L/min", COLOR["pneumo"], id="t-mv2")
         yield TestBar(id="test")
-        yield GraphPanel("", id="graph")
+        yield G(id="graph")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -416,10 +601,10 @@ class MonitorApp(App):
         self.w_status = self.query_one(StatusBar)
         self.w_alarms = self.query_one(AlarmBar)
         self.w_test = self.query_one(TestBar)
-        self.w_tiles = {k: self.query_one(f"#t-{k}", Tile) for k in TILES}
-        self.w_graph = self.query_one(GraphPanel)
+        self.w_tiles: dict[str, Any] = {k: self.query_one(f"#t-{k}") for k in TILES}  # Tile or PicTile
+        self.w_graph: Any = self.query_one("#graph")  # GraphPanel or PicGraph
         self._layout: tuple | None = None
-        self.w_waves = {p.cid: p for p in self.query(WavePanel)}
+        self.w_waves: dict[str, Any] = {cid: self.query_one(f"#w-{cid}") for cid in ("co2", "flow", "pneumo")}  # WavePanel or PicWave
         e = self.engine
         recovered = e.init()
         if recovered:
@@ -508,13 +693,17 @@ class MonitorApp(App):
         unit = "%" if pct else "mmHg"
         tag = f" · SIMULATED · {st.sweep_sec * k:g} s per screen" if s.source_kind == "simulator" else " · REPLAY" if s.source_kind == "replay" else ""
         panels["co2"].border_title = f"CO2 {unit}{tag}{' · FROZEN' if s.frozen else ''}"
+        panels["co2"].tag = (tag.replace(" · SIMULATED", "SIMULATED").replace(" per screen", "/screen").replace(" · REPLAY", "REPLAY") + (" · FROZEN" if s.frozen else "")).strip(" ·")
+        self._frame_n += 1
+        if self.graphics and self._frame_n % 2:
+            return  # pictures: about 6 a second is smooth, and cheaper to send
         ticks = [0, 2, 4, 6, 8, 10] if pct else [0, 20, 40, 60, 80]
         lim = st.alarms.high_mm_hg
-        panels["co2"].draw(0, co2_max, [t for t in ticks if t <= co2_max], False, mmhg_to_pct(lim, pb, wv) if pct else lim)
+        panels["co2"].draw(0, co2_max, [t for t in ticks if t <= co2_max], False, mmhg_to_pct(lim, pb, wv) if pct else lim, self.wave_style)
         fs = st.flow_scale_lpm
         for cid in ("flow", "pneumo"):
             if panels[cid].display:
-                panels[cid].draw(-fs, fs, [-fs, 0, fs], True, None)
+                panels[cid].draw(-fs, fs, [-fs, 0, fs], True, None, self.wave_style)
 
     # ---------- keys
 
@@ -652,6 +841,10 @@ class MonitorApp(App):
 
         self.push_screen(Picker("Capnostream 35 as the CO2 source", opts, note), done)
 
+    def action_wave_style(self) -> None:
+        self.wave_style = "line" if self.wave_style == "fill" else "fill"
+        self.notify("Waveforms: " + ("solid fill" if self.wave_style == "fill" else "thin line"), timeout=2)
+
     def action_view(self) -> None:
         order = ["response", "etco2", "mv", "breaths"]
         self.graph_mode = order[(order.index(self.graph_mode) + 1) % len(order)]
@@ -688,8 +881,31 @@ def write_report(csv_path: Path) -> Path | None:
         return None
 
 
-def run(sim: bool = False, port: str | None = None, replay: str | None = None, situation: str | None = None, speed: float | None = None, exit_after: float | None = None) -> int:
-    app = MonitorApp(sim=sim, port=port, replay=replay, situation=situation, speed=speed, exit_after=exit_after)
+def detect_graphics(mode: str = "auto") -> str | None:
+    """Can this terminal show pictures? Returns the protocol ("sixel" or "kitty"), or None.
+
+    ``mode`` "off" never draws pictures, "on" draws them even where no protocol was found
+    (the image library then falls back to coloured half blocks), "auto" draws them where
+    the terminal says it can: Sixel (iTerm2, VS Code with images on, WezTerm, Windows
+    Terminal, foot, xterm -ti vt340) or Kitty's graphics protocol (Kitty, Ghostty). The
+    terminal is asked once, before the full-screen display starts."""
+    if mode == "off":
+        return None
+    try:
+        import textual_image.widget  # noqa: F401  (asks the terminal for its cell size)
+        from textual_image import renderable as r
+    except Exception:  # noqa: BLE001  (not installed, or the terminal did not answer)
+        return "halfcell" if mode == "on" else None
+    if r.Image is r.SixelImage:
+        return "sixel"
+    if r.Image is r.TGPImage:
+        return "kitty"
+    return "halfcell" if mode == "on" else None
+
+
+def run(sim: bool = False, port: str | None = None, replay: str | None = None, situation: str | None = None, speed: float | None = None, exit_after: float | None = None, graphics: str = "auto") -> int:
+    proto = detect_graphics(graphics)
+    app = MonitorApp(sim=sim, port=port, replay=replay, situation=situation, speed=speed, exit_after=exit_after, graphics=proto is not None)
     app.run()
     if app._last_print:
         print(app._last_print)

@@ -16,6 +16,8 @@ dependencies = [
     "websockets>=11",
     "sounddevice>=0.4.6",
     "textual>=0.80",
+    "textual-image>=0.8",
+    "pillow>=10",
 ]
 
 [project.optional-dependencies]

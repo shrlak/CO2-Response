@@ -332,10 +332,11 @@ def response_labels(res: CO2Response) -> tuple[str, str]:
     return fit, base
 
 
-def lowess_curve(xs: Sequence[float], ys: Sequence[float], frac: float = 0.6, iters: int = 2, n_out: int = 48) -> tuple[list[float], list[float]]:
+def lowess_curve(xs: Sequence[float], ys: Sequence[float], frac: float = 0.85, iters: int = 2, n_out: int = 48) -> tuple[list[float], list[float]]:
     """A curve through the points that may bend: LOWESS (locally weighted scatterplot
     smoothing, Cleveland 1979). Around each point a straight line is fitted by weighted
-    least squares to the nearest ``frac`` of the points (tricube weights), and ``iters``
+    least squares to the nearest ``frac`` of the points (tricube weights; 85 % by default,
+    so the curve bends only with the overall shape, not breath by breath), and ``iters``
     robust passes down-weight points far from the curve (bisquare weights), so a single
     erratic breath does not drag it. Returns the curve at ``n_out`` EtCO2 values across
     the points' range; empty when there are fewer than 4 points or no spread in EtCO2."""
@@ -373,9 +374,3 @@ def lowess_curve(xs: Sequence[float], ys: Sequence[float], frac: float = 0.6, it
     grid = np.linspace(x[0], x[-1], n_out)
     return grid.tolist(), [at(v) for v in grid]
 
-
-def breath_path(res: CO2Response) -> tuple[list[float], list[float]]:
-    """Every plotted breath (baseline, rebreathing, outside the fit, taken out by hand)
-    in the order they were taken, for joining the dots."""
-    every = sorted(res.baseline + res.rebreathing + res.skipped + res.excluded, key=lambda p: p.t if math.isfinite(p.t) else 0.0)
-    return [p.etco2 for p in every], [p.mv for p in every]

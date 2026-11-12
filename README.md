@@ -78,11 +78,22 @@ co2response --update
 
 The whole monitor is drawn in the terminal, so it works in the terminal panel of VS Code or any other editor:
 
-- the CO2 and flow waveforms, sweeping like a bedside monitor
+- the CO2 and flow waveforms, sweeping like a bedside monitor, drawn as solid filled shapes (eight height steps per text row, no gaps between dots)
 - EtCO2 in large digits, RR, live flow, VT and MV, with alarm colours, and the alarm messages above
 - the test phase and timer
-- the **ventilatory response graph**: each breath's own minute ventilation against its EtCO2, baseline breaths hollow (○), rebreathing breaths filled (●), the fitted line, and the labels "Response slope = … (L/min)/mmHg · r = …" and "Baseline Ave = … mmHg · MV = … L/min"
+- the **ventilatory response graph**: each breath's own minute ventilation against its EtCO2, baseline breaths hollow (○), rebreathing breaths filled (●), a smooth fitted curve (LOWESS) with the least-squares line dashed under it, and the labels "Response slope = … (L/min)/mmHg · r = …" and "Baseline Ave = … mmHg · MV = … L/min"
 - a table of the last breaths: EtCO2, VT, the breath's own RR and MV (MV = VT × RR = VT × 60 / breath length)
+
+**Pictures, like the web page.** In a terminal that can show images, the waveforms, the number tiles and the graphs are drawn as smooth pictures in the web page's colours and font (Barlow), instead of with text characters. The app finds out by itself (`--graphics auto`, the default). These terminals can:
+
+| Terminal | Pictures |
+| --- | --- |
+| iTerm2 (macOS) | yes |
+| VS Code's terminal | yes, after turning on **Settings > Terminal › Integrated: Enable Images** (`"terminal.integrated.enableImages": true`) |
+| Windows Terminal (1.22 or later), WezTerm, Kitty, Ghostty, foot | yes |
+| macOS Terminal.app, the Windows console host, tmux/screen | no: the text drawing is used |
+
+`--graphics off` always uses text, and `--graphics on` draws pictures even where the terminal did not say it can (in coloured half blocks if it has no image protocol). The status bar says "text mode" when pictures are off. Over SSH, pictures work if the terminal on your own computer can show them.
 
 | Key | Does |
 | --- | --- |
@@ -93,6 +104,7 @@ The whole monitor is drawn in the terminal, so it works in the terminal panel of
 | `m`, `space`, `c` | Mark an event, silence alarms, start/stop recording (stopping also writes the PDF report next to the CSV) |
 | `v` | The graph: ventilatory response, EtCO2 trend, MV trend |
 | `k` | Capnostream 35 as the CO2 source: a serial port, simulated, or off |
+| `l` | In text mode: waveforms as a solid filled shape (smooth in any terminal font; the default) or a thin line |
 | `f`, `a`, `h`, `q` | Freeze the waveforms, arm the alarm sound, switch the expected board, quit |
 
 `co2response-tui --situation test_normal --speed 10` starts a whole simulated test straight away, and `co2response-tui --port COM3` (or `/dev/ttyACM0`, `/dev/cu.usbmodem…`) connects to the Arduino.
