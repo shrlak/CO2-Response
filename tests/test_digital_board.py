@@ -260,14 +260,19 @@ def test_terminal_monitor_runs_a_whole_test(tmp_path, monkeypatch):
             graph = app.query_one(GraphPanel).render()
             assert "Response slope" in str(graph) or e.co2_response().fit is None
             assert app.query_one("#w-pneumo").display is False  # one flow sensor: one flow waveform
-            # every number in block digits of one size, as large as EtCO2's
+            # every number drawn in the browser's font, one size for all, as large as EtCO2's
             from co2response.tui.app import on_screen
+            from co2response.tui.cells import CH, GLYPHS
 
             tiles = {t.id: t for t in app.query(Tile) if on_screen(t)}
             assert set(tiles) == {"t-etco2", "t-rr", "t-flow", "t-vt", "t-mv"}
-            heights = {k: len(str(t.render()).strip("\n").splitlines()) for k, t in tiles.items()}
-            assert len(set(heights.values())) == 1 and min(heights.values()) >= 5, heights
-            assert "█" in str(tiles["t-mv"].render()) and "█" in str(tiles["t-rr"].render())
+            sizes = {k: t._key[-1] for k, t in tiles.items()}
+            assert len(set(sizes.values())) == 1 and min(sizes.values()) >= 2 * CH, sizes
+            for k in ("t-mv", "t-rr"):
+                drawn = str(tiles[k].render())
+                assert any(g in drawn for g in GLYPHS), k  # smooth edges from block characters
+            # the waveforms as a smooth line, by default
+            assert app.wave_style == "line" and any(g in str(app.query_one("#w-flow").render()) for g in GLYPHS)
             await pilot.press("v")
             await pilot.pause(0.4)
             assert "[reverse] ETCO2 TREND [/" in app.query_one(GraphPanel).border_title  # the tab showing, highlighted
@@ -280,6 +285,38 @@ def test_terminal_monitor_runs_a_whole_test(tmp_path, monkeypatch):
             await pilot.press("q")
 
     asyncio.run(go())
+
+
+def test_smooth_text_drawing(monkeypatch):
+    # terminals without pictures: lines and digits from block characters, fitted to the picture
+    from rich.console import Console
+
+    from co2response.tui import cells
+    from co2response.tui.app import detect_graphics
+    from co2response.tui.canvas import Canvas, SweepBuffer
+
+    sw = SweepBuffer(400)
+    sw.push([20 * math.sin(i / 20) for i in range(380)])
+    for blend in (True, False):
+        monkeypatch.setattr(cells, "BLEND", blend)
+        for gap in ((0.0, 0.0), (3 / 16, 1 / 16)):
+            cells.set_gap(*gap)
+            t = cells.wave(sw, 60, 8, -30, 30, (56, 217, 245), [-30, 0, 30], True, None)
+            lines = str(t).split("\n")
+            assert len(lines) == 8 and all(len(x) == 60 for x in lines)
+            assert sum(ch in cells.GLYPHS for ch in str(t)) > 30  # a line, not dots
+            assert "+30" in lines[0] or "+30" in lines[1]
+            n = cells.number("38", 16, 6, (255, 214, 10))
+            assert sum(ch in cells.GLYPHS for ch in str(n)) > 4
+            styles = {seg.style.bgcolor.triplet for seg in n.render(Console()) if seg.style and seg.style.bgcolor}
+            assert (255, 214, 10) in {tuple(c) for c in styles} or any(c[0] > 200 for c in styles)  # inside the digits: their colour fills the cell
+            cv = Canvas(40, 10, smooth=True)
+            cv.line(0, 0, 79, 39, "bold white", thick=True)
+            cv.text(1, 1, "label", "bold")
+            assert "label" in str(cv.render())
+    cells.set_gap(0, 0)
+    monkeypatch.setenv("TERM_PROGRAM", "Apple_Terminal")
+    assert detect_graphics("auto") is None  # no question sent to macOS Terminal
 
 
 def test_terminal_pictures_look_like_the_web(tmp_path, monkeypatch):
@@ -405,4 +442,6 @@ def test_update_pulls_a_repository_copy_or_reinstalls_from_github(monkeypatch, c
     assert update(run=lambda cmd: calls.append(cmd) or 0) == 0
     assert len(calls) == 2 and "--force-reinstall" in calls[0] and calls[0][-1].endswith(f"@ git+{REPO_URL}")
     assert "co2response" in calls[1][-1] and "--force-reinstall" not in calls[1]
-    assert "Updated" in capsys.readouterr().out
+    assert all("--quiet" in c for c in calls)  # pip's long log stays out of the way
+    out = capsys.readouterr().out
+    assert "Updated" in out and len(out.splitlines()) <= 4
