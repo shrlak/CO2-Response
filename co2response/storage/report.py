@@ -19,7 +19,7 @@ import math
 from dataclasses import dataclass, field
 
 from ..jsfmt import iso_ms
-from ..processing.metrics import CO2Response, TestWindow, co2_response, normalized_slopes, response_labels, test_window
+from ..processing.metrics import CO2Response, TestWindow, co2_response, normalized_slopes, response_curve, response_labels, test_window
 from .pdf import LETTER, Pdf, text_width
 from .session_file import ParsedSession, SessionSummary, session_markers, summarize
 
@@ -37,12 +37,17 @@ def _json(s: ParsedSession, key: str) -> dict:
 def session_response(s: ParsedSession, skip_sec: float | None = None) -> CO2Response:
     """The CO2 response of a recorded session. ``skip_sec`` defaults to what the
     recording's header says (0 for files from before it was recorded)."""
+    test = _json(s, "test")
     if skip_sec is None:
-        v = _json(s, "test").get("responseSkipSec")
+        v = test.get("responseSkipSec")
         skip_sec = float(v) if isinstance(v, (int, float)) else 0.0
+    # the calibration at the start of rebreathing, as the recording's header says (none before it was recorded)
+    cb, cs = test.get("calibrationBreaths"), test.get("calibrationSec")
+    cal_breaths = int(cb) if isinstance(cb, (int, float)) and not isinstance(cb, bool) else 0
+    cal_sec = float(cs) if isinstance(cs, (int, float)) and not isinstance(cs, bool) else 0.0
     out = {b.n for b in s.breaths if b.quality == "excluded"}
     pts = ((b.time_s, b.etco2, b.mv_breath, b.n) for b in s.breaths if b.quality in ("ok", "", "excluded"))
-    return co2_response(pts, test_window(session_markers(s.events)), skip_sec, lambda k: k in out)
+    return co2_response(pts, test_window(session_markers(s.events)), skip_sec, lambda k: k in out, cal_breaths, cal_sec)
 
 
 def spo2_stats(summary: SessionSummary) -> list[tuple[str, str]]:
@@ -187,7 +192,16 @@ def result_lines(r: Report) -> list[tuple[str, str]]:
     sm = r.summary
     left = [f"{sm.rejected} rejected by the noise screen"]
     if res.skipped:
-        why = ([f"first {res.skip_sec:g} s of rebreathing"] if res.skip_sec else []) + (["after the end of the test"] if w.end is not None else [])
+        why = []
+        inside = [p for p in res.calibration if w.start is not None and p.t < w.start + res.skip_sec]
+        if res.skip_sec:
+            # the calibration is the start of those seconds when it is no longer than them
+            more = f", including the {len(inside)} calibration breaths" if inside and len(inside) == len(res.calibration) else ""
+            why.append(f"first {res.skip_sec:g} s of rebreathing{more}")
+        if res.calibration and len(inside) != len(res.calibration):
+            why.append(f"{len(res.calibration)} calibration breaths at the start of rebreathing")
+        if w.end is not None:
+            why.append("after the end of the test")
         left.append(f"{len(res.skipped)} not fitted ({' and '.join(why)})")
     if res.excluded:
         left.append(f"{len(res.excluded)} excluded by hand")
@@ -291,7 +305,11 @@ def _response_plot(pdf: Pdf, r: Report, x: float, y: float, w: float, h: float) 
         pdf.cross(ax.px(p.etco2), ax.py(p.mv), 3, _RED, 1.1)
     if res.fit:
         a, b = min(p.etco2 for p in res.rebreathing), max(p.etco2 for p in res.rebreathing)
-        pdf.line(ax.px(a), ax.py(res.fit.slope * a + res.fit.intercept), ax.px(b), ax.py(res.fit.slope * b + res.fit.intercept), 1.6)
+        # the straight least-squares line the slope comes from, dashed, and over it the smooth curve
+        pdf.line(ax.px(a), ax.py(res.fit.slope * a + res.fit.intercept), ax.px(b), ax.py(res.fit.slope * b + res.fit.intercept), 1.1, _GREY, (4, 3))
+        cx, cy = response_curve([p.etco2 for p in res.rebreathing], [p.mv for p in res.rebreathing])
+        for i in range(len(cx) - 1):
+            pdf.line(ax.px(cx[i]), ax.py(cy[i]), ax.px(cx[i + 1]), ax.py(cy[i + 1]), 1.8)
     # the labels of the lab's figures: the slope and r up by the line, the baseline by its breaths
     fit_label, base_label = response_labels(res)
     for i, part in enumerate(fit_label.split(" · ") if fit_label else []):
@@ -303,7 +321,7 @@ def _response_plot(pdf: Pdf, r: Report, x: float, y: float, w: float, h: float) 
             pdf.text(max(x + 4, bx - 4), by + 11 * i, part, 8.5, "bold" if i == 0 else "regular")
     # legend
     lx, ly = x + 8, y + 12
-    items = [("fitted", "dot")] + ([("baseline (averaged)", "ring")] if res.baseline else []) + ([("not fitted", "faint")] if res.skipped else []) + ([("excluded by hand", "cross")] if res.excluded else [])
+    items = [("fitted", "dot")] + ([("baseline (averaged)", "ring")] if res.baseline else []) + ([("calibration / not fitted" if res.calibration else "not fitted", "faint")] if res.skipped else []) + ([("excluded by hand", "cross")] if res.excluded else [])
     for text, kind in items:
         if kind == "dot":
             pdf.circle(lx, ly - 3, 2.8, stroke=None, fill=_GREEN)

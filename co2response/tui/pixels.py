@@ -217,9 +217,9 @@ class Axes:
 
 def response(w: int, h: int, res, title: str = "") -> Image.Image:
     """Each breath's MV against its EtCO2, as the browser draws it: rebreathing breaths
-    filled, baseline breaths as rings, the smooth curve (LOWESS) over the dashed
+    filled, baseline breaths as rings, the smooth curve (robust monotone P-spline) over the dashed
     least-squares line, and the labels of the lab's figures."""
-    from ..processing.metrics import lowess_curve, response_labels
+    from ..processing.metrics import response_curve, response_labels
 
     p = Pic(w, h, PANEL)
     reb, base, skip, out, fit = res.rebreathing, res.baseline, res.skipped, res.excluded, res.fit
@@ -244,7 +244,7 @@ def response(w: int, h: int, res, title: str = "") -> Image.Image:
     if fit and reb:
         a, b = min(q.etco2 for q in reb), max(q.etco2 for q in reb)
         p.dashed(ax.px(a), ax.py(fit.slope * a + fit.intercept), ax.px(b), ax.py(fit.slope * b + fit.intercept), MUTED, 1.6, 7, 6)
-        cx, cy = lowess_curve([q.etco2 for q in reb], [q.mv for q in reb])
+        cx, cy = response_curve([q.etco2 for q in reb], [q.mv for q in reb])
         p.line([(ax.px(u), ax.py(v)) for u, v in zip(cx, cy)], TEXT, 3)
     fit_text, base_text = response_labels(res)
     lx, ly = ax.left + 12, ax.top + 22

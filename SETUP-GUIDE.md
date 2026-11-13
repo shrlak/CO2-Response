@@ -383,6 +383,8 @@ Alarms **latch**: after the condition clears, the alarm stays as "resolved" unti
 
 **Old LabChart recordings.** **Settings → Data & recordings → Import** also takes a LabChart (PowerLab) text export (`.txt`: in LabChart, File → Export → Text, with the time column and comments included). It needs a flow channel and a CO2 channel; the app works out the breaths, the response and the report from them. Check the first one against LabChart's own numbers.
 
+**Capnostream data exported after the study.** If the monitor's CO2 cannot be streamed live, export its data to a text/CSV file after the study and put it together with the Arduino recording: `co2response --merge-capno study.csv monitor-export.txt`. Hold your breath for about 10 s near the start of every study; it lets the program line the two clocks up without guessing. It says how it lined them up and whether it is sure. See [docs/capnostream.md](docs/capnostream.md).
+
 If the app closes or the computer crashes while recording, the file is kept up to the last second; the next time the app starts it lists it as **Recovered**.
 
 ---
@@ -406,7 +408,7 @@ If the app closes or the computer crashes while recording, the file is kept up t
 | No alarm sound | No sound output found (on Linux: PortAudio missing), system volume muted, or sound going to another output | Check the computer's volume and output device (on Linux `sudo apt install libportaudio2`), press **Arm audio**, then **Test alarm** |
 | Cannot find the recording file | It is in the sessions folder, not Downloads | **Settings → Data & recordings → Open folder**, or **Export → Whole session** to save a copy anywhere |
 | The Arduino's buzzer sounds | The app's heartbeat stopped for 3 s: the app closed without Disconnect, froze, the computer slept, or the browser tab is in the background | Bring the app back to the front or restart it; the buzzer stops at the next heartbeat. To switch the watchdog off, set `WATCHDOG_TIMEOUT_MS 0` in `config.h` |
-| The response line looks wrong | The markers are missing or misplaced, or erratic breaths are in the fit | Check the markers in **Data & recordings → Event markers** (labels can be edited). Click erratic breaths in the plot to take them out. The first seconds left out are set by **Leave out the start of rebreathing** |
+| The response line looks wrong | The markers are missing or misplaced, or erratic breaths are in the fit | Check the markers in **Data & recordings → Event markers** (labels can be edited). Click erratic breaths in the plot to take them out. The first seconds left out are set by **Leave out the start of rebreathing**, and the calibration at the start by **Calibration at the start** (breaths and seconds) |
 | The computer went to sleep | OS power settings | Set the computer to never sleep, and keep it on mains through an isolator or on battery as your safety plan allows |
 
 Still stuck? **Settings → Diagnostics** shows the last raw lines from the Arduino and the session log. **Save session log** in **Data & recordings** saves it to share.

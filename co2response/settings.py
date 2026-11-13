@@ -189,6 +189,13 @@ class TestSettings:
     #: breaths in the first seconds after the Rebreathing marker (the coached deep
     #: breaths, and the bag, lungs and blood coming to equilibrium) are not fitted
     response_skip_sec: float = 30
+    #: calibration at the start of rebreathing: the first breaths (at least this many) and
+    #: seconds (at least this long) after the Rebreathing marker are watched to settle the
+    #: starting point, shown but not fitted; the response is recorded after them. The
+    #: calibration is part of the left-out start: whichever of it and ``response_skip_sec``
+    #: lasts longer decides where the fit begins. 0 and 0 = no calibration.
+    calibration_breaths: int = 4
+    calibration_sec: float = 15
     height_cm: float | None = None
     weight_kg: float | None = None
     age_years: float | None = None
@@ -364,6 +371,8 @@ def sanitize_test(t: TestSettings) -> TestSettings:
     return dataclasses.replace(
         t,
         response_skip_sec=_clamp(t.response_skip_sec, 0, 300, 30),
+        calibration_breaths=int(round(_clamp(t.calibration_breaths, 0, 20, 4))),
+        calibration_sec=_clamp(t.calibration_sec, 0, 120, 15),
         height_cm=opt(t.height_cm, 30, 250),
         weight_kg=opt(t.weight_kg, 1, 400),
         age_years=opt(t.age_years, 0, 120),

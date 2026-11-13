@@ -66,6 +66,26 @@ co2response-tui --sim --capnostream sim
 
 The simulator then sends its CO2 through a simulated Capnostream: `CO2=…` lines 20 times a second, 2.7 s late, and `ETCO2=… RR=… SPO2=… PR=…` once a second. They go through the same decoder and merge as a real monitor's lines. In the desktop app, choose **Simulated** in **Settings > Connection > Capnostream 35** and start the simulator.
 
+## After the study: the monitor's export file
+
+If the monitor's data cannot be streamed live (no cable, or its protocol is not available), record the flow with the Arduino as usual, watch the CO2 on the Capnostream's own screen for safety, and **export the monitor's data to a text/CSV file afterwards**. The file and the Arduino recording are then put together into one ordinary session, so the breaths, EtCO2, VT, MV, the response graph and the report are worked out exactly as for a live recording.
+
+```bash
+co2response --merge-capno study.csv monitor-export.txt --out study-with-co2.csv
+```
+
+(`study.csv` is the Arduino's session file; the new file is written next to it unless `--out` says otherwise, and the original is not changed.) In the library, `SessionLibrary.merge_capnostream(session_id, export_text, name)` stores the result beside the recording.
+
+- **Two kinds of export are understood**, told apart by how fast the CO2 column is sampled:
+  - **Waveform** (5 Hz or faster, normally 20 Hz): the monitor's CO2 goes into the CO2 channel as in the live path.
+  - **Trend** (an EtCO2 value about once a second or once a breath): there is no waveform, so each breath, found from the flow, takes the monitor's EtCO2 for that breath. FiCO2 is not available and partial breaths cannot be recognised from a CO2 plateau. Check a few breaths against the monitor's screen.
+- **The layout is found from the column names** (`Time`, `CO2`, `EtCO2`, `RR`, `SpO2`, …; units from `(mmHg)` in a name). Lines above the header, which may hold patient details, are skipped and never copied. If the file has no header, give the columns in order with `--capno-fields "time,co2,etco2,rr"`, and the unit with `--capno-units` when it is not mmHg (values that look like % or kPa are refused until you say which).
+- **Lining the two recordings up.** The two clocks are not the same, so the merge looks for the shift (clock difference plus the 2.7 s sample line) that makes the monitor's CO2 high while the flow is expiratory, searching 300 s either side of "both started together" (`--capno-search`). It reports the shift and how sure it is.
+  - **Regular breathing fits almost as well a whole breath out.** When that happens the merge says the lining up is *ambiguous*, uses the candidate nearest where you expect it, and names the others. Two ways to settle it: give how many seconds before the Arduino the monitor was started (`--capno-start-offset 12`), or **hold your breath for about 10 s near the start of every study**, which no other breath can imitate. If you already know the shift, give it (`--capno-shift`) and no search is done.
+  - A trend has no waveform to compare, so its lining up uses the monitor's respiratory rate against the one worked out from the flow when that is distinctive enough. Otherwise the recordings are assumed to have started together (moved by `--capno-start-offset`), with a warning.
+- **What is written.** A new v4 session file: the flow exactly as recorded, the monitor's CO2 in the CO2 channel (the header says `capnostream_export`, the shift and how it was found, and the source line says the CO2 came from an export), the markers kept, the alarms of the original recording left behind (they were computed without this CO2).
+- **Not tried on a real export.** The tests build exports from the sample session in several layouts (CSV and tab separated, elapsed and clock times, mmHg, % and kPa, waveform and trend). Send one real export, and the reader can be fitted to it ([open question 44](open-questions.md)).
+
 ## What you see
 
 - The CO2 waveform, EtCO2 and the alarms come from the Capnostream's CO2.

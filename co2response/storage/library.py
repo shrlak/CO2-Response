@@ -252,6 +252,25 @@ class SessionLibrary:
         self.put(rec)
         return rec, parsed
 
+    def merge_capnostream(self, sid: str, export_text: str, export_name: str = "", **options):
+        """Put a Capnostream export's CO2 together with a recording's flow and store the
+        result as a new session beside it (the recording is not changed).
+
+        ``options`` are those of ``merge_capnostream_export`` (``shift_s``, ``fields``,
+        ``units``, ``delay_s``, ``start_offset_s``, ``search_s``). Returns the new record,
+        the parsed session and the merge's result (shift, how it was found, warnings).
+        Nothing is stored if the merge fails."""
+        from .. import __version__
+        from .capno_export import merge_capnostream_export
+
+        rec = self.get(sid)
+        if rec is None:
+            raise ValueError("That recording is not in the library.")
+        res = merge_capnostream_export(self.parse(sid), export_text, app_version=__version__, **options)
+        name = f"{Path(rec.file_name).stem} + Capnostream.csv"
+        new, parsed = self._import_converted(res.text, name)
+        return new, parsed, res
+
     def recover_interrupted(self, now: float | None = None) -> Records:
         """Recordings left in 'recording' state by an app that closed or crashed.
         Anything not written to for 15 s is marked interrupted; its data is kept."""

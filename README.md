@@ -81,7 +81,7 @@ The whole monitor is drawn in the terminal, so it works in the terminal panel of
 - the CO2 and flow waveforms, sweeping like a bedside monitor, as thin smooth lines like the web page's
 - EtCO2, RR, live flow, VT and MV in large digits in the web page's font, all one size, with alarm colours, and the alarm messages above
 - the test phase and timer
-- the **ventilatory response graph**: each breath's own minute ventilation against its EtCO2, baseline breaths hollow (○), rebreathing breaths filled (●), a smooth fitted curve (LOWESS) with the least-squares line dashed under it, and the labels "Response slope = … (L/min)/mmHg · r = …" and "Baseline Ave = … mmHg · MV = … L/min"
+- the **ventilatory response graph**: each breath's own minute ventilation against its EtCO2, baseline breaths hollow (○), rebreathing breaths filled (●), a smooth curve with the least-squares line dashed under it (the curve is a robust, monotone penalized spline whose smoothness is chosen from the breaths themselves; erratic breaths do not drag it and it never runs the wrong way; the PDF report draws the same curve), and the labels "Response slope = … (L/min)/mmHg · r = …" and "Baseline Ave = … mmHg · MV = … L/min"
 - a table of the last breaths: EtCO2, VT, the breath's own RR and MV (MV = VT × RR = VT × 60 / breath length)
 
 **Pictures, like the web page.** In a terminal that can show images, the waveforms, the number tiles and the graphs are drawn as smooth pictures in the web page's colours and font (Barlow), instead of with text characters. The app finds out by itself (`--graphics auto`, the default). These terminals can:
@@ -177,6 +177,7 @@ python -m co2response --sim
 | `python -m co2response --tui --sim` | The monitor full-screen in the terminal (the same as `co2response-tui --sim`). Without PySide6 installed, `python -m co2response` opens this by itself. |
 | `python -m co2response --situation test_normal --speed 10` | Starts the simulator in a situation (`--list-situations` lists them) at a speed from 1 to 50. |
 | `python -m co2response --fast-test normal` | A whole simulated test with no window in about a second: the session, its PDF report and the graph in the terminal. `--variability 15` sets the breath-to-breath variation, `--sessions DIR` where it is saved. |
+| `python -m co2response --merge-capno rec.csv export.txt` | The offline path for a Capnostream 35: put the CO2 of an exported file together with an Arduino recording's flow into a new session file (`--capno-shift`, `--capno-start-offset`, `--capno-fields`, `--capno-units`, `--out`). See [docs/capnostream.md](docs/capnostream.md). |
 | `python -m co2response --capnostream COM5` | Take the CO2 from a Capnostream 35 on that port (saved; `off` turns it off, `sim` uses a simulated one with `--sim`). `--capture COM5` records what the monitor sends, to set up its format. See [docs/capnostream.md](docs/capnostream.md). |
 | `python -m co2response --board analog` | Expect (and simulate) the ADC board instead of the Uno R4 board, and remember that. |
 | `python -m co2response --version` | Prints the version. |
@@ -536,7 +537,8 @@ A flow dropout shorter than 0.5 s is bridged with the last valid value instead o
 | --- | --- |
 | Before the **Baseline** marker (or the end of an earlier test) | Not used |
 | From there to the **Rebreathing** marker | The baseline: averaged, not fitted |
-| The first 30 s of rebreathing (**Leave out the start of rebreathing** in Data & recordings) | Drawn faintly, not fitted: the coached deep breaths, and the bag, lungs and blood coming to equilibrium |
+| The calibration at the start of rebreathing (**Calibration at the start** in Data & recordings: the first 4 breaths and 15 s) | Watched, drawn faintly, not fitted. The status line says `CALIBRATING: breath 2 of 4`, then the response is recorded (`RECORDING RESPONSE`) |
+| The first 30 s of rebreathing (**Leave out the start of rebreathing** in Data & recordings) | Drawn faintly, not fitted: the coached deep breaths, and the bag, lungs and blood coming to equilibrium. The calibration is part of this: the longer of the two decides where the fit begins |
 | The rest of rebreathing | Fitted |
 | From the **End of test** marker on | Drawn faintly, not fitted: recovery |
 | Rejected by the noise screen | Not drawn, not fitted |
@@ -597,7 +599,7 @@ The automatic stop is a backstop, not a replacement for watching the subject: it
 
 **Recording.** **Record** writes one CSV per session, `co2r_<study code>_<YYYYMMDD-HHMMSS>.csv`, every second, so a crash loses at most a second. An unfinished file is listed as **Recovered** next time. The file contains:
 
-- `#` metadata lines: the study code, start time, firmware, sample rate, the calibration, processing and alarm settings in use, and the test settings (seconds left out of the fit; the subject's height, weight and age if entered)
+- `#` metadata lines: the study code, start time, firmware, sample rate, the calibration, processing and alarm settings in use, and the test settings (seconds left out of the fit, the calibration at the start of rebreathing; the subject's height, weight and age if entered)
 - then one row per sample, with 25 columns:
   - time on both clocks, device ms, sequence number
   - raw volts `v0`–`v2` (and `v3`, the oximeter's, when an SpO2 channel is connected)
@@ -746,6 +748,7 @@ co2response/                    the monitor (python -m co2response)
     recorder.py                 writes the session as it is recorded
     library.py                  the sessions folder: list, import, recover, delete
     labchart.py                 reads a LabChart (PowerLab) text export and turns it into a session
+    capno_export.py             puts a Capnostream 35's exported CO2 (a file, after the study) together with an Arduino recording's flow
   engine/
     monitor.py                  the engine: everything between the source and the screen
     link_test.py                the hardware check
@@ -923,7 +926,7 @@ These are placeholders until the [open questions](docs/open-questions.md) are an
 - **ADC:** ADS1115 at I2C address 0x48, PGA ±6.144 V, 5 V supply (rails at 0 and 5 V).
 - **Arduino:** Uno by default (Mega and Nano also build). **Sample rate:** 100 Hz per channel.
 - **Alarm defaults:** warning at 60 mmHg and stop at 65 mmHg (the team's design; CHOP ends the test at 60 to 65), low off, 2-breath delay for the warning, 0.5 s for the stop, 2 mmHg hysteresis, 120 s silence, apnea after 20 s, keyed on EtCO2 per breath, rebreathing time limit 5 min.
-- **Response analysis:** the first 30 s of rebreathing are left out of the fit; the baseline is "steady" at 6 or more breaths in a minute with EtCO2 SD ≤ 1.5 mmHg and MV variation ≤ 20 %. Both are assumptions to confirm with CHOP and the mentors.
+- **Response analysis:** the first 30 s of rebreathing are left out of the fit, and the first 4 breaths / 15 s are a calibration (watched, not fitted); the baseline is "steady" at 6 or more breaths in a minute with EtCO2 SD ≤ 1.5 mmHg and MV variation ≤ 20 %. Both are assumptions to confirm with CHOP and the mentors.
 - **Volumes:** as measured (no BTPS correction, no bag-gas factor) unless switched on. Which convention to report is a clinical decision.
 - **Noise screen:** signal-to-noise ratio of 8, a plateau over 10 % of expiration, and outliers over 5 mmHg. These were tuned on simulated data. Check them against real recordings with `--all-breaths` and adjust them in `co2response/processing/denoise.py` if real breaths are being left out.
 - **Barometric pressure:** 760 mmHg default; Pittsburgh is usually near 735 mmHg. Set the lab's value in Display & units.
