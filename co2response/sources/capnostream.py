@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
 from ..processing.co2 import mmhg_to_pct
-from ..protocol import format_data_line, parse_line
+from ..protocol import DataLine, InfoLine, format_data_line, parse_line
 from .base import Source, SourceItem, StatusEvent, ThreadedSource
 
 NOT_ANSWERING = 9999.0
@@ -180,6 +180,7 @@ class CapnostreamSource(ThreadedSource):
     def _read_loop(self) -> None:
         buf = ""
         ser = self._ser
+        assert ser is not None  # opened by start()
         try:
             while not self._closing:
                 data = ser.read(max(1, ser.in_waiting))
@@ -333,11 +334,11 @@ class CapnoMerge:
                 out.append(item)
                 continue
             p = parse_line(item)
-            if p.kind == "info" and "FW" in p.fields:
+            if isinstance(p, InfoLine) and "FW" in p.fields:
                 self.board_ok = "UNITS" in p.fields
                 out.append(self._info_line(item))
                 continue
-            if p.kind != "data" or not self.board_ok:
+            if not isinstance(p, DataLine) or not self.board_ok:
                 out.append(item)
                 continue
             dev = p.t_ms / 1000
@@ -364,7 +365,7 @@ class CapnoMerge:
 
     def _with_co2(self, h: _Held) -> str:
         p = parse_line(h.line)
-        if p.kind != "data" or not p.volts:
+        if not isinstance(p, DataLine) or not p.volts:
             return h.line
         mmhg = self.co2_at(h.t)
         values = list(p.volts)

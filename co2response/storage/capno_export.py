@@ -422,7 +422,7 @@ def _best_lag(x: np.ndarray, x0: float, y: np.ndarray, y0: float, dt: float, cen
                 shift += 0.5 * (a - c) / den * dt
         return float(shift)
 
-    cands = sorted((refined(i) for i in peaks), key=lambda s: abs(s - centre_s))
+    cands = sorted((refined(int(i)) for i in peaks), key=lambda s: abs(s - centre_s))
     return Lag(cands[0], best, cands)
 
 
@@ -627,6 +627,7 @@ def _build_session(
 ) -> str:
     from ..channels import clone_channels
 
+    assert s.channels is not None  # checked by merge_capnostream_export
     ch = clone_channels(s.channels)
     ch["channels"]["co2"].update(
         calibration={"type": "linear", "gain": 1.0, "offset": 0.0},
@@ -673,7 +674,7 @@ def _build_session(
     started = s.started_ms
     has_v3 = len(s.v3) == s.n and s.n and bool(np.isfinite(s.v3).any())
     trend = exp.kind == "trend"
-    et_t, et_v = (exp.t, exp.co2) if trend else (None, None)
+    et_t, et_v = exp.t, exp.co2  # the monitor's EtCO2 trend (used only for a trend)
     step = float(np.median(np.diff(exp.t))) if trend and len(exp.t) > 1 else 1.0
 
     breaths: list = []
