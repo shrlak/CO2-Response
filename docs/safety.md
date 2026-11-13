@@ -35,5 +35,6 @@ The monitor app runs on Windows 10/11, macOS and Linux with Python 3.10 or newer
 
 - Nothing here has been run on the real sensors yet. The firmware builds for Uno, Mega and Nano and its line format is tested, but the watchdog, the buzzer, the valve output, the SpO2 channel and the sampling have not been tried on a board.
 - The LabChart import was written from LabChart's documented text-export layout and tested on exports built from the sample session. It has not read a real CHOP export.
+- The Capnostream export merge (`--merge-capno`) was written without a real export and tested on exports built from the sample session. It lines the monitor's CO2 up with the flow by comparing the two, which regular breathing can leave ambiguous by a whole breath: it says so, and a 10 s breath-hold near the start of a study or the `--capno-start-offset` hint settles it.
 - The noise screen, the baseline-steadiness indicator, the 30 s left out at the start of rebreathing and the volume-mismatch limit were tuned on simulated breathing. Check them against real recordings.
 - The traceability table ([requirements-traceability.md](requirements-traceability.md)) lists which design input each automated test covers, and which still need a bench test.

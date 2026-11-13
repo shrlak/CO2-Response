@@ -67,7 +67,7 @@ def test_report_lines_and_text(sample):
     assert lines["Test phases"] == "baseline from 0:20; rebreathing from 1:00; ended at 2:50 (1:50 of rebreathing)"
     assert lines["Baseline"].startswith("EtCO2 38.0 mmHg, MV 7.4")
     assert lines["Response slope"].endswith("L/min per mmHg") and "n = " in lines["Correlation r"]
-    assert "2 rejected by the noise screen" in lines["Breaths"] and "not fitted (first 30 s of rebreathing and after the end of the test)" in lines["Breaths"]
+    assert "2 rejected by the noise screen" in lines["Breaths"] and "not fitted (first 30 s of rebreathing, including the 4 calibration breaths and after the end of the test)" in lines["Breaths"]
     assert lines["Alarms"].startswith("2 alarms")
     assert "Normalized slope" not in lines  # no height or weight in the sample
     used = [q.used for q in r.rows]
@@ -158,7 +158,7 @@ def test_report_from_the_command_line(tmp_path, capsys):
     copy = tmp_path / "s.csv"
     copy.write_text(SAMPLE.read_text())
     assert main(["--report", str(copy), "--skip", "0"]) == 0
-    assert (tmp_path / "s.pdf").exists() and "not fitted (after the end of the test)" in capsys.readouterr().out
+    assert (tmp_path / "s.pdf").exists() and "not fitted (4 calibration breaths at the start of rebreathing and after the end of the test)" in capsys.readouterr().out
     bad = tmp_path / "people.csv"
     bad.write_text("name,age\nx,1\n")
     assert main(["--report", str(bad)]) == 1
@@ -167,6 +167,6 @@ def test_report_from_the_command_line(tmp_path, capsys):
 
 
 def test_header_of_a_new_recording_says_how_the_test_is_analysed(sample):
-    assert json.loads(sample.meta["test"]) == {"responseSkipSec": 30, "heightCm": None, "weightKg": None, "ageYears": None}
+    assert json.loads(sample.meta["test"]) == {"responseSkipSec": 30, "calibrationBreaths": 4, "calibrationSec": 15, "heightCm": None, "weightKg": None, "ageYears": None}
     proc = json.loads(sample.meta["processing"])
     assert (proc["co2DelayMs"], proc["volumeBtps"], proc["rebreathingGasFactor"]) == (0, False, 1)

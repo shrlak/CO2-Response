@@ -258,7 +258,7 @@ def _meta_json(s: Session, key: str) -> dict:
     return v if isinstance(v, dict) else {}
 
 
-def co2_response(s: Session, start: float | None = None, end: float | None = None, skip_s: float | None = None, exclude=()) -> dict:
+def co2_response(s: Session, start: float | None = None, end: float | None = None, skip_s: float | None = None, exclude=(), calibration_breaths: int | None = None, calibration_s: float | None = None) -> dict:
     """Ventilatory response to CO2 from the session's (clean) breaths, the way the
     monitor fits it.
 
@@ -266,13 +266,16 @@ def co2_response(s: Session, start: float | None = None, end: float | None = Non
     averaged. The line is fitted to each later breath's own minute ventilation
     (``mv_breath_lpm``) against its EtCO2, leaving out the first ``skip_s`` seconds of
     rebreathing (default: what the recording's header says, ``responseSkipSec``; 0 for
-    files that do not say), everything from ``end`` on (default: the end-of-test
-    marker), and the breath numbers in ``exclude``. With no marker every breath is
-    fitted.
+    files that do not say), the calibration at the start of rebreathing (the first
+    ``calibration_breaths`` breaths and ``calibration_s`` seconds, whichever lasts longer;
+    defaults: the header's ``calibrationBreaths`` and ``calibrationSec``, 0 for files that
+    do not say), everything from ``end`` on (default: the end-of-test marker), and the
+    breath numbers in ``exclude``. With no marker every breath is fitted.
 
     Returns slope (L/min/mmHg), intercept, r, x_intercept (mmHg, where the line reaches
     MV = 0), n, baseline_n, baseline_etco2_mmHg, baseline_mv_lpm, rebreathing_start_s,
-    end_s, skip_s, skipped_n, and, when the header has the subject's size,
+    end_s, skip_s, skipped_n, calibration_n (the breaths of the calibration, which are
+    among the skipped), and, when the header has the subject's size,
     slope_per_kg (mL/min/mmHg/kg) and slope_per_m2 (L/min/mmHg/m2, Mosteller)."""
     base_start = None
     if start is None:
@@ -283,24 +286,39 @@ def co2_response(s: Session, start: float | None = None, end: float | None = Non
     test = _meta_json(s, "test")
     if skip_s is None:
         skip_s = float(test.get("responseSkipSec") or 0)
+    if calibration_breaths is None:
+        calibration_breaths = int(test.get("calibrationBreaths") or 0)
+    if calibration_s is None:
+        calibration_s = float(test.get("calibrationSec") or 0)
     b = s.breaths.dropna(subset=["etco2_mmHg", "mv_breath_lpm"])
     b = b[~b["breath"].isin(list(exclude))]
     if base_start is not None:
         b = b[b["time_s"] >= base_start]
     nan = float("nan")
+    calibration_n = 0
     if start is None:
         base, reb, skipped = (b, b.iloc[0:0], b.iloc[0:0]) if base_start is not None else (b.iloc[0:0], b, b.iloc[0:0])
     else:
         base = b[b["time_s"] < start]
         after = b[b["time_s"] >= start]
-        out_of_fit = (after["time_s"] < start + skip_s) | ((after["time_s"] >= end) if end is not None else False)
+        in_range = after if end is None else after[after["time_s"] < end]
+        calibrating = (calibration_breaths > 0 or calibration_s > 0) and math.isfinite(start)  # no start, no calibration
+        cal_end = start + calibration_s
+        if calibration_breaths > 0:  # with too few breaths the calibration is still going on
+            times = sorted(in_range["time_s"])
+            cal_end = max(cal_end, times[calibration_breaths - 1]) if len(times) >= calibration_breaths else float("inf")
+        in_cal = (after["time_s"] <= cal_end) if calibrating else (after["time_s"] < 0)
+        out_of_fit = (after["time_s"] < start + skip_s) | ((after["time_s"] >= end) if end is not None else False) | in_cal
         reb, skipped = after[~out_of_fit], after[out_of_fit]
+        after_end = (after["time_s"] >= end) if end is not None else (after["time_s"] < 0)
+        calibration_n = int((in_cal & ~after_end).sum())
     out = {
         "rebreathing_start_s": start,
         "end_s": end,
         "skip_s": skip_s if start is not None else 0.0,
         "n": len(reb),
         "skipped_n": len(skipped),
+        "calibration_n": calibration_n,
         "slope": nan,
         "intercept": nan,
         "r": nan,

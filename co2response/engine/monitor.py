@@ -228,6 +228,10 @@ class TestState:
     stable_text: str = ""
     #: one line for the screen
     text: str = ""
+    #: rebreathing only: 'calibrating' (the first breaths are watched, not fitted), 'settling'
+    #: (calibrated, still inside the seconds left out of the fit) or 'recording' (the
+    #: response is being recorded); '' outside rebreathing
+    stage: str = ""
 
     # which of the three test keys make sense now
     @property
@@ -595,7 +599,7 @@ class MonitorEngine:
         if self.store.save_error and not self._save_error_logged:
             self._add_log(f"Settings could not be saved ({self.store.save_error})", "error")
         self._save_error_logged = bool(self.store.save_error)
-        if nxt.test.response_skip_sec != prev.test.response_skip_sec:
+        if (nxt.test.response_skip_sec, nxt.test.calibration_breaths, nxt.test.calibration_sec) != (prev.test.response_skip_sec, prev.test.calibration_breaths, prev.test.calibration_sec):
             self.trend_version += 1
         self.alarms.set_settings(nxt.alarms, self.clock())
         self.audio.volume = nxt.alarms.volume
@@ -1518,9 +1522,27 @@ class MonitorEngine:
             valve = ""
             if self.valve_available() and self.settings.alarms.auto_valve:
                 valve = " · valve to the bag" if self._valve else " · VALVE ON ROOM AIR"
-            return TestState("rebreathing", w, el, limit, text=f"REBREATHING {_mss(el)}{lim}{valve}{rec}")
+            stage, stage_text = self._rebreathing_stage(el, now)
+            return TestState("rebreathing", w, el, limit, text=f"REBREATHING {_mss(el)}{lim}{stage_text}{valve}{rec}", stage=stage)
         el = (w.end - w.start) * k
         return TestState("ended", w, el, limit, text=f"TEST ENDED after {_mss(el)} of rebreathing")
+
+    def _rebreathing_stage(self, el: float, now: float) -> tuple[str, str]:
+        """Which part of the start of rebreathing this is: the calibration (the first
+        breaths and seconds, watched and not fitted), the rest of the seconds left out of
+        the fit, or the response being recorded. Returns (stage, text for the status line)."""
+        te = self.settings.test
+        res = self.co2_response()
+        calibrating = (te.calibration_breaths > 0 or te.calibration_sec > 0) and (res.calibration_end is None or now / 1000 <= res.calibration_end)
+        if calibrating:
+            done = len(res.calibration)
+            if te.calibration_breaths > 0 and res.calibration_end is None:
+                return "calibrating", f" · CALIBRATING: breath {min(done + 1, te.calibration_breaths)} of {te.calibration_breaths}"
+            left = max(0.0, (res.calibration_end - now / 1000) * self.time_scale())
+            return "calibrating", f" · CALIBRATING: {left:.0f} s left"
+        if el < te.response_skip_sec:
+            return "settling", f" · settling: the fit starts at {_mss(te.response_skip_sec)}"
+        return "recording", " · RECORDING RESPONSE"
 
     def start_baseline(self) -> Marker:
         """Baseline key: breaths from now until rebreathing starts are the baseline."""
@@ -1706,10 +1728,11 @@ class MonitorEngine:
         by_key = {q.key: q for q in self.trend if q.t >= t0 and q.quality == "ok"}
         pts = ((q.t, q.etco2, q.mv_breath, q.key) for q in by_key.values())
         # the trend is on the wall clock: at 10x speed, 30 s of the subject's time is 3 s of it
-        skip = self.settings.test.response_skip_sec
-        res = co2_response(pts, self.test_window(), skip / self.time_scale(), lambda k: by_key[k].excluded)
+        te = self.settings.test
+        k = self.time_scale()
+        res = co2_response(pts, self.test_window(), te.response_skip_sec / k, lambda key: by_key[key].excluded, te.calibration_breaths, te.calibration_sec / k)
         if res.skip_sec:
-            res.skip_sec = skip  # reported in the subject's seconds
+            res.skip_sec = te.response_skip_sec  # reported in the subject's seconds
         return res
 
     def set_breath_excluded(self, key: int, on: bool = True) -> bool:

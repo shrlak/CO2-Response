@@ -10,6 +10,7 @@
     python -m co2response --fast-test normal  # a whole simulated test in about a second: CSV, PDF and the graph
     python -m co2response --capnostream COM4  # take the CO2 from a Capnostream 35 on COM4 (saved; "off" to stop)
     python -m co2response --capture COM4      # record what a Capnostream sends, to set up its format
+    python -m co2response --merge-capno rec.csv export.txt   # put a Capnostream export's CO2 into an Arduino recording
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--replay", metavar="CSV", help="replay a recorded session file")
     ap.add_argument("--list-ports", action="store_true", help="list serial ports and exit")
     ap.add_argument("--report", metavar="CSV", help="write the CO2 response report of a recorded session as a PDF and exit")
-    ap.add_argument("--out", metavar="PDF", help="where --report writes (default: next to the session file)")
+    ap.add_argument("--out", metavar="FILE", help="where --report (a PDF) or --merge-capno (a session CSV) writes (default: next to the input file)")
     ap.add_argument("--skip", type=float, default=None, metavar="SEC", help="with --report: seconds of rebreathing left out of the fit (default: what the file's header says)")
     ap.add_argument("--tui", action="store_true", help="run the monitor full-screen in this terminal (works in the VS Code terminal and over SSH)")
     ap.add_argument("--graphics", choices=("auto", "on", "off"), default="auto", help="with --tui: draw the waveforms, numbers and graphs as pictures like the browser page (auto: where the terminal can show images: iTerm2, VS Code with images on, Kitty, WezTerm, Ghostty, Windows Terminal), or text (off)")
@@ -44,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
     cap.add_argument("--capno-fields", metavar="LIST", help='its ASCII layout, e.g. "time,co2,etco2,rr,spo2,pr"; "auto" finds KEY=value pairs (default)')
     cap.add_argument("--capno-units", choices=("mmHg", "%", "kPa"), help="the unit of its CO2 values (default mmHg)")
     cap.add_argument("--capno-delay", type=float, metavar="MS", help="its sample-line delay, ms (default 2700)")
+    cap.add_argument("--merge-capno", nargs=2, metavar=("SESSION", "EXPORT"), help="the offline path: put the CO2 of a Capnostream export file (CSV or text) together with an Arduino recording's flow, write a new session file and exit. Uses --capno-fields / --capno-units / --capno-delay for the export, not saved")
+    cap.add_argument("--capno-shift", type=float, metavar="SEC", help="with --merge-capno: how many seconds the monitor's trace is behind the flow for the same gas (clock difference plus the sample line's delay); skips the automatic lining up")
+    cap.add_argument("--capno-start-offset", type=float, default=0.0, metavar="SEC", help="with --merge-capno: the monitor's recording started this many seconds before the Arduino's (default 0); settles which breath is which when breathing is regular")
+    cap.add_argument("--capno-search", type=float, default=300.0, metavar="SEC", help="with --merge-capno: how far either side of the expected shift to look (default 300)")
     cap.add_argument("--capture", metavar="PORT", help="record what a Capnostream sends on PORT (60 s), report what was found, and exit")
     cap.add_argument("--capture-seconds", type=float, default=60, metavar="SEC", help="with --capture: how long to record")
     cap.add_argument("--capture-baud", default="auto", metavar="N", help="with --capture: the serial speed, or auto to try the common ones")
@@ -67,6 +72,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.capture:
         return capture_capnostream(args.capture, args.capture_seconds, args.capture_baud, args.capno_fields, args.capno_units)
+
+    if args.merge_capno:
+        return merge_capno(args)
 
     if any(v is not None for v in (args.capnostream, args.capno_baud, args.capno_fields, args.capno_units, args.capno_delay)):
         save_capno(args)
@@ -214,6 +222,41 @@ def capture_capnostream(port: str, seconds: float, baud: str, fields: str | None
     print(f"Numbers found: {', '.join(r['numbers']) or 'none'}; lines not understood: {r['unknown_lines']}")
     if r["co2_rate_hz"] < 15:
         print("The CO2 waveform was not found at 20 a second: look at the file and give the layout with --capno-fields (docs/capnostream.md).")
+    return 0
+
+
+def merge_capno(args) -> int:
+    """``--merge-capno``: a Capnostream export and an Arduino recording make one session file."""
+    from pathlib import Path
+
+    from .storage.capno_export import DEFAULT_DELAY_S, merge_capnostream_export
+    from .storage.session_file import read_session
+
+    session_path, export_path = Path(args.merge_capno[0]), Path(args.merge_capno[1])
+    try:
+        session = read_session(session_path)
+        export = export_path.read_text(encoding="utf-8", errors="replace")
+        res = merge_capnostream_export(
+            session,
+            export,
+            fields="" if not args.capno_fields or args.capno_fields.lower() == "auto" else args.capno_fields,
+            units=args.capno_units or "",
+            delay_s=args.capno_delay / 1000 if args.capno_delay is not None else DEFAULT_DELAY_S,
+            shift_s=args.capno_shift,
+            start_offset_s=args.capno_start_offset,
+            search_s=args.capno_search,
+            app_version=__version__,
+        )
+    except (OSError, ValueError) as e:
+        print(f"Could not merge: {e}", file=sys.stderr)
+        return 1
+    dest = Path(args.out) if args.out else session_path.with_name(f"{session_path.stem}-capnostream.csv")
+    dest.write_text(res.text, encoding="utf-8", newline="")
+    how = {"given": "given", "waveform": f"found from the CO2 waveform (correlation {res.r:.2f})", "respiratory rate": f"found from the respiratory rate (correlation {res.r:.2f})", "assumed": "assumed (recordings started together)"}[res.method]
+    print(f"Capnostream {res.kind} export merged: shift {res.shift_s:.1f} s ({how}), {res.coverage * 100:.0f} % of the recording has CO2.")
+    for w in res.warnings:
+        print(f"  note: {w}")
+    print(f"wrote {dest}")
     return 0
 
 

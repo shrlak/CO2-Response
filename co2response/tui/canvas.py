@@ -393,15 +393,15 @@ def draw_response(cv: Canvas, res, title: str = "") -> None:
     ax.frame(nice_ticks(x0, x1, max(2, (ax.c1 - ax.c0) // 8)), nice_ticks(y0, y1, max(2, (ax.r1 - ax.r0) // 2)), xlabel="etCO2 (mmHg)", ylabel="MV (L/min)")
     if title:
         cv.text(max(0, cv.w // 2 - len(title) // 2), 0, title, "bold")
-    from ..processing.metrics import lowess_curve
+    from ..processing.metrics import response_curve
 
     if res.fit and res.rebreathing:
-        # the least-squares line the slope comes from (dashed), and over it the curve (LOWESS)
+        # the least-squares line the slope comes from (dashed), and over it the curve (robust monotone P-spline)
         a = min(p.etco2 for p in res.rebreathing)
         b = max(p.etco2 for p in res.rebreathing)
         f = res.fit
         cv.line(ax.px(a), ax.py(f.slope * a + f.intercept), ax.px(b), ax.py(f.slope * b + f.intercept), "grey50", dash=(2, 3))
-        cx, cy = lowess_curve([p.etco2 for p in res.rebreathing], [p.mv for p in res.rebreathing])
+        cx, cy = response_curve([p.etco2 for p in res.rebreathing], [p.mv for p in res.rebreathing])
         for i in range(1, len(cx)):
             cv.line(ax.px(cx[i - 1]), ax.py(min(y1, cy[i - 1])), ax.px(cx[i]), ax.py(min(y1, cy[i])), "bold white", thick=True)
     for pts, ch, st in ((res.skipped, "·", "grey50"), (res.baseline, "○", "bold grey85"), (res.rebreathing, "●", "bold green3"), (res.excluded, "x", "bold red")):

@@ -196,6 +196,11 @@ class CO2Response:
     excluded: list[RespPoint] = field(default_factory=list)
     skip_sec: float = 0.0
     window: TestWindow = TestWindow(None, None, None)
+    #: the calibration at the start of rebreathing (a part of ``skipped``): the breaths
+    #: watched before the response is recorded, and when it ended (None: still going, or
+    #: no calibration)
+    calibration: list[RespPoint] = field(default_factory=list)
+    calibration_end: float | None = None
 
     @property
     def slope(self) -> float:
@@ -207,6 +212,8 @@ def co2_response(
     window: TestWindow | float | None,
     skip_sec: float = 0.0,
     excluded: Callable[[object], bool] | None = None,
+    calibration_breaths: int = 0,
+    calibration_sec: float = 0.0,
 ) -> CO2Response:
     """Ventilatory response from accepted breaths.
 
@@ -215,6 +222,10 @@ def co2_response(
     number is the start of rebreathing, and None means it was not marked. Breaths with
     a missing value are left out. ``excluded(key)`` says which breaths were taken out
     by hand.
+
+    The start of rebreathing is calibrated first: the first ``calibration_breaths``
+    breaths and the first ``calibration_sec`` seconds, whichever lasts longer, are watched
+    and not fitted (``calibration``). The fit starts after both that and ``skip_sec``.
     """
     if not isinstance(window, TestWindow):
         window = TestWindow(None, window, None)
@@ -223,6 +234,21 @@ def co2_response(
     reb: list[RespPoint] = []
     skipped: list[RespPoint] = []
     out: list[RespPoint] = []
+    calib: list[RespPoint] = []
+    cal_end: float | None = None
+    points = list(points)
+    if start is not None and math.isfinite(start) and (calibration_breaths > 0 or calibration_sec > 0):
+        after = sorted(p[0] for p in points if math.isfinite(p[0]) and p[0] >= start and math.isfinite(p[1]) and math.isfinite(p[2]) and (end is None or p[0] < end))
+        cal_end = start + calibration_sec
+        if calibration_breaths > 0:
+            # the time of the last calibration breath; before there are that many the calibration goes on
+            cal_end = max(cal_end, after[calibration_breaths - 1]) if len(after) >= calibration_breaths else None
+    calibrating = start is not None and math.isfinite(start) and (calibration_breaths > 0 or calibration_sec > 0)
+
+    def in_calibration(t: float) -> bool:
+        # with too few breaths yet (cal_end is None) every breath is still calibration
+        return calibrating and (cal_end is None or t <= cal_end)
+
     for pt in points:
         t, et, mv = pt[0], pt[1], pt[2]
         key = pt[3] if len(pt) > 3 else None
@@ -233,8 +259,10 @@ def co2_response(
             continue  # before this test's baseline: another test, or settling in
         if (start is None and window.baseline is not None) or (start is not None and t < start):
             (out if excluded and excluded(key) else base).append(rp)
-        elif start is not None and (t < start + skip_sec or (end is not None and t >= end)):
+        elif start is not None and (t < start + skip_sec or (end is not None and t >= end) or in_calibration(t)):
             skipped.append(rp)
+            if in_calibration(t) and not (end is not None and t >= end):
+                calib.append(rp)
         else:
             (out if excluded and excluded(key) else reb).append(rp)
     fit = linear_fit([p.etco2 for p in reb], [p.mv for p in reb])
@@ -257,6 +285,8 @@ def co2_response(
         excluded=out,
         skip_sec=skip_sec if start is not None else 0.0,
         window=window,
+        calibration=calib,
+        calibration_end=cal_end,
     )
 
 
@@ -375,6 +405,89 @@ def lowess_curve(xs: Sequence[float], ys: Sequence[float], frac: float = 0.85, i
     return grid.tolist(), [at(v) for v in grid]
 
 
+def _bspline_design(u: np.ndarray, nseg: int, deg: int = 3) -> np.ndarray:
+    """Cubic B-spline basis on [0, 1] with ``nseg`` equal segments, at the points ``u``
+    (Eilers & Marx: differences of truncated powers). Shape (len(u), nseg + deg)."""
+    dx = 1.0 / nseg
+    knots = dx * np.arange(-deg, nseg + deg + 1)
+    t = u[:, None] - knots[None, :]
+    power = np.where(t > 0, t, 0.0) ** deg
+    d = np.diff(np.eye(len(knots)), n=deg + 1, axis=0) / (math.factorial(deg) * dx**deg)
+    return (-1) ** (deg + 1) * power @ d.T
+
+
+def response_curve(xs: Sequence[float], ys: Sequence[float], n_out: int = 200) -> tuple[list[float], list[float]]:
+    """The smooth curve through the MV-vs-EtCO2 breaths: a robust, monotone, penalized
+    cubic spline (a P-spline, Eilers & Marx 1996) with its smoothness chosen by the data.
+
+    - **Penalized B-spline**: a cubic spline whose roughness (second differences of its
+      coefficients) is penalized by ``lambda``, so the curve is continuous in value, slope
+      and curvature and cannot wiggle with every breath.
+    - **lambda by generalized cross-validation**, then the smoothest ``lambda`` whose
+      score is within 5 % of the best (the "one-standard-error" rule): the curve bends
+      only where the breaths as a whole bend.
+    - **Robust**: Tukey bisquare weights from the residuals (re-weighted 4 times, scale
+      from the median absolute deviation) so a cough or a missed breath does not drag it.
+    - **Monotone**: minute ventilation does not fall as EtCO2 rises in this test, so the
+      curve is constrained to run in the direction of the overall trend (an asymmetric
+      penalty on steps the wrong way, iterated until it holds).
+
+    Returns the curve at ``n_out`` EtCO2 values from the lowest to the highest breath;
+    empty with fewer than 4 breaths or no spread in EtCO2."""
+    pts = sorted((float(x), float(y)) for x, y in zip(xs, ys) if math.isfinite(x) and math.isfinite(y))
+    if len(pts) < 4 or pts[-1][0] - pts[0][0] < 1e-6:
+        return [], []
+    x = np.array([p[0] for p in pts])
+    y = np.array([p[1] for p in pts])
+    n = len(x)
+    x0, span = x[0], x[-1] - x[0]
+    u = (x - x0) / span
+    nseg = int(min(12, max(4, round(n / 4))))
+    basis = _bspline_design(u, nseg)
+    nb = basis.shape[1]
+    d2 = np.diff(np.eye(nb), n=2, axis=0)
+    rough = d2.T @ d2 + 1e-9 * np.eye(nb)
+    d1 = np.diff(np.eye(nb), n=1, axis=0)
+    direction = 1.0 if float(np.polyfit(u, y, 1)[0]) >= 0 else -1.0
+    lams = 10.0 ** np.linspace(-4, 4, 33)
+
+    def pick_lambda(w: np.ndarray) -> float:
+        scores = []
+        for lam in lams:
+            a = basis.T @ (w[:, None] * basis) + lam * rough
+            hat = basis @ np.linalg.solve(a, basis.T * w)  # n x n, H = B (B'WB + lP)^-1 B'W
+            rss = float(np.sum(w * (y - hat @ y) ** 2))
+            dof = n - float(np.trace(hat))
+            scores.append(n * rss / max(dof, 1e-3) ** 2)
+        best = min(scores)
+        return float(max(lam for lam, s in zip(lams, scores) if s <= best * 1.05 + 1e-12))
+
+    def fit(lam: float, w: np.ndarray, v: np.ndarray | None = None) -> np.ndarray:
+        a = basis.T @ (w[:, None] * basis) + lam * rough
+        if v is not None:
+            a = a + 1e6 * d1.T @ (v[:, None] * d1)
+        return np.linalg.solve(a, basis.T @ (w * y))
+
+    w = np.ones(n)
+    lam = pick_lambda(w)
+    for _ in range(4):
+        res = y - basis @ fit(lam, w)
+        scale = 1.4826 * float(np.median(np.abs(res - np.median(res))))
+        scale = max(scale, 0.02 * float(np.std(y)), 1e-9)
+        z = np.clip(res / (4.685 * scale), -1, 1)
+        w = np.maximum((1 - z**2) ** 2, 1e-3)
+        lam = pick_lambda(w)
+    coef = fit(lam, w)
+    v = np.zeros(nb - 1)
+    for _ in range(30):  # steps against the trend get a heavy penalty until none are left
+        wrong = (direction * np.diff(coef)) < -1e-9
+        if not wrong.any() or np.array_equal(wrong.astype(float), v):
+            break
+        v = wrong.astype(float)
+        coef = fit(lam, w, v)
+    grid = np.linspace(0.0, 1.0, n_out)
+    return (x0 + grid * span).tolist(), (_bspline_design(grid, nseg) @ coef).tolist()
+
 
 def response_axes(res: CO2Response) -> tuple[float, float, float, float]:
     """The ranges of the MV-vs-EtCO2 graph, scaled to the breaths on it (x0, x1, y0, y1):
@@ -385,7 +498,7 @@ def response_axes(res: CO2Response) -> tuple[float, float, float, float]:
     xs = [p.etco2 for p in every]
     ys = [p.mv for p in every]
     if res.rebreathing:
-        cx, cy = lowess_curve([p.etco2 for p in res.rebreathing], [p.mv for p in res.rebreathing])
+        cx, cy = response_curve([p.etco2 for p in res.rebreathing], [p.mv for p in res.rebreathing])
         xs += cx
         ys += cy
     if not xs:

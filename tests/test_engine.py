@@ -163,7 +163,7 @@ def test_rebreathing_marker_sets_the_baseline_apart(tmp_path):
     by_key = {q.key: q for q in e.trend}
     p = res.rebreathing[-1]
     assert p.mv == by_key[p.key].mv_breath != by_key[p.key].mv
-    e.update_settings(test=dataclasses.replace(e.settings.test, response_skip_sec=0))
+    e.update_settings(test=dataclasses.replace(e.settings.test, response_skip_sec=0, calibration_breaths=0, calibration_sec=0))
     assert e.co2_response().skipped == [] and len(e.co2_response().rebreathing) > len(res.rebreathing)
 
 
@@ -215,7 +215,7 @@ def test_a_breath_can_be_taken_out_of_the_fit_by_hand_and_put_back(tmp_path):
     from co2response.storage.session_file import breaths_csv, clean_breaths
 
     e = make_engine(tmp_path)
-    e.update_settings(test=dataclasses.replace(e.settings.test, response_skip_sec=0))
+    e.update_settings(test=dataclasses.replace(e.settings.test, response_skip_sec=0, calibration_breaths=0, calibration_sec=0))
     e.connect("simulator")
     e.start_recording()
     run(e, 20)
@@ -292,7 +292,7 @@ def test_subject_size_is_recorded_and_cleared_with_a_new_study_code(tmp_path):
     parsed = e.library.parse(stop.rec.id)
     import json
 
-    assert json.loads(parsed.meta["test"]) == {"responseSkipSec": 30, "heightCm": 172, "weightKg": 64, "ageYears": 23}
+    assert json.loads(parsed.meta["test"]) == {"responseSkipSec": 30, "calibrationBreaths": 4, "calibrationSec": 15, "heightCm": 172, "weightKg": 64, "ageYears": 23}
     # the next subject does not inherit the last one's size
     e.update_settings(study_code="S-08")
     assert (e.settings.test.height_cm, e.settings.test.weight_kg, e.settings.test.age_years) == (None, None, None)

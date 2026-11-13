@@ -581,7 +581,7 @@ class ResponseChart(Plot):
             for i, part in enumerate(base_text.split(" · ")):
                 g.font = f"{700 if i == 0 else 500} {15 * d}px {FONT}"
                 g.fillText(part, bx, by + 19 * i * d)
-        from ..processing.metrics import lowess_curve
+        from ..processing.metrics import response_curve
 
         rings(skip, 3.5, 1.5, 0.55)
         rings(base, 5, 2, 1)
@@ -592,10 +592,10 @@ class ResponseChart(Plot):
             self.stroke(path, css_var("--alarm-high"), 2.5)
         if fit:
             # the least-squares line the slope comes from, faint and dashed, and over it the
-            # curve (LOWESS), which may bend where the response does
+            # curve (robust monotone P-spline), which may bend where the response does
             a, b = min(p.etco2 for p in reb), max(p.etco2 for p in reb)
             self.stroke(f"M{self.px(a)} {self.py(fit.slope * a + fit.intercept)}L{self.px(b)} {self.py(fit.slope * b + fit.intercept)}", css_var("--text"), 1.5, 0.5, (6, 5))
-            cx, cy = lowess_curve([p.etco2 for p in reb], [p.mv for p in reb])
+            cx, cy = response_curve([p.etco2 for p in reb], [p.mv for p in reb])
             if cx:
                 self.stroke(path_d([self.px(v) for v in cx], [self.py(v) for v in cy]), css_var("--text"), 3)
         g.restore()
