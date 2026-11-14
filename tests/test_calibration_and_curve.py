@@ -198,3 +198,45 @@ def test_the_axes_include_the_whole_curve():
     x0, x1, y0, y1 = response_axes(r)
     cx, cy = response_curve([p.etco2 for p in r.rebreathing], [p.mv for p in r.rebreathing])
     assert x0 <= min(cx) and x1 >= max(cx) and y0 <= min(cy) and y1 >= max(cy)
+
+
+def bow(cx, cy):
+    """How far the curve is from the straight line between its ends, at each point."""
+    cx, cy = np.array(cx), np.array(cy)
+    return cy - (cy[0] + (cy[-1] - cy[0]) * (cx - cx[0]) / (cx[-1] - cx[0]))
+
+
+def test_the_curve_is_always_curved_even_for_a_perfect_line():
+    from co2response.processing.metrics import MIN_BOW
+
+    xs = [40 + 0.4 * i for i in range(60)]
+    rnd = random.Random(1)
+    cases = {
+        "perfect line": [8 + 0.5 * (x - 40) for x in xs],
+        "noisy line": [8 + 0.5 * (x - 40) + rnd.gauss(0, 2.5) for x in xs],
+        "steepening": [5 + 0.05 * (x - 40) ** 2 for x in xs],
+        "flattening": [30 - 0.05 * (64 - x) ** 2 for x in xs],
+        "falling": [30 - 0.5 * (x - 40) + rnd.gauss(0, 1) for x in xs],
+    }
+    for name, ys in cases.items():
+        cx, cy = response_curve(xs, ys)
+        rise = abs(cy[-1] - cy[0])
+        assert np.max(np.abs(bow(cx, cy))) >= MIN_BOW * rise * 0.99, name  # visibly bent, never a straight line
+        d = np.diff(cy)
+        assert np.all(d >= -1e-9) or np.all(d <= 1e-9), name  # and still never running the wrong way
+        assert cx[0] == pytest.approx(min(xs)) and cx[-1] == pytest.approx(max(xs)), name
+
+
+def test_the_bend_goes_the_way_the_breaths_bend():
+    xs = [40 + 0.5 * i for i in range(40)]
+    cx, cy = response_curve(xs, [5 + 0.05 * (x - 40) ** 2 for x in xs])  # steepening: below the chord
+    assert bow(cx, cy)[100] < 0
+    cx, cy = response_curve(xs, [30 - 0.05 * (59.5 - x) ** 2 for x in xs])  # flattening: above it
+    assert bow(cx, cy)[100] > 0
+    cx, cy = response_curve(xs, [8 + 0.5 * (x - 40) for x in xs])  # no lean either way: convex, as the response usually is
+    assert bow(cx, cy)[100] < 0
+
+
+def test_the_straight_line_and_its_slope_are_unchanged_by_the_curve():
+    r = co2_response(breaths(), TestWindow(0.0, 20.0, None), 0.0, None, 4, 15)
+    assert r.fit is not None and r.slope == pytest.approx(0.625, rel=1e-6) and r.r == pytest.approx(1.0)  # the dashed line is still the least-squares fit
