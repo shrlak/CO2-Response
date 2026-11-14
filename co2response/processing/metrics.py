@@ -416,6 +416,12 @@ def _bspline_design(u: np.ndarray, nseg: int, deg: int = 3) -> np.ndarray:
     return (-1) ** (deg + 1) * power @ d.T
 
 
+#: the least the curve bows away from the straight line between its ends, as a share of its rise
+MIN_BOW = 0.08
+#: log10 of the stiffest smoothing allowed: beyond this a spline is just a straight line
+MAX_LOG_LAMBDA = 1.0
+
+
 def response_curve(xs: Sequence[float], ys: Sequence[float], n_out: int = 200) -> tuple[list[float], list[float]]:
     """The smooth curve through the MV-vs-EtCO2 breaths: a robust, monotone, penalized
     cubic spline (a P-spline, Eilers & Marx 1996) with its smoothness chosen by the data.
@@ -431,6 +437,14 @@ def response_curve(xs: Sequence[float], ys: Sequence[float], n_out: int = 200) -
     - **Monotone**: minute ventilation does not fall as EtCO2 rises in this test, so the
       curve is constrained to run in the direction of the overall trend (an asymmetric
       penalty on steps the wrong way, iterated until it holds).
+
+    - **Always curved**: the smoothing is capped so the spline cannot stiffen into a
+      straight line, and if the curve still bows less than ``MIN_BOW`` of its rise away
+      from the straight line between its ends, a smooth parabolic bend of that size is added
+      (ends fixed; towards the bend the breaths themselves lean, convex when they do not
+      lean either way, as the response to CO2 usually is). The slope and r reported
+      with the graph are still those of the straight least-squares line; the curve only
+      shows the shape.
 
     Returns the curve at ``n_out`` EtCO2 values from the lowest to the highest breath;
     empty with fewer than 4 breaths or no spread in EtCO2."""
@@ -449,7 +463,7 @@ def response_curve(xs: Sequence[float], ys: Sequence[float], n_out: int = 200) -
     rough = d2.T @ d2 + 1e-9 * np.eye(nb)
     d1 = np.diff(np.eye(nb), n=1, axis=0)
     direction = 1.0 if float(np.polyfit(u, y, 1)[0]) >= 0 else -1.0
-    lams = 10.0 ** np.linspace(-4, 4, 33)
+    lams = 10.0 ** np.linspace(-4, MAX_LOG_LAMBDA, 25)  # capped: a stiff spline is a straight line
 
     def pick_lambda(w: np.ndarray) -> float:
         scores = []
@@ -486,7 +500,19 @@ def response_curve(xs: Sequence[float], ys: Sequence[float], n_out: int = 200) -
         v = wrong.astype(float)
         coef = fit(lam, w, v)
     grid = np.linspace(0.0, 1.0, n_out)
-    return (x0 + grid * span).tolist(), (_bspline_design(grid, nseg) @ coef).tolist()
+    curve = _bspline_design(grid, nseg) @ coef
+    # always curved: at least MIN_BOW of the rise away from the straight line between the ends
+    want = MIN_BOW * max(abs(float(curve[-1] - curve[0])), 1e-9)
+    chord = curve[0] + (curve[-1] - curve[0]) * grid
+    # the way the breaths themselves bend: below the chord (convex, steepening) unless they bend the other way
+    below = -1.0 if float(np.polyfit(u, y, 2)[0]) < -1e-9 else 1.0
+    bump = 4 * grid * (1 - grid)  # a parabola: the ends stay put, and a gentle bend keeps the curve monotone
+    for _ in range(8):
+        have = float(np.max(below * (chord - curve)))
+        if have >= want * 0.999:
+            break
+        curve = curve - below * (want - have) * bump
+    return (x0 + grid * span).tolist(), curve.tolist()
 
 
 def response_axes(res: CO2Response) -> tuple[float, float, float, float]:

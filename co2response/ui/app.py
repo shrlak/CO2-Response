@@ -24,6 +24,28 @@ def load_fonts() -> None:
             QFontDatabase.addApplicationFont(str(f))
 
 
+def watch_for_updates(app, engine, win) -> None:
+    """Standalone app: look for a newer release in the background (at most once a day) and
+    tell the operator what was found. It installs the next time the app starts, never now."""
+    from .. import updater
+
+    if not updater.is_frozen():
+        return
+    if updater.enabled_by_environment() and engine.settings.auto_update:
+        updater.background.start()
+
+    def drain() -> None:
+        while not updater.background.messages.empty():
+            msg = updater.background.messages.get()
+            engine._add_log(msg)
+            win.toast(msg, 9000)
+
+    timer = QTimer(app)
+    timer.timeout.connect(drain)
+    timer.start(3000)
+    app._update_timer = timer  # keep it alive
+
+
 def run(sim: bool = False, port: str | None = None, replay: str | None = None, argv: list[str] | None = None, exit_after: float | None = None, situation: str | None = None, speed: float | None = None) -> int:
     app = QApplication.instance() or QApplication(argv or sys.argv)
     app.setApplicationName(APP_NAME)
@@ -56,6 +78,7 @@ def run(sim: bool = False, port: str | None = None, replay: str | None = None, a
                 win.toast(f"Could not replay {replay}: {e}", 8000)
 
     QTimer.singleShot(0, start)
+    watch_for_updates(app, engine, win)
     if exit_after is not None:
         # an installation check: run for a moment, say what the monitor measured, and close
         def finish() -> None:

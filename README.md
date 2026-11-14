@@ -68,20 +68,20 @@ Then:
 co2response-tui --sim
 ```
 
-**Updating.** An installed copy does not update itself. To get the latest version:
+**Updating.** The **standalone app** (the downloaded `.exe`, `.dmg` or Linux app) updates itself: it checks the project's GitHub Releases in the background (at most once a day), downloads a newer version, checks its size and SHA-256, and installs it **the next time the app is started, never during a recording**. The previous version is kept beside it (`CO2-Response.exe.old`, `CO2-Response.app.old`, `CO2-Response.old/`), and if an update cannot be installed the current version simply keeps running. Turn it off in **Settings → Display & units → Updates**, or set the environment variable `CO2R_NO_UPDATE=1` for a computer that must never change; `co2response --update` (or **Check now**) updates right away. Every recording's header says which version made it. The terminal program (`co2response-terminal`) and the pip/source installs do not update themselves. For those:
 
 ```bash
 co2response --update
 ```
 
-(or run the install script again). From a copy of the repository, `--update` runs `git pull`. The terminal monitor shows its version in the top-left corner, and `co2response --version` prints it.
+(or run the install script again). From a copy of the repository, `--update` runs `git pull`. In the standalone app, `--update` downloads and installs the latest release now. The terminal monitor shows its version in the top-left corner, and `co2response --version` prints it.
 
 The whole monitor is drawn in the terminal, so it works in the terminal panel of VS Code or any other editor:
 
 - the CO2 and flow waveforms, sweeping like a bedside monitor, as thin smooth lines like the web page's
 - EtCO2, RR, live flow, VT and MV in large digits in the web page's font, all one size, with alarm colours, and the alarm messages above
 - the test phase and timer
-- the **ventilatory response graph**: each breath's own minute ventilation against its EtCO2, baseline breaths hollow (○), rebreathing breaths filled (●), a smooth curve with the least-squares line dashed under it (the curve is a robust, monotone penalized spline whose smoothness is chosen from the breaths themselves; erratic breaths do not drag it and it never runs the wrong way; the PDF report draws the same curve), and the labels "Response slope = … (L/min)/mmHg · r = …" and "Baseline Ave = … mmHg · MV = … L/min"
+- the **ventilatory response graph**: each breath's own minute ventilation against its EtCO2, baseline breaths hollow (○), rebreathing breaths filled (●), a smooth curve with the least-squares line dashed under it (the curve is a robust, monotone penalized spline whose smoothness is chosen from the breaths themselves; erratic breaths do not drag it and it never runs the wrong way. It is always curved: the smoothing cannot stiffen into a straight line, and it bows at least 8 % of its rise away from the straight line between its ends, towards the way the breaths bend (steepening unless they flatten). The slope and r are always those of the straight least-squares line, which stays dashed under it. The PDF report draws the same curve), and the labels "Response slope = … (L/min)/mmHg · r = …" and "Baseline Ave = … mmHg · MV = … L/min"
 - a table of the last breaths: EtCO2, VT, the breath's own RR and MV (MV = VT × RR = VT × 60 / breath length)
 
 **Pictures, like the web page.** In a terminal that can show images, the waveforms, the number tiles and the graphs are drawn as smooth pictures in the web page's colours and font (Barlow), instead of with text characters. The app finds out by itself (`--graphics auto`, the default). These terminals can:

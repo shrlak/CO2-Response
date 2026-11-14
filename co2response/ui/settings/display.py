@@ -6,6 +6,7 @@ import dataclasses
 
 from PySide6.QtWidgets import QVBoxLayout
 
+from ... import __version__, updater
 from ...engine.monitor import MonitorEngine, Snapshot
 from ...forms import PROCESSING_FIELDS, SPO2_FIELDS
 from ..alarm_form import AlarmForm
@@ -61,7 +62,24 @@ class DisplayPage(Page):
         lay.addWidget(label("SPO2 (SAFETY CHANNEL)", "h3"))
         self.spo2_form = SpecForm(SPO2_FIELDS, lambda: engine.settings.spo2, lambda patch: engine.update_settings(spo2=dataclasses.replace(engine.settings.spo2, **patch)))
         lay.addWidget(self.spo2_form)
+        self.autoupdate = None
+        if updater.is_frozen():  # the standalone app only: other installs update with `co2response --update`
+            lay.addSpacing(10)
+            lay.addWidget(label("UPDATES", "h3"))
+            u = Form()
+            self.autoupdate = toggle(s.auto_update, lambda v: engine.update_settings(auto_update=v))
+            u.add(
+                "autoupdate",
+                "Update automatically",
+                hbox(self.autoupdate, button("Check now", self._check_now, small=True)),
+                hint=f"This is version {__version__}. A newer release is downloaded in the background (checked once a day) and installed the next time the app is started, never during a recording; the previous version is kept beside it. Set CO2R_NO_UPDATE=1 to turn this off for a computer that must never change.",
+            )
+            lay.addWidget(u)
         lay.addStretch(1)
+
+    def _check_now(self) -> None:
+        updater.background.start(force=True)
+        self.engine._add_log("Checking for a newer version …")
 
     def _p(self, patch: dict) -> None:
         self.engine.update_settings(processing=dataclasses.replace(self.engine.settings.processing, **patch))
@@ -76,6 +94,8 @@ class DisplayPage(Page):
         set_combo(self.flowscale, st.flow_scale_lpm)
         self.proc_form.refresh(p, s)
         self.spo2_form.refresh(st.spo2, s)
+        if self.autoupdate is not None and self.autoupdate.isChecked() != st.auto_update:
+            self.autoupdate.setChecked(st.auto_update)
 
 
 class AlarmsPage(Page):

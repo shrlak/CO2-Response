@@ -112,6 +112,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Unknown situation {args.situation!r}; --list-situations shows them.", file=sys.stderr)
             return 2
 
+    done = apply_pending_update(argv if argv is not None else sys.argv[1:])
+    if done is not None:
+        return done
+
     tui = args.tui
     if not tui:
         try:
@@ -133,6 +137,41 @@ def main(argv: list[str] | None = None) -> int:
 REPO_URL = "https://github.com/shrlak/CO2-Response"
 
 
+def update_standalone() -> int:
+    """``--update`` in the standalone app: download the latest release and install it now."""
+    from . import updater
+
+    print(f"{APP_NAME} {__version__}: checking for updates …", flush=True)
+    msg = updater.check_and_stage(force=True)
+    print(msg)
+    if updater.staged_update() is None:
+        return 1 if updater.read_state().get("last_error") else 0
+    tag = updater.install_staged()
+    if tag is None:
+        print(updater.read_state().get("last_error", "The update could not be installed."), file=sys.stderr)
+        return 1
+    print(f"Updated to {tag}. The previous version is kept beside it (.old). Start {APP_NAME} again to use the new one.")
+    return 0
+
+
+def apply_pending_update(argv: list[str]) -> int | None:
+    """Standalone app, at start-up only (before a window or a recording exists): install a
+    downloaded update and start the new version. Returns what main() should return, or None
+    to carry on with this version (no update waiting, turned off, or it could not install)."""
+    from . import updater
+
+    if not updater.is_frozen() or not updater.enabled_by_environment():
+        return None
+    from .settings import SettingsStore
+
+    if not SettingsStore().load_settings().auto_update:
+        return None
+    if updater.install_staged() is None:
+        return None
+    target = updater.install_target()
+    return updater.relaunch(target, argv) if target is not None else None
+
+
 def update(run=None) -> int:
     """``--update``: bring this installation up to the latest version.
 
@@ -142,6 +181,10 @@ def update(run=None) -> int:
     import subprocess
     from pathlib import Path
 
+    from . import updater
+
+    if updater.is_frozen():
+        return update_standalone()
     run = run or subprocess.call
     root = Path(__file__).resolve().parents[1]
     if (root / ".git").exists():
