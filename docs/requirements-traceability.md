@@ -65,6 +65,7 @@ Tests are in `tests/` unless a path says otherwise. Run one with, for example, `
 | D9 | CO2 from a Capnostream export file can be combined with the Arduino's flow after the study | Mentors (the export may be the only way to get the monitor's data) | `storage/capno_export.py`; `storage/library.py` `merge_capnostream`; `__main__.py` `--merge-capno` | `test_capno_export.py` (whole file) | **Not tried on a real export:** export one from the monitor, merge it, and compare a few breaths' EtCO2 with the monitor's screen |
 | D10 | The start of rebreathing is calibrated, then the response is recorded | Mentors | `processing/metrics.py` `co2_response`; `engine/monitor.py` `_rebreathing_stage`; `settings.py` `TestSettings` | `test_calibration_and_curve.py` | **Lengths are a guess:** confirm 4 breaths / 15 s with CHOP ([open question 43](open-questions.md)) |
 | D11 | The response graph is a smooth curve | Mentors | `processing/metrics.py` `response_curve` | `test_calibration_and_curve.py` | Compare with the curve CHOP draws |
+| D12 | The standalone app updates itself, only at start-up, with a way back | Mentors | `updater.py`; `__main__.py` `apply_pending_update`, `update_standalone`; `ui/app.py` `watch_for_updates`; Settings → Display & units → Updates | `test_updater.py` (whole file) | **Not tried on a real Windows or Mac:** publish a test release, install the older app, start it twice and check it updated and `.old` is there |
 
 ## What the automated tests cannot show
 

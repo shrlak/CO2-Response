@@ -383,6 +383,8 @@ Alarms **latch**: after the condition clears, the alarm stays as "resolved" unti
 
 **Old LabChart recordings.** **Settings → Data & recordings → Import** also takes a LabChart (PowerLab) text export (`.txt`: in LabChart, File → Export → Text, with the time column and comments included). It needs a flow channel and a CO2 channel; the app works out the breaths, the response and the report from them. Check the first one against LabChart's own numbers.
 
+**Updates (standalone app).** The downloaded app updates itself: it downloads a newer release in the background and installs it the next time you start the app, never during a recording (the old version is kept beside it). To stop it: **Settings → Display & units → Updates**, or set `CO2R_NO_UPDATE=1`. For a study with a fixed software version, turn it off before the study starts.
+
 **Capnostream data exported after the study.** If the monitor's CO2 cannot be streamed live, export its data to a text/CSV file after the study and put it together with the Arduino recording: `co2response --merge-capno study.csv monitor-export.txt`. Hold your breath for about 10 s near the start of every study; it lets the program line the two clocks up without guessing. It says how it lined them up and whether it is sure. See [docs/capnostream.md](docs/capnostream.md).
 
 If the app closes or the computer crashes while recording, the file is kept up to the last second; the next time the app starts it lists it as **Recovered**.
