@@ -240,3 +240,96 @@ def test_the_bend_goes_the_way_the_breaths_bend():
 def test_the_straight_line_and_its_slope_are_unchanged_by_the_curve():
     r = co2_response(breaths(), TestWindow(0.0, 20.0, None), 0.0, None, 4, 15)
     assert r.fit is not None and r.slope == pytest.approx(0.625, rel=1e-6) and r.r == pytest.approx(1.0)  # the dashed line is still the least-squares fit
+
+
+# ------------------------------------------------------------------ the curve through the whole response, and the export
+
+
+def hockey_stick(seed=11):
+    """Like the reference figure: flat near 5 L/min, a knee near 40 mmHg, then a steep rise."""
+    rnd = random.Random(seed)
+    pts = [(i * 4.0, 36 + rnd.gauss(0, 1.0), 5 + rnd.gauss(0, 0.8), i) for i in range(20)]
+    for i in range(20, 90):
+        e = 38 + (i - 20) * 0.27
+        mv = 5 + (0 if e < 40 else 0.9 * (e - 40) ** 1.55) + rnd.gauss(0, 3.5)
+        pts.append((i * 4.0, e + rnd.gauss(0, 0.3), max(mv, 3), i))
+    return pts
+
+
+def test_the_curve_runs_through_the_baseline_and_the_whole_rebreathing():
+    from co2response.processing.metrics import curve_points, display_curve
+
+    pts = hockey_stick()
+    pts.append((400.0, 41.0, 6.0, 100))  # a breath after the end of the test
+    res = co2_response(pts, TestWindow(0.0, 80.0, 396.0), 30.0, None, 4, 15)
+    used = curve_points(res)
+    assert {p.key for p in res.baseline} <= {p.key for p in used}  # the baseline is on the curve
+    assert {p.key for p in res.calibration} <= {p.key for p in used}  # and the calibration, which is not fitted
+    assert 100 not in {p.key for p in used}  # but not the breaths after the end
+    assert [p.t for p in used] == sorted(p.t for p in used)
+    cx, cy = display_curve(res)
+    assert len(cx) == 200 and cx[0] == pytest.approx(min(p.etco2 for p in used)) and cx[-1] == pytest.approx(max(p.etco2 for p in used))
+    # the dashed least-squares line still comes from the fitted breaths only
+    assert res.fit is not None and len(res.rebreathing) < len(used)
+
+
+def test_the_curve_is_flat_then_takes_off_like_a_ventilatory_response():
+    from co2response.processing.metrics import display_curve
+
+    res = co2_response(hockey_stick(), TestWindow(0.0, 80.0, None), 30.0, None, 4, 15)
+    cx, cy = display_curve(res)
+    slope = np.diff(cy) / np.diff(cx)
+    assert np.all(np.diff(cy) >= -1e-9)  # never down
+    assert float(np.mean(slope[:30])) < 2.0  # flat near the baseline (about 5 L/min)
+    assert float(np.mean(slope[-30:])) > 5 * float(np.mean(slope[:30]))  # then steeply up
+    assert cy[0] == pytest.approx(5, abs=2.5) and 55 < cy[-1] < 95
+    truth = lambda x: 5 + (0 if x < 40 else 0.9 * (x - 40) ** 1.55)  # noqa: E731
+    mid = [(x, y) for x, y in zip(cx, cy) if 44 < x < 54]
+    assert max(abs(y - truth(x)) for x, y in mid) < 8  # follows the underlying response through the noise
+
+
+def test_the_curve_needs_no_fit_and_survives_few_breaths():
+    from co2response.processing.metrics import display_curve
+
+    res = co2_response([(0.0, 38.0, 7.0, 0), (4.0, 38.1, 7.1, 1)], TestWindow(0.0, None, None), 0.0)
+    assert display_curve(res) == ([], [])  # fewer than 4 points: no curve
+    res = co2_response(breaths(n=12), TestWindow(0.0, 20.0, None), 0.0, None, 4, 15)
+    cx, cy = display_curve(res)
+    assert len(cx) == 200
+
+
+def test_the_breath_export_is_one_row_per_time_point_and_one_column_per_value():
+    import csv
+    import io
+
+    from co2response.storage.session_file import breaths_csv, read_session
+
+    s = read_session(ROOT / "sample-data" / "synthetic_session.csv")
+    rows = list(csv.reader(io.StringIO(breaths_csv(s))))
+    head, body = rows[0], rows[1:]
+    assert head[-3:] == ["time_mmss", "phase", "curve_mv_lpm"] and head[:4] == ["breath", "time_s", "wall_time_iso", "etco2_mmHg"]
+    assert len(body) == len(s.breaths) and all(len(r) == len(head) for r in body)  # every value in its own cell
+    col = {name: i for i, name in enumerate(head)}
+    for r, b in zip(body, s.breaths):
+        assert float(r[col["time_s"]]) == pytest.approx(b.time_s, abs=0.001)
+        m, sec = r[col["time_mmss"]].split(":")
+        assert int(m) * 60 + int(sec) == pytest.approx(b.time_s, abs=0.51)
+    phases = [r[col["phase"]] for r in body]
+    assert phases.count("calibration") == 4 and phases.count("baseline") >= 8 and phases.count("fitted") >= 15 and "after the test" in phases
+    assert any(p.startswith("rejected (") for p in phases)
+    curve = [(float(r[col["etco2_mmHg"]]), float(r[col["curve_mv_lpm"]])) for r in body if r[col["curve_mv_lpm"]]]
+    curve.sort()
+    assert len(curve) > 30 and all(b >= a - 1e-6 for (_, a), (_, b) in zip(curve, curve[1:]))  # the curve's value at each EtCO2: rising
+    # a zoomed export has the same columns, and the clean-only export leaves the rejected rows out
+    assert len(breaths_csv(s, clean_only=True).splitlines()) < len(breaths_csv(s).splitlines())
+
+
+def test_the_pdf_writes_a_time_beside_the_points_but_not_on_top_of_each_other():
+    from co2response.storage.report import _labelled
+
+    res = co2_response(hockey_stick(), TestWindow(0.0, 80.0, None), 30.0, None, 4, 15)
+    lab = _labelled(res)
+    assert len(lab) <= 20 and lab[-1].t == max(p.t for p in res.skipped + res.rebreathing)  # the end of the test is always labelled
+    assert sum(1 for p in lab if p in res.baseline) == 1  # the baseline cluster gets one label
+    few = co2_response(breaths(n=12), TestWindow(0.0, 20.0, None), 0.0, None, 0, 0)
+    assert len(_labelled(few)) == len(few.baseline[-1:]) + len(few.rebreathing)  # a short test: every point

@@ -19,7 +19,7 @@ import math
 from dataclasses import dataclass, field
 
 from ..jsfmt import iso_ms
-from ..processing.metrics import CO2Response, TestWindow, co2_response, normalized_slopes, response_curve, response_labels, test_window
+from ..processing.metrics import CO2Response, TestWindow, co2_response, display_curve, normalized_slopes, response_labels, test_window
 from .pdf import LETTER, Pdf, text_width
 from .session_file import ParsedSession, SessionSummary, session_markers, summarize
 
@@ -59,7 +59,11 @@ def response_stats(res: CO2Response) -> list[tuple[str, str]]:
     """The response as (label, value) pairs for a review screen's summary."""
     if not res.split:
         return [("CO2 response", f"slope {res.slope:.2f} L/min/mmHg, r {res.r:.2f} (n {len(res.rebreathing)}, no Rebreathing marker)" if res.fit else "no Rebreathing marker")]
-    fit = f"slope {res.slope:.2f} L/min/mmHg, r {res.r:.2f}, x-int {_num(res.x_intercept)} mmHg (n {len(res.rebreathing)})" if res.fit else f"not fitted ({len(res.rebreathing)} breaths)"
+    fit = (
+        f"slope {res.slope:.2f} L/min/mmHg, r {res.r:.2f}, x-int {_num(res.x_intercept)} mmHg (n {len(res.rebreathing)})"
+        if res.fit
+        else f"not fitted ({len(res.rebreathing)} breaths)"
+    )
     base = f"EtCO2 {_num(res.baseline_etco2)} mmHg, MV {_num(res.baseline_mv, 2)} L/min (n {len(res.baseline)})" if res.baseline else "no baseline breaths"
     return [("CO2 response", fit), ("Baseline", base)]
 
@@ -305,11 +309,15 @@ def _response_plot(pdf: Pdf, r: Report, x: float, y: float, w: float, h: float) 
         pdf.cross(ax.px(p.etco2), ax.py(p.mv), 3, _RED, 1.1)
     if res.fit:
         a, b = min(p.etco2 for p in res.rebreathing), max(p.etco2 for p in res.rebreathing)
-        # the straight least-squares line the slope comes from, dashed, and over it the smooth curve
+        # the straight least-squares line the slope comes from, dashed
         pdf.line(ax.px(a), ax.py(res.fit.slope * a + res.fit.intercept), ax.px(b), ax.py(res.fit.slope * b + res.fit.intercept), 1.1, _GREY, (4, 3))
-        cx, cy = response_curve([p.etco2 for p in res.rebreathing], [p.mv for p in res.rebreathing])
-        for i in range(len(cx) - 1):
-            pdf.line(ax.px(cx[i]), ax.py(cy[i]), ax.px(cx[i + 1]), ax.py(cy[i + 1]), 1.8)
+    # the smooth curve through the whole response, baseline included: flat, then rising
+    cx, cy = display_curve(res)
+    for i in range(len(cx) - 1):
+        pdf.line(ax.px(cx[i]), ax.py(cy[i]), ax.px(cx[i + 1]), ax.py(cy[i + 1]), 1.8)
+    # every time point is marked by its dot; the time of the recording (m:s) is written beside them
+    for i, q in enumerate(_labelled(res)):  # alternately above and below, so neighbours do not overwrite each other
+        pdf.text(ax.px(q.etco2) + 3.5, ax.py(q.mv) + (-5 if i % 2 == 0 else 11), _clock(q.t), 6.5, color=_GREY)
     # the labels of the lab's figures: the slope and r up by the line, the baseline by its breaths
     fit_label, base_label = response_labels(res)
     for i, part in enumerate(fit_label.split(" · ") if fit_label else []):
@@ -321,7 +329,12 @@ def _response_plot(pdf: Pdf, r: Report, x: float, y: float, w: float, h: float) 
             pdf.text(max(x + 4, bx - 4), by + 11 * i, part, 8.5, "bold" if i == 0 else "regular")
     # legend
     lx, ly = x + 8, y + 12
-    items = [("fitted", "dot")] + ([("baseline (averaged)", "ring")] if res.baseline else []) + ([("calibration / not fitted" if res.calibration else "not fitted", "faint")] if res.skipped else []) + ([("excluded by hand", "cross")] if res.excluded else [])
+    items = (
+        [("fitted", "dot")]
+        + ([("baseline (averaged)", "ring")] if res.baseline else [])
+        + ([("calibration / not fitted" if res.calibration else "not fitted", "faint")] if res.skipped else [])
+        + ([("excluded by hand", "cross")] if res.excluded else [])
+    )
     for text, kind in items:
         if kind == "dot":
             pdf.circle(lx, ly - 3, 2.8, stroke=None, fill=_GREEN)
@@ -333,6 +346,45 @@ def _response_plot(pdf: Pdf, r: Report, x: float, y: float, w: float, h: float) 
             pdf.cross(lx, ly - 3, 3, _RED, 1.1)
         pdf.text(lx + 8, ly, text, 8, color=_GREY)
         lx += 16 + text_width(text, 8)
+    pdf.text(x + w - 4, y + 12, "numbers: time of the recording (m:s)", 7.5, color=_GREY, align="right")
+
+
+def breath_phases(s: ParsedSession, res: CO2Response) -> dict[float, str]:
+    """Which part of the test each breath belongs to, by breath number: baseline,
+    calibration, fitted, left out (the rest of the start of rebreathing), after the test,
+    excluded by hand, rejected (why), or "-" (before the baseline)."""
+    role: dict[object, str] = {}  # keyed by the breath number the response was given
+    end = res.window.end
+    for p in res.skipped:
+        role[p.key] = "after the test" if end is not None and p.t >= end else "left out (start of rebreathing)"
+    for name, pts in (("baseline", res.baseline), ("calibration", res.calibration), ("fitted", res.rebreathing), ("excluded by hand", res.excluded)):
+        for p in pts:
+            role[p.key] = name
+    out = {}
+    for b in s.breaths:
+        q = b.quality or "ok"
+        out[b.n] = role.get(b.n, "-") if q in ("ok", "excluded") else f"rejected ({q})"
+    return out
+
+
+def breath_table_extras(s: ParsedSession) -> tuple[dict[float, str], list[float], list[float]]:
+    """For the breath table of an export: each breath's phase, and the smooth curve."""
+    res = session_response(s)
+    cx, cy = display_curve(res)
+    return breath_phases(s, res), cx, cy
+
+
+def _labelled(res: CO2Response, most: int = 16) -> list:
+    """The time points that get a time written beside them: all of them when there are few,
+    otherwise an even share (at most about ``most``), always the first and last of the
+    rebreathing. The baseline is a cluster at one place, so only its last."""
+    base = sorted((p for p in res.baseline if math.isfinite(p.t)), key=lambda p: p.t)
+    rest = sorted((p for p in res.skipped + res.rebreathing if math.isfinite(p.t)), key=lambda p: p.t)
+    step = max(1, math.ceil(len(rest) / most))
+    chosen = rest[::step]
+    if rest and rest[-1] not in chosen:
+        chosen.append(rest[-1])
+    return ([base[-1]] if base else []) + chosen
 
 
 def _time_plot(pdf: Pdf, r: Report, x: float, y: float, w: float, h: float) -> None:
@@ -383,8 +435,17 @@ def report_pdf(r: Report) -> bytes:
     pdf.text(M, y, "Read's rebreathing method. Not a medical device; not for clinical decision-making.", 8.5, color=_GREY)
     y += 18
     sub = r.subject
-    size = ", ".join(f"{label} {sub[k]:g} {unit}" for k, label, unit in (("heightCm", "height", "cm"), ("weightKg", "weight", "kg"), ("ageYears", "age", "y")) if isinstance(sub.get(k), (int, float)))
-    head = [("Study code", r.study_code or "--"), ("Started", iso_ms(r.started_ms)[:19].replace("T", " ") + " UTC"), ("Length", _clock(r.summary.duration_s) + " min:s"), ("Subject", size or "size not entered")]
+    size = ", ".join(
+        f"{label} {sub[k]:g} {unit}"
+        for k, label, unit in (("heightCm", "height", "cm"), ("weightKg", "weight", "kg"), ("ageYears", "age", "y"))
+        if isinstance(sub.get(k), (int, float))
+    )
+    head = [
+        ("Study code", r.study_code or "--"),
+        ("Started", iso_ms(r.started_ms)[:19].replace("T", " ") + " UTC"),
+        ("Length", _clock(r.summary.duration_s) + " min:s"),
+        ("Subject", size or "size not entered"),
+    ]
     for i, (k, v) in enumerate(head):
         cx = M + (i % 2) * (w - 2 * M) / 2
         pdf.text(cx, y, k, 8.5, color=_GREY)

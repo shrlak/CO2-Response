@@ -238,7 +238,7 @@ def test_a_breath_can_be_taken_out_of_the_fit_by_hand_and_put_back(tmp_path):
     gone = [b for b in parsed.breaths if b.quality == "excluded"]
     assert len(gone) == 1 and gone[0].etco2 == pytest.approx(first.etco2, abs=0.06)
     assert gone[0] not in clean_breaths(parsed)
-    assert ",excluded\n" in breaths_csv(parsed)
+    assert ",excluded," in breaths_csv(parsed) and ",excluded by hand," in breaths_csv(parsed)  # its quality, and its phase of the test
     # the breath's own length and expired volume are in the file
     b = clean_breaths(parsed)[-1]
     assert b.mv_breath == pytest.approx(b.vt / 1000 * 60 / b.period) and b.vte == pytest.approx(b.vt, rel=0.05)

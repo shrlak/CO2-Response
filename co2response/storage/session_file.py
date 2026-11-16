@@ -647,7 +647,12 @@ def clean_breaths(s: ParsedSession) -> list[BreathRec]:
 def breaths_csv(s: ParsedSession, rng: Range | None = None, clean_only: bool = False) -> str:
     """One row per breath: the table most analyses start from. ``quality`` says which
     breaths passed the noise screen; ``clean_only`` leaves the others out."""
-    rows = ["breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,period_s,vte_ml,mv_breath_lpm,quality"]
+    from .report import breath_table_extras
+
+    # one row per time point (breath), one column per value; the last three say when in the
+    # test it was and where the smooth curve of the response graph runs through it
+    rows = ["breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,period_s,vte_ml,mv_breath_lpm,quality,time_mmss,phase,curve_mv_lpm"]
+    phases, cx, cy = breath_table_extras(s)
     for b in s.breaths:
         if not _in_range(b.time_s, rng) or (clean_only and not is_clean(b)):
             continue
@@ -667,6 +672,9 @@ def breaths_csv(s: ParsedSession, rng: Range | None = None, clean_only: bool = F
                     num(b.vte, 0),
                     num(b.mv_breath, 2),
                     b.quality or "ok",
+                    f"{max(0, round(b.time_s)) // 60}:{max(0, round(b.time_s)) % 60:02d}",
+                    csv_escape(phases.get(b.n, "-")),
+                    num(float(np.interp(b.etco2, cx, cy)), 2) if cx and math.isfinite(b.etco2) and cx[0] <= b.etco2 <= cx[-1] else "",
                 ]
             )
         )
