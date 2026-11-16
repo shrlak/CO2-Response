@@ -462,7 +462,7 @@ def response_curve(xs: Sequence[float], ys: Sequence[float], n_out: int = 200) -
     d2 = np.diff(np.eye(nb), n=2, axis=0)
     rough = d2.T @ d2 + 1e-9 * np.eye(nb)
     d1 = np.diff(np.eye(nb), n=1, axis=0)
-    direction = 1.0 if float(np.polyfit(u, y, 1)[0]) >= 0 else -1.0
+    direction = 1.0 if float(np.linalg.lstsq(np.vander(u, 2), y, rcond=None)[0][0]) >= 0 else -1.0
     lams = 10.0 ** np.linspace(-4, MAX_LOG_LAMBDA, 25)  # capped: a stiff spline is a straight line
 
     def pick_lambda(w: np.ndarray) -> float:
@@ -505,7 +505,7 @@ def response_curve(xs: Sequence[float], ys: Sequence[float], n_out: int = 200) -
     want = MIN_BOW * max(abs(float(curve[-1] - curve[0])), 1e-9)
     chord = curve[0] + (curve[-1] - curve[0]) * grid
     # the way the breaths themselves bend: below the chord (convex, steepening) unless they bend the other way
-    below = -1.0 if float(np.polyfit(u, y, 2)[0]) < -1e-9 else 1.0
+    below = -1.0 if float(np.linalg.lstsq(np.vander(u, 3), y, rcond=None)[0][0]) < -1e-9 else 1.0
     bump = 4 * grid * (1 - grid)  # a parabola: the ends stay put, and a gentle bend keeps the curve monotone
     for _ in range(8):
         have = float(np.max(below * (chord - curve)))
@@ -513,6 +513,25 @@ def response_curve(xs: Sequence[float], ys: Sequence[float], n_out: int = 200) -
             break
         curve = curve - below * (want - have) * bump
     return (x0 + grid * span).tolist(), curve.tolist()
+
+
+def curve_points(res: CO2Response) -> list[RespPoint]:
+    """The breaths the response curve runs through: the baseline and the whole of
+    rebreathing (the calibration and the seconds left out of the fit included, since they
+    are real time points), in time order. Not the breaths after the end of the test, nor the
+    ones taken out by hand. The curve therefore starts on the baseline and rises from it,
+    the shape of the ventilatory response (flat, then up), where the least-squares line
+    uses the fitted breaths only."""
+    end = res.window.end
+    pts = list(res.baseline) + list(res.rebreathing) + [p for p in res.skipped if end is None or math.isnan(p.t) or p.t < end]
+    return sorted(pts, key=lambda p: math.inf if math.isnan(p.t) else p.t)
+
+
+def display_curve(res: CO2Response, n_out: int = 200) -> tuple[list[float], list[float]]:
+    """The smooth curve drawn on every MV-vs-EtCO2 graph: ``response_curve`` through
+    ``curve_points`` (empty with too few breaths or no spread in EtCO2)."""
+    pts = curve_points(res)
+    return response_curve([p.etco2 for p in pts], [p.mv for p in pts], n_out)
 
 
 def response_axes(res: CO2Response) -> tuple[float, float, float, float]:
@@ -523,10 +542,9 @@ def response_axes(res: CO2Response) -> tuple[float, float, float, float]:
     every = res.baseline + res.rebreathing + res.skipped + res.excluded
     xs = [p.etco2 for p in every]
     ys = [p.mv for p in every]
-    if res.rebreathing:
-        cx, cy = response_curve([p.etco2 for p in res.rebreathing], [p.mv for p in res.rebreathing])
-        xs += cx
-        ys += cy
+    cx, cy = display_curve(res)
+    xs += cx
+    ys += cy
     if not xs:
         return 30.0, 50.0, 0.0, 10.0
     # a margin of a tenth of the spread, and never narrower than 8 mmHg / 5 L/min: a few

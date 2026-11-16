@@ -13,7 +13,7 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
 
-from ..processing.metrics import CO2Response, response_axes, response_curve, response_labels
+from ..processing.metrics import CO2Response, display_curve, response_axes, response_labels
 from . import theme
 from .theme import ui_font
 
@@ -104,7 +104,7 @@ class ResponsePlot(pg.PlotWidget):
             rx = [q.etco2 for q in res.rebreathing]
             ends = [min(rx), max(rx)]
             self.fit.setData(ends, [res.fit.slope * x + res.fit.intercept for x in ends])
-            cx, cy = response_curve(rx, [q.mv for q in res.rebreathing])
+            cx, cy = display_curve(res)
             self.curve.setData(cx, cy)
         else:
             self.fit.setData([], [])

@@ -268,7 +268,7 @@ def test_writes_breath_and_event_tables(lib):
     _, (rec, _), breaths, _ = record_session(lib, 30)
     s = lib.parse(rec.id)
     b = breaths_csv(s).rstrip("\n").split("\n")
-    assert b[0] == "breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,period_s,vte_ml,mv_breath_lpm,quality"
+    assert b[0] == "breath,time_s,wall_time_iso,etco2_mmHg,fico2_mmHg,rr_bpm,vt_ml,mv_lpm,peak_insp_lpm,period_s,vte_ml,mv_breath_lpm,quality,time_mmss,phase,curve_mv_lpm"
     assert len(b) == len(breaths) + 1
     e = events_csv(s).rstrip("\n").split("\n")
     assert e[0] == "time_s,wall_time_iso,type,event"

@@ -43,7 +43,7 @@ A long recording (over about 4 MB, a few minutes) is opened in small steps, so t
 | Export | What you get |
 | --- | --- |
 | Whole session (one .csv) | The complete session file, exactly as recorded |
-| Breaths (.csv) | One row per breath: `breath, time_s, wall_time_iso, etco2_mmHg, fico2_mmHg, rr_bpm, vt_ml, mv_lpm, peak_insp_lpm, period_s, vte_ml, mv_breath_lpm, quality`. Every breath is listed; filter `quality == ok` for the clean ones |
+| Breaths (.csv) | **One row per time point (breath), one column per value**: `breath, time_s, wall_time_iso, etco2_mmHg, fico2_mmHg, rr_bpm, vt_ml, mv_lpm, peak_insp_lpm, period_s, vte_ml, mv_breath_lpm, quality, time_mmss, phase, curve_mv_lpm`. `time_mmss` is the time of the recording as m:ss; `phase` says where in the test the breath was (`baseline`, `calibration`, `fitted`, `left out (start of rebreathing)`, `after the test`, `excluded by hand`, `rejected (why)`, or `-` before the baseline); `curve_mv_lpm` is the minute ventilation of the smooth curve on the response graph at that breath's EtCO2 (empty outside the curve). Every breath is listed; filter `quality == ok` for the clean ones. It opens in Excel with every value in its own cell |
 | Alarms & events (.csv) | `time_s, wall_time_iso, type, event` |
 | CO2 response report (.pdf) | The test report: results, the response plot, EtCO2 and MV against time, how it was measured, and a table of every breath saying how it was used ([The test report](#the-test-report)) |
 | Zoomed range | The same three exports, limited to the time range you zoomed to |
