@@ -135,7 +135,7 @@ def tile(page, name: str):
 
 
 def numbers_ok(page) -> None:
-    sync_api.expect(tile(page, "rr")).to_have_text(re.compile(r"^1[4-6]$"), timeout=40_000)
+    sync_api.expect(tile(page, "rr")).to_have_text(re.compile(r"^1[4-6]\.\d$"), timeout=40_000)  # RR with one decimal
     sync_api.expect(tile(page, "etco2")).to_have_text(re.compile(r"^3[6-9]$"))
     sync_api.expect(tile(page, "vt")).to_have_text(re.compile(r"^(4[6-9]\d|5[0-4]\d)$"))
 
@@ -413,7 +413,7 @@ def test_simulation_panel_and_enlarged_graphs(page, site_url):
     sync_api.expect(page.locator("#simpanel")).to_be_visible()
     sync_api.expect(page.locator(".sp-start")).to_be_visible()  # not running yet
     page.locator('[data-act="sim-situation"][data-arg="hypoventilation"]').click()
-    sync_api.expect(tile(page, "rr")).to_have_text("6", timeout=60_000)
+    sync_api.expect(tile(page, "rr")).to_have_text("6.0", timeout=60_000)
     sync_api.expect(page.locator("#sp-mon-rr")).to_have_text("6")
     sync_api.expect(page.locator("#sp-set-rr")).to_have_text("6")
     sync_api.expect(page.locator(".alarm-slot")).to_contain_text("EtCO2 HIGH", timeout=30_000)
@@ -425,7 +425,7 @@ def test_simulation_panel_and_enlarged_graphs(page, site_url):
     page.eval_on_selector("#sp-rr", "el => { el.value = 20; el.dispatchEvent(new Event('input', { bubbles: true })); }")
     sync_api.expect(page.locator("#spv-rr")).to_have_text("20 /min")
     sync_api.expect(page.locator("#sp-current")).to_contain_text("(adjusted)")
-    sync_api.expect(tile(page, "rr")).to_have_text("20", timeout=15_000)
+    sync_api.expect(tile(page, "rr")).to_have_text("20.0", timeout=15_000)
     page.locator("#sp-apnea").check()
     sync_api.expect(page.locator("[data-testid=tile-rr]")).to_have_class(re.compile("alarm-high"), timeout=40_000)  # apnea
     # enlarge one graph, then go back with Esc
@@ -509,6 +509,64 @@ def labchart_export_of_the_sample() -> str:
         mark = next((e[5:] for e in row["event"].split(" | ") if e.startswith("MARK ")), "")
         out.append(f"{float(row['time_s']):.4f}\t{-float(row['pneumo_lpm']) * 1000 / 60:.3f}\t{float(row['co2_mmHg']):.3f}" + (f"\t#* {mark}" if mark else ""))
     return "\r\n".join(out) + "\r\n"
+
+
+def test_replay_pause_speed_stop_analysis_and_continuing_a_recording(page, site_url, tmp_path):
+    boot(page, site_url)
+    # no replay controls during a simulated test
+    page.locator('[data-act="start-sim"]').first.click()
+    numbers_ok(page)
+    assert page.locator(".softkeys .replaybar").count() == 0 and page.locator('.softkeys [data-act="pause"]').count() == 0
+    page.keyboard.press("p")  # does nothing outside a replay
+    page.locator('[data-act="open-settings"]').last.click()
+    page.locator('[data-act="disconnect"]').first.click()
+    page.locator('[data-act="show-monitor"]').first.click()
+
+    # a recorded CSV uploaded from the start screen: the whole file, with the controls
+    page.set_input_files('.connect-card input[data-change="replay-file"]', str(ROOT / "sample-data" / "synthetic_session.csv"))
+    bar = page.locator(".softkeys .replaybar")
+    sync_api.expect(bar).to_contain_text("REPLAY", timeout=60_000)
+    sync_api.expect(bar).to_contain_text("/ 3:00")
+    page.keyboard.press("p")
+    sync_api.expect(bar).to_contain_text("PAUSED")
+    sync_api.expect(bar.locator('[data-act="pause"]')).to_contain_text("Play")
+    bar.locator('[data-act="pause"]').click()
+    sync_api.expect(bar).not_to_contain_text("PAUSED")
+    bar.locator('[data-act="replay-speed-live"][data-arg="10"]').click()
+    sync_api.expect(bar.locator('[data-arg="10"]')).to_have_attribute("aria-pressed", "true")
+    # show all: the whole recording ends up on the monitor and stays there
+    bar.locator('[data-act="replay-whole"]').click()
+    sync_api.expect(bar).to_contain_text("END OF RECORDING", timeout=60_000)
+    sync_api.expect(page.locator("#replay-timeline")).to_have_value("1000")
+    assert page.locator(".connect-overlay").count() == 0
+    bar.locator('[data-act="replay-stop"]').click()
+    sync_api.expect(bar).to_have_count(0)
+
+    # a saved file: its in-depth analysis, and continuing to record it
+    page.locator('[data-act="open-settings"]').last.click()
+    page.locator("#nav-data").click()
+    page.set_input_files('input[data-change="import-files"]', str(ROOT / "sample-data" / "synthetic_session.csv"))
+    table = page.locator("table.sessions")
+    sync_api.expect(table.locator("tbody tr")).to_have_count(1, timeout=60_000)
+    table.locator("tbody tr").first.get_by_role("button", name="Open").click()
+    sync_api.expect(page.locator(".review pre")).to_contain_text("Ti/Ttot", timeout=60_000)
+    sync_api.expect(page.locator(".review pre")).to_contain_text("CO2 delay after expiration starts")
+    with page.expect_download() as dl:
+        page.get_by_role("button", name="In-depth analysis (.csv)").click()
+    assert dl.value.suggested_filename == "synthetic_session_analysis.csv"
+    page.get_by_role("button", name="Continue recording").click()
+    sync_api.expect(page.locator(".toast")).to_contain_text("synthetic_session_resumed.csv")
+    sync_api.expect(page.locator(".header .rec")).to_contain_text("REC")
+    page.locator('[data-act="start-sim"]').first.click()
+    numbers_ok(page)
+    with page.expect_download() as dl2:
+        page.locator('[data-act="record"]').click()
+    assert dl2.value.suggested_filename == "synthetic_session_resumed.csv"
+    out = tmp_path / "resumed.csv"
+    dl2.value.save_as(out)
+    text = out.read_text()
+    assert "# resumed_from,synthetic_session.csv" in text and "RECORDING_RESUMED from=synthetic_session.csv" in text
+    assert page.errors == []
 
 
 def test_a_labchart_text_export_is_imported_as_a_session(page, site_url, tmp_path):

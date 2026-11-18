@@ -1,4 +1,4 @@
-"""The Uno R4 board with digital sensors (SFM3304-D flow, SprintIR-6S CO2), the waveform
+"""The Uno R4 board with digital sensors (SFM3300-250-D flow, SprintIR-R CO2), the waveform
 fixes, the MV-vs-EtCO2 graph's labels, the terminal monitor and the fast whole test."""
 
 from __future__ import annotations
@@ -49,9 +49,9 @@ def test_digital_board_says_what_it_is_and_sends_units():
     # % CO2 (0 to about 5 %), L/min both ways (inspiration positive)
     assert 4.0 < max(co2) < 6.0 and min(co2) < 0.5
     assert max(flow) > 20 and min(flow) < -20
-    # the SprintIR reports 20 times a second, so the value is held for 5 samples at 100 Hz
+    # the SprintIR-R reports 50 times a second, so the value is held for 2 samples at 100 Hz
     changes = sum(1 for a, b in zip(co2, co2[1:]) if a != b)
-    assert changes <= len(co2) / 5 + 1
+    assert changes <= len(co2) / 2 + 1
 
 
 def test_a_sensor_that_does_not_answer_is_sent_as_9999():
@@ -396,11 +396,18 @@ def test_both_firmwares_format_lines_the_same_way():
 
 def test_r4_firmware_matches_the_wiring():
     cfg = (ROOT / "firmware" / "CO2ResponseR4" / "config.h").read_text()
-    for pin in ("BUTTON_PIN 2", "REED_PIN 3", "ALARM_LED_PIN 7", "BUZZER_PIN 8", "HEATER_PIN 9", "PUMP_PIN 10", "SFM_I2C_ADDRESS 0x2E", "CO2_BAUD 9600"):
+    # the parts the team ordered: SFM3300-250-D (I2C 0x40, no heater), SprintIR-R-20 at 38400 baud,
+    # the pump on Q1 (D10), the reed switch on D3, the board's own LED for alarms
+    for pin in ("BUTTON_PIN 2", "REED_PIN 3", "ALARM_LED_PIN LED_BUILTIN", "BUZZER_PIN 8", "HEATER_PIN -1", "PUMP_PIN 10", "SFM_I2C_ADDRESS 0x40", "CO2_BAUD 38400"):
         assert f"#define {pin}" in cfg, pin
+    for k in ("SFM_OFFSET 32768.0f", "SFM_SCALE 120.0f", "SFM_CMD_START 0x1000"):
+        assert f"#define {k}" in cfg, k
+    sfm = (ROOT / "firmware" / "CO2ResponseR4" / "sensirion.h").read_text()
+    assert "class Sfm3300" in sfm and "crc = 0x00" in sfm  # the SFM3000 family's CRC starts at 0x00
     ino = (ROOT / "firmware" / "CO2ResponseR4" / "CO2ResponseR4.ino").read_text()
     # the info line tells the app which board it is
     assert "UNITS,1" in ino and "A,BUTTON" in ino and "A,REED,1" in ino and "ALARM" in ino
+    assert "CO2,SPRINTIR-R,FLOW,SFM3300" in ino and "CO2ZERO AIR" in ino and "PUMP_DUTY" in ino
     assert Path(ROOT / "firmware" / "r4" / "platformio.ini").exists()
 
 

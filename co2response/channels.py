@@ -3,7 +3,7 @@
 There are two boards, and so two bundled configurations:
 
 - ``config/channels-digital.json``: the Uno R4 board with digital sensors (a Sensirion
-  SFM3304-D flow sensor on I2C and a GSS SprintIR-6S-20 CO2 sensor on UART). Its data
+  SFM3300-250-D flow sensor on I2C and a GSS SprintIR-R-20 CO2 sensor on UART). Its data
   lines already carry engineering units (% CO2 and L/min), so the calibrations are 1:1
   trims, and the one flow sensor is both the "flow" and the "pneumo" channel.
 - ``config/channels.json``: the earlier board, an ADS1115 reading three analog sensors

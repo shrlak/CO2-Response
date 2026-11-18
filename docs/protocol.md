@@ -99,15 +99,16 @@ The app sends `INFO` then `START` after opening the port. Opening the port reset
 The board in the wiring diagram (`firmware/CO2ResponseR4/`, [wiring.md](wiring.md#uno-r4-board-digital-sensors))
 uses the same lines, checksums, sequence numbers, heartbeat and commands, with these differences:
 
-- **Info line:** `I,FW,2.0.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR,FLOW,SFM3304,CH,2,RATE,100,BAUD,115200,ADDR,0x2E,WD,3000,REED,1,ALARM,1,PUMP,1,HEAT,1`
-  (`VALVE,1` too when a valve servo is fitted). `UNITS,1` tells the app the values are engineering
+- **Info line:** `I,FW,2.1.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,SFM3300,CH,2,RATE,100,BAUD,115200,ADDR,0x40,SFM_SN,<serial>,CO2_MULT,10,PUMP_DUTY,140,WD,3000,REED,1,ALARM,1,PUMP,1`
+  (`VALVE,1` too when a valve servo is fitted; `SFM_SN` only when the flow sensor gave its serial number; `HEAT,1` only for a flow sensor with a heater). `UNITS,1` tells the app the values are engineering
   units, so it uses the bundled `co2response/config/channels-digital.json` (1:1 trims) and keeps
   that board's calibration in its own file.
 - **Data line:** two values, `D,<seq>,<t_ms>,<CO2 %>,<flow L/min>*<checksum>`. Flow is the
-  SFM3304-D's reading in standard L/min, inspiration positive. CO2 is the SprintIR's latest reading
-  (it reports 20 times a second, so the value repeats between updates). One flow sensor does both
+  SFM3300-250-D's reading in standard L/min, inspiration positive: the mean of the reads taken every
+  1 ms since the previous line (`SFM_AVERAGE`), which lowers its noise. CO2 is the SprintIR-R's latest
+  reading (it reports 50 times a second, so at 100 Hz each value is sent twice). One flow sensor does both
   jobs: the app shows one Flow waveform and computes breaths, VT and MV from it.
-- **A sensor that is not answering** (no CO2 reading for 1 s; an I2C error from the flow sensor) is
+- **A sensor that is not answering** (no CO2 reading for 0.5 s; an I2C error from the flow sensor) is
   sent as `9999`. The app shows `---` and raises "… NOT ANSWERING". The firmware restarts the flow
   sensor once a second until it answers, and sends `E,FLOW_NOT_FOUND` at boot if it is missing.
 - **Device events:** `A,BUTTON` when the stop / marker button is pressed (during rebreathing the app
@@ -119,8 +120,9 @@ uses the same lines, checksums, sequence numbers, heartbeat and commands, with t
 | Command | Reply | Effect |
 | --- | --- | --- |
 | `ALARM 0`, `ALARM 1`, `ALARM 2` | `A,ALARM,<n>` | The board's alarm LED and buzzer: off; LED blinking (a medium alarm); LED on and buzzer pulsing (a high alarm). The app sends it whenever its alarm level changes and every 5 s. A silenced high alarm is sent as 1. |
-| `PUMP 0`, `PUMP 1` | `A,PUMP,<n>` | The sample pump (Q2, D10). It also starts with `START` and stops with `STOP`. |
-| `HEAT 0`, `HEAT 1` | `A,HEAT,<n>` | The flow sensor's heater (Q1, D9). On from power-up. |
+| `PUMP 0`, `PUMP 1`, `PUMP <2-255>` | `A,PUMP,<on>,<duty>` | The sample pump (Q1, D10): off, on, or on at that PWM duty (kept until the board restarts; the default is `PUMP_DUTY` in `config.h`). It also starts with `START` and stops with `STOP`. |
+| `CO2ZERO AIR`, `CO2ZERO N2` | `A,CO2ZERO,AIR` / `A,CO2ZERO,N2` | Zero the SprintIR-R with its sample line in fresh air (taken as 400 ppm) or in nitrogen (0 ppm), the pump running. **Settings > Connection > CO2 sensor zero** sends it. |
+| `HEAT 0`, `HEAT 1` | `A,HEAT,<n>` | Only for a flow sensor with a heater (`HEATER_PIN` set in `config.h`); the SFM3300 has none. |
 
 The host watchdog works as on the ADC board, and also flashes the alarm LED and pulses the buzzer.
 

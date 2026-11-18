@@ -23,12 +23,12 @@ class Encoders(NamedTuple):
 FIRMWARE_INFO = "I,FW,sim-1.2.0,ADC,SIMULATED,CH,3,VALVE,1,RATE,"
 #: the Uno R4 board with digital sensors (firmware/CO2ResponseR4): its data lines carry
 #: % CO2 and L/min, which UNITS tells the host
-DIGITAL_INFO = "I,FW,sim-2.0.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR,FLOW,SFM3304,CH,2,VALVE,1,REED,1,ALARM,1,RATE,"
+DIGITAL_INFO = "I,FW,sim-2.0.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,SFM3300,CH,2,VALVE,1,REED,1,ALARM,1,RATE,"
 #: what that board sends for a sensor that is not answering
 NOT_ANSWERING = 9999.0
-#: the SprintIR reports a new CO2 value this often; the board repeats it in between
-CO2_UPDATE_HZ = 20
-#: measuring ranges of the digital sensors: % CO2, and L/min either way
+#: the SprintIR-R reports a new CO2 value this often; the board repeats it in between
+CO2_UPDATE_HZ = 50
+#: measuring ranges of the digital sensors: % CO2 (SprintIR-R-20), and L/min either way (SFM3300-250-D)
 CO2_RANGE_PCT = (0.0, 20.0)
 FLOW_RANGE_LPM = 250.0
 
@@ -91,7 +91,7 @@ class SimulatorCore:
 
     def _digital_values(self, s, p, dt: float) -> list[float]:
         """What the Uno R4 board puts on a line: % CO2 as the SprintIR last reported it
-        (20 times a second) and the SFM3304's flow in L/min. One flow sensor, so either
+        (50 times a second) and the SFM3300's flow in L/min. One flow sensor, so either
         "unplugged" switch of the panel unplugs it."""
         self._co2_age += dt
         if self._co2_age >= 1 / CO2_UPDATE_HZ - 1e-9:

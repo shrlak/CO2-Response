@@ -9,14 +9,18 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import re
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Callable
 
 from .library import SessionLibrary, SessionRecord
 from .session_file import (
     BreathCells,
+    ParsedSession,
     SessionMeta,
+    export_session_parts,
     format_header,
     format_row,
     session_file_name,
@@ -78,6 +82,47 @@ class SessionRecorder:
             self.write_error = str(e)
             self.rec = None
             self._memory = [header]
+        self.active = True
+        self._last_flush = self.clock()
+        return self.rec
+
+    def resume(self, session: ParsedSession, file_name: str, started_ms: float, app_version: str = "unknown") -> SessionRecord | None:
+        """Carry on recording a saved session. A new file ``<name>_resumed.csv`` is made
+        holding the whole earlier session (converted to the current format if it is
+        older), and new rows are appended to it; the earlier file is left as it was.
+        ``started_ms`` is the moment, on this recorder's clock, that ``time_s`` 0 of the
+        earlier session corresponds to, so new rows carry on its ``time_s``."""
+        if self.active:
+            return self.rec
+        self.started_at = started_ms
+        stem = re.sub(r"(_resumed)+(-\d+)?$", "", Path(file_name).stem) or "session"
+        self.file_name = f"{stem}_resumed.csv"
+        self.rows = session.n
+        self.breaths = max((int(b.n) for b in session.breaths if math.isfinite(b.n)), default=0)
+        self.alarms = sum(1 for e in session.events if e.text.startswith("ALARM_START") and " test " not in e.text)
+        self.markers = sum(1 for e in session.events if e.text.startswith("MARK "))
+        self._anchor = None
+        self._last_t = -math.inf
+        self._pending_breath = None
+        self._pending_events = []
+        self._buf = []
+        self._buf_bytes = 0
+        self.write_error = None
+        self._memory = None
+        parts = list(export_session_parts(session, app_version=app_version))
+        if parts:
+            name = Path(file_name).name.replace(",", " ")
+            parts[0] = re.sub(r"\n(?=time_s,)", f"\n# resumed_from,{name}\n", parts[0], count=1)
+        try:
+            self.rec = self.library.create(self.file_name, session.study_code, self.clock(), session.meta.get("source", "") or "resumed")
+            self.file_name = self.rec.file_name
+            for part in parts:
+                if part:
+                    self.library.append(self.rec, part)
+        except OSError as e:
+            self.write_error = str(e)
+            self.rec = None
+            self._memory = ["".join(parts)]
         self.active = True
         self._last_flush = self.clock()
         return self.rec

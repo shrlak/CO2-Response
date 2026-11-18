@@ -4,7 +4,7 @@ The Capnostream 35 samples gas through its Microstream line (50 mL/min) and meas
 CO2 20 times a second. Over its RS-232 port (or its LAN / Wi-Fi link) it can send
 what it measures in its "Capnostream", "SPDout" or "ASCII" protocol. Here it takes
 the place of the board's own CO2 sensor: its CO2 waveform goes into the CO2 channel
-of the Arduino's data lines, which still carry the flow (SFM3304-D), and everything
+of the Arduino's data lines, which still carry the flow (SFM3300-250-D), and everything
 downstream (breaths, EtCO2, the response plot, alarms, recording) is unchanged.
 
 Three parts:

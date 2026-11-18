@@ -5,7 +5,7 @@
     "railLowV": -9999.0,
     "railHighV": 9999.0,
     "railToleranceV": 0.5,
-    "note": "The Uno R4 board with digital sensors sends engineering units, not volts: value 0 is CO2 in % (GSS SprintIR-6S-20, UART) and value 1 is flow in L/min (Sensirion SFM3304-D, I2C 0x2E). The firmware sends 9999 for a sensor that is not answering, which the rail check below turns into '---' and a technical alarm."
+    "note": "The Uno R4 board with digital sensors sends engineering units, not volts: value 0 is CO2 in % (GSS SprintIR-R-20, UART, 50 readings/s) and value 1 is flow in L/min (Sensirion SFM3300-250-D, I2C 0x40, +/-250 L/min). The firmware sends 9999 for a sensor that is not answering, which the rail check below turns into '---' and a technical alarm."
   },
   "channels": {
     "co2": {
@@ -19,7 +19,7 @@
       },
       "zeroOffset": 0,
       "calibratedAt": null,
-      "note": "SprintIR-6S-20 reading in % CO2. Gain 1 = the sensor's factory calibration; a calibration-gas check can trim it.",
+      "note": "SprintIR-R-20 reading in % CO2. Gain 1 = the sensor's factory calibration; zero it in room air (CO2ZERO AIR) and a calibration-gas check can trim the gain.",
       "railCheck": "both"
     },
     "flow": {
@@ -33,7 +33,7 @@
       },
       "zeroOffset": 0,
       "calibratedAt": null,
-      "note": "SFM3304-D reading in L/min, inspiration positive. Gain 1 = the sensor's factory calibration.",
+      "note": "SFM3300-250-D reading in L/min, inspiration positive. Gain 1 = the sensor's factory calibration.",
       "railCheck": "both"
     },
     "pneumo": {
@@ -51,7 +51,7 @@
         "k2": 0.0
       },
       "calibratedAt": null,
-      "note": "The same SFM3304-D reading (value 1): this is the channel breaths, tidal volume and minute ventilation are computed from. A 3 L syringe check trims k1.",
+      "note": "The same SFM3300-250-D reading (value 1): this is the channel breaths, tidal volume and minute ventilation are computed from. A 3 L syringe check trims k1.",
       "railCheck": "both"
     }
   }

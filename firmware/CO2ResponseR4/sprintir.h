@@ -1,4 +1,4 @@
-// GSS SprintIR-6S CO2 sensor on a hardware UART: streaming mode, "Z ##### z #####" lines.
+// GSS SprintIR-R CO2 sensor on a hardware UART: streaming mode, " z #####" lines 50 times a second.
 #pragma once
 #include <Arduino.h>
 
@@ -12,9 +12,15 @@ class SprintIR {
     port_.begin(CO2_BAUD);
     delay(50);
     port_.print(F("K 1\r\n"));  // streaming mode
-    port_.print(F("M 6\r\n"));  // send Z (filtered) and z (raw)
+    // one field: the CO2 value the app uses (the datasheet allows two at most at 50 Hz)
+    port_.print(CO2_USE_FILTERED ? F("M 4\r\n") : F("M 2\r\n"));
     port_.print(F(".\r\n"));    // ask for the ppm multiplier
   }
+
+  // Zero the sensor: in fresh air (it takes the air as 400 ppm) or in nitrogen (0 ppm).
+  // Have the sample line in that gas, with the pump running, for a minute first.
+  void zeroInAir() { port_.print(F("G\r\n")); }
+  void zeroInNitrogen() { port_.print(F("U\r\n")); }
 
   // Read whatever has arrived; returns true when a new CO2 value was parsed.
   bool poll() {
@@ -36,6 +42,8 @@ class SprintIR {
     if (lastMs_ == 0 || millis() - lastMs_ > CO2_TIMEOUT_MS) return NAN;
     return ppm_ / 10000.0f;
   }
+
+  long multiplier() const { return multiplier_; }
 
  private:
   HardwareSerial& port_;

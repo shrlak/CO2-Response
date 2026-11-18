@@ -9,12 +9,13 @@ from pathlib import Path
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QPen
+from PySide6.QtGui import QColor, QFontDatabase, QPen
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QListWidget,
     QListWidgetItem,
+    QPlainTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
 from .. import __version__
 from ..engine.monitor import MonitorEngine
 from ..processing.metrics import co2_response_summary
+from ..storage.analysis import analysis_csv, analysis_text, analyze_session, breath_detail_csv
 from ..storage.report import response_stats, session_response, spo2_stats
 from ..storage.session_file import (
     ParsedSession,
@@ -276,17 +278,30 @@ class ReviewScreen(QFrame):
         ]
         replay = button("Replay on the monitor", self._replay)
         replay.setEnabled(s.n > 0)
+        resume = button("Continue recording", self._resume, tooltip="Put this session back on the monitor and keep recording it: a new file holds this one followed by the new data")
+        resume.setEnabled(rec.status != "recording" and not self.engine.recorder.active)
         lay.addLayout(
             hbox(
                 button("Whole session (one .csv)", lambda: export_session(self.window, self.engine, self.rec, "session"), kind="primary"),
                 button("Breaths (.csv)", lambda: export_session(self.window, self.engine, self.rec, "breaths")),
                 button("Alarms & events (.csv)", lambda: export_session(self.window, self.engine, self.rec, "events")),
                 button("CO2 response report (.pdf)", lambda: export_report(self.window, self.rec.file_name, self.parsed)),
+                button("In-depth analysis (.csv)", self._export_analysis),
                 *self.range_btns,
                 replay,
+                resume,
                 stretch_end=True,
             )
         )
+
+        # every number worked out again from the samples: timing, delays, phases, the fit's confidence
+        lay.addWidget(label("IN-DEPTH ANALYSIS", "h3"))
+        self.analysis = analyze_session(s, rec.file_name)
+        box = QPlainTextEdit(analysis_text(self.analysis))
+        box.setReadOnly(True)
+        box.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        box.setMinimumHeight(320)
+        lay.addWidget(box)
         lay.addWidget(label(f"ALARMS AND EVENTS ({len(s.events)})", "h3"))
         self.events = QListWidget()
         self.events.setMinimumHeight(220)
@@ -380,6 +395,23 @@ class ReviewScreen(QFrame):
         p = save_text(self, f"{self._base()}_{what}.csv", text)
         if p:
             self.window.toast(f"Saved {p.name}.")
+
+    def _export_analysis(self) -> None:
+        p = save_text(self, f"{self._base()}_analysis.csv", analysis_csv(self.analysis))
+        if p:
+            detail = p.with_name(p.stem.removesuffix("_analysis") + "_breath_detail.csv")
+            detail.write_text(breath_detail_csv(self.analysis), encoding="utf-8", newline="")
+            self.window.toast(f"Saved {p.name} and {detail.name}.")
+
+    def _resume(self) -> None:
+        try:
+            self.engine.resume_session(self.parsed, self.rec.file_name)
+        except (OSError, ValueError) as e:
+            self.window.toast(f"Could not continue {self.rec.file_name}: {e}", 6000)
+            return
+        self.window.show_monitor()
+        connected = self.engine.source is not None
+        self.window.toast(f"Recording continues in {self.engine.recorder.file_name}." + ("" if connected else " Connect the Arduino or start the simulator to carry on."), 8000)
 
     def _replay(self) -> None:
         self.engine.connect("replay", session=self.parsed, file_name=self.rec.file_name, speed=1, use_file_calibration=True)

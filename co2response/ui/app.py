@@ -46,7 +46,16 @@ def watch_for_updates(app, engine, win) -> None:
     app._update_timer = timer  # keep it alive
 
 
-def run(sim: bool = False, port: str | None = None, replay: str | None = None, argv: list[str] | None = None, exit_after: float | None = None, situation: str | None = None, speed: float | None = None) -> int:
+def run(
+    sim: bool = False,
+    port: str | None = None,
+    replay: str | None = None,
+    argv: list[str] | None = None,
+    exit_after: float | None = None,
+    situation: str | None = None,
+    speed: float | None = None,
+    resume: str | None = None,
+) -> int:
     app = QApplication.instance() or QApplication(argv or sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("CMU BME")
@@ -61,6 +70,12 @@ def run(sim: bool = False, port: str | None = None, replay: str | None = None, a
         if recovered:
             n = len(recovered)
             win.toast(f"Recovered {n} recording{'s' if n > 1 else ''} left unfinished when the app closed. Find {'them' if n > 1 else 'it'} in Settings > Data & recordings.", 9000)
+        if resume:
+            try:
+                engine.resume_session(read_session(resume), Path(resume).name)
+                win.toast(f"Recording continues in {engine.recorder.file_name}.", 8000)
+            except (OSError, ValueError) as e:
+                win.toast(f"Could not continue {resume}: {e}", 8000)
         if speed is not None:
             engine.set_sim(speed=float(speed))
         if situation:
@@ -83,7 +98,7 @@ def run(sim: bool = False, port: str | None = None, replay: str | None = None, a
         # an installation check: run for a moment, say what the monitor measured, and close
         def finish() -> None:
             n = engine.snapshot().numbers
-            print(f"{APP_NAME}: ran {exit_after:g} s; {len(engine.breaths)} breaths, EtCO2 {n.etco2:.0f} mmHg, RR {n.rr:.0f} /min", flush=True)
+            print(f"{APP_NAME}: ran {exit_after:g} s; {len(engine.breaths)} breaths, EtCO2 {n.etco2:.0f} mmHg, RR {n.rr:.1f} /min", flush=True)
             win.close()
             app.quit()
 

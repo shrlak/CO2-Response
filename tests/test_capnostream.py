@@ -77,8 +77,8 @@ def board_line(seq: int, t_ms: float, flow: float = 10.0) -> str:
 def test_merge_puts_the_monitors_co2_into_the_boards_lines():
     clk = Clock()
     m = CapnoMerge(CapnoDecoder(), clk, mmhg_to_line_pct(760, False))
-    info = m.board_items(["I,FW,2.0.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR,FLOW,SFM3304,CH,2,RATE,100"])
-    assert info == ["I,FW,2.0.0,BOARD,UNO_R4,UNITS,1,CO2,CAPNOSTREAM35,FLOW,SFM3304,CH,2,RATE,100"]
+    info = m.board_items(["I,FW,2.0.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,SFM3300,CH,2,RATE,100"])
+    assert info == ["I,FW,2.0.0,BOARD,UNO_R4,UNITS,1,CO2,CAPNOSTREAM35,FLOW,SFM3300,CH,2,RATE,100"]
     out: list = []
     # one second: the board sends 100 lines, the monitor 20 samples rising 0 → 38 mmHg
     for i in range(100):
@@ -178,7 +178,7 @@ def test_turning_it_off_restarts_the_simulator_without_it(tmp_path):
     e.update_settings(capno=dataclasses.replace(e.settings.capno, enabled=False))
     run(e, 3)
     assert e.capnostream is None and e.snapshot().capno is None
-    assert e.snapshot().info.get("CO2") == "SPRINTIR"
+    assert e.snapshot().info.get("CO2") == "SPRINTIR-R"
 
 
 # ---------- reading a real port, and the capture tool

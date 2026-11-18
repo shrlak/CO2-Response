@@ -171,8 +171,8 @@ def draw_tiles(tiles: dict[str, Tile], s: Snapshot, flash: bool, single: bool) -
     rr_style = ("#ff3b30" if not flash or apnea.acknowledged else COLOR["co2"]) if apnea else None
     rr_note = "apnea" if apnea else "no breath detected" if n.rr != n.rr and s.status == "connected" else ""
     if "rr" in capno:
-        rr_note = (rr_note + " · " if rr_note else "") + f"Capnostream {fmt(capno['rr'])}"
-    tiles["rr"].set(fmt(n.rr), "RR /min", rr_style, rr_note, "#ff3b30" if apnea else None)
+        rr_note = (rr_note + " · " if rr_note else "") + f"Capnostream {fmt(capno['rr'], 1)}"
+    tiles["rr"].set(fmt(n.rr, 1), "RR /min", rr_style, rr_note, "#ff3b30" if apnea else None)
     tiles["flow"].set("---" if s.stale["flow"] else fmt(n.flow), "Flow L/min", note="live")
     vt = "---" if s.stale["pneumo"] else fmt(n.vt)
     vt_note = f"exp {fmt(n.vte)} mL" if math.isfinite(n.vte) else ""
@@ -268,7 +268,7 @@ def breath_table(engine: MonitorEngine, w: int, h: int) -> Text:
         n = len(engine.trend) - len(pts) + i + 1
         rr = q.mv_breath / (q.vt / 1000) if math.isfinite(q.vt) and q.vt > 0 and math.isfinite(q.mv_breath) else math.nan
         st = "" if q.quality == "ok" else "grey42"
-        out.append(f"{n:>5} {mss(q.t - t0):>7} {fmt(q.etco2):>7} {fmt(q.vt):>7} {fmt(rr):>5} {fmt(q.mv_breath, 1):>9}", st)
+        out.append(f"{n:>5} {mss(q.t - t0):>7} {fmt(q.etco2):>7} {fmt(q.vt):>7} {fmt(rr, 1):>5} {fmt(q.mv_breath, 1):>9}", st)
         out.append((" excluded" if q.excluded else "" if q.quality == "ok" else f" {q.quality}") + "\n", "grey50")
     return out
 
@@ -542,6 +542,12 @@ class MonitorApp(App):
         Binding("c", "record", "Record"),
         Binding("v", "view", "Graph"),
         Binding("f", "freeze", "Freeze", show=False),
+        # only while a recorded file is replayed (the CO2 panel's title lists them then)
+        Binding("p", "pause", "Pause", show=False),
+        Binding("left", "replay_jump(-30)", "Back 30 s", show=False),
+        Binding("right", "replay_jump(30)", "On 30 s", show=False),
+        Binding("home", "replay_start", "Start", show=False),
+        Binding("end", "replay_whole", "Show all", show=False),
         Binding("l", "wave_style", "Line/fill", show=False),
         Binding("a", "arm_audio", "Audio", show=False),
         Binding("h", "hardware", "Board", show=False),
@@ -549,8 +555,20 @@ class MonitorApp(App):
         Binding("q", "quit", "Quit"),
     ]
 
-    def __init__(self, sim: bool = False, port: str | None = None, replay: str | None = None, situation: str | None = None, speed: float | None = None, exit_after: float | None = None, graphics: bool = False) -> None:
+    def __init__(
+        self,
+        sim: bool = False,
+        port: str | None = None,
+        replay: str | None = None,
+        situation: str | None = None,
+        speed: float | None = None,
+        exit_after: float | None = None,
+        graphics: bool = False,
+        resume: str | None = None,
+    ) -> None:
         super().__init__()
+        #: a saved session to put back on the monitor and keep recording (--resume)
+        self.resume = resume
         #: draw the waveforms, numbers and graphs as pictures, like the browser page
         #: (in terminals that can show images: see ``detect_graphics``)
         self.graphics = graphics
@@ -620,6 +638,8 @@ class MonitorApp(App):
         if recovered:
             self.notify(f"Recovered {len(recovered)} recording(s) left unfinished last time.", timeout=8)
         sim, port, replay, situation, speed = self.start
+        if self.resume:
+            self._resume(self.resume)
         if speed is not None:
             e.set_sim(speed=float(speed))
         if situation:
@@ -641,8 +661,17 @@ class MonitorApp(App):
 
     def _finish_check(self) -> None:
         n = self.engine.snapshot().numbers
-        self._last_print = f"{APP_NAME}: ran {self.exit_after:g} s; {len(self.engine.breaths)} breaths, EtCO2 {fmt(n.etco2)} mmHg, RR {fmt(n.rr)} /min, MV {fmt(n.mv, 1)} L/min"
+        self._last_print = f"{APP_NAME}: ran {self.exit_after:g} s; {len(self.engine.breaths)} breaths, EtCO2 {fmt(n.etco2)} mmHg, RR {fmt(n.rr, 1)} /min, MV {fmt(n.mv, 1)} L/min"
         self.exit()
+
+    def _resume(self, path: str) -> None:
+        from ..storage.session_file import read_session
+
+        try:
+            self.engine.resume_session(read_session(path), Path(path).name)
+            self.notify(f"Recording continues in {self.engine.recorder.file_name}", timeout=8)
+        except (OSError, ValueError) as ex:
+            self.notify(f"Could not continue {path}: {ex}", severity="error", timeout=8)
 
     def _replay(self, path: str) -> None:
         from ..storage.session_file import read_session
@@ -702,8 +731,11 @@ class MonitorApp(App):
         k = e.wave_compression
         unit = "%" if pct else "mmHg"
         tag = f" · SIMULATED · {st.sweep_sec * k:g} s per screen" if s.source_kind == "simulator" else " · REPLAY" if s.source_kind == "replay" else ""
-        panels["co2"].border_title = f"CO2 {unit}{tag}{' · FROZEN' if s.frozen else ''}"
-        panels["co2"].tag = (tag.replace(" · SIMULATED", "SIMULATED").replace(" per screen", "/screen").replace(" · REPLAY", "REPLAY") + (" · FROZEN" if s.frozen else "")).strip(" ·")
+        if s.source_kind == "replay":
+            tag += f" {mss(s.replay_pos_s or 0)}/{mss(s.replay_len_s or 0)} · {s.replay_speed or 1:g}× · p play/pause, ←/→ 30 s, Home start, End show all"
+        extra = (" · END OF RECORDING" if s.replay_at_end else " · PAUSED" if s.paused else "") + (" · FROZEN" if s.frozen else "")
+        panels["co2"].border_title = f"CO2 {unit}{tag}{extra}"
+        panels["co2"].tag = (tag.replace(" · SIMULATED", "SIMULATED").replace(" per screen", "/screen").replace(" · REPLAY", "REPLAY") + extra).strip(" ·")
         self._frame_n += 1
         if (self.graphics or self.wave_style == "line") and self._frame_n % 2:
             return  # pictures and smooth lines: about 6 a second is smooth, and cheaper to draw
@@ -721,7 +753,7 @@ class MonitorApp(App):
         from ..sources.serial_source import list_ports
 
         opts: list[tuple[str, str]] = [
-            ("sim", "Simulator: the Uno R4 board (SprintIR CO2 + SFM3304-D flow)"),
+            ("sim", "Simulator: the Uno R4 board (SprintIR-R CO2 + SFM3300 flow)"),
             ("sim-analog", "Simulator: the ADC board (capnograph, flow sensor, pneumotach)"),
         ]
         try:
@@ -733,8 +765,16 @@ class MonitorApp(App):
         if not ports:
             opts.append(("", "No serial ports found (plug in the Arduino and press o again)"))
         sample = Path(__file__).resolve().parents[2] / "sample-data" / "synthetic_session.csv"
+        # recorded sessions in the sessions folder (recorded here or imported): the whole file replays
+        try:
+            recs = [r for r in self.engine.library.list() if r.status != "recording"][:6]
+        except OSError:
+            recs = []
+        for rec in recs:
+            opts.append((f"replay:{self.engine.library.path(rec)}", f"Replay {rec.file_name}"))
         if sample.exists():
             opts.append((f"replay:{sample}", "Replay the sample session"))
+        opts.append(("", "Any other CSV: co2response-tui --replay FILE.csv"))
         opts.append(("disconnect", "Disconnect"))
         opts.append(("quit", "Quit"))
 
@@ -775,7 +815,34 @@ class MonitorApp(App):
 
         self.push_screen(Picker("Simulation situations", opts, note), done)
 
+    def action_pause(self) -> None:
+        e = self.engine
+        if not e.can_pause:
+            self.notify("Only a replayed recording can be paused", timeout=3)
+            return
+        self.notify("Paused: p to carry on" if e.toggle_pause() else "Playing", timeout=2)
+
+    def action_replay_jump(self, sec: float) -> None:
+        s = self.engine.snapshot()
+        if s.replay_pos_s is not None:
+            self.engine.replay_seek(s.replay_pos_s + sec)
+
+    def action_replay_start(self) -> None:
+        if self.engine.replay is not None:
+            self.engine.replay_seek(0)
+
+    def action_replay_whole(self) -> None:
+        self.engine.show_whole_replay()
+
     def action_speed(self, step: int) -> None:
+        if self.engine.source is not None and self.engine.source.kind == "replay":
+            rsteps = [0.5, 1, 2, 5, 10, 20]
+            rcur = self.engine.snapshot().replay_speed or 1
+            j = min(range(len(rsteps)), key=lambda q: abs(rsteps[q] - rcur))
+            nxt_r = rsteps[max(0, min(len(rsteps) - 1, j + step))]
+            self.engine.set_replay_speed(nxt_r)
+            self.notify(f"Replay speed {nxt_r:g}×", timeout=2)
+            return
         steps = [1, 2, 3, 5, 10, 20, 50]
         cur = self.engine.settings.sim.speed
         i = min(range(len(steps)), key=lambda j: abs(steps[j] - cur))
@@ -917,9 +984,18 @@ def detect_graphics(mode: str = "auto") -> str | None:
     return "halfcell" if mode == "on" else None
 
 
-def run(sim: bool = False, port: str | None = None, replay: str | None = None, situation: str | None = None, speed: float | None = None, exit_after: float | None = None, graphics: str = "auto") -> int:
+def run(
+    sim: bool = False,
+    port: str | None = None,
+    replay: str | None = None,
+    situation: str | None = None,
+    speed: float | None = None,
+    exit_after: float | None = None,
+    graphics: str = "auto",
+    resume: str | None = None,
+) -> int:
     proto = detect_graphics(graphics)
-    app = MonitorApp(sim=sim, port=port, replay=replay, situation=situation, speed=speed, exit_after=exit_after, graphics=proto is not None)
+    app = MonitorApp(sim=sim, port=port, replay=replay, situation=situation, speed=speed, exit_after=exit_after, graphics=proto is not None, resume=resume)
     app.run()
     if app._last_print:
         print(app._last_print)

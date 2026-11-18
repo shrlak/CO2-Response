@@ -26,7 +26,15 @@ class MarkerEvent:
     label: str
 
 
-SourceItem = Union[str, StatusEvent, MarkerEvent]
+@dataclass(frozen=True)
+class ClockEvent:
+    """A replay's own time: the recording's ``time_s`` of the item that follows. The
+    engine's clock follows it while a recording is replayed."""
+
+    t_s: float
+
+
+SourceItem = Union[str, StatusEvent, MarkerEvent, ClockEvent]
 
 
 class Source:
