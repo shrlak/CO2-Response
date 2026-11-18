@@ -33,6 +33,7 @@ The app is written in Python. It runs in three places, from the same code:
 
 1. [Try it now (no hardware)](#1-try-it-now-no-hardware)
 2. [What you need for a real session](#2-what-you-need-for-a-real-session)
+   - [Wiring the Uno R4 board: every connection](#wiring-the-uno-r4-board-every-connection) (diagrams, cables, every wire, tubes, build order, first checks, troubleshooting)
 3. [Running a session, step by step](#3-running-a-session-step-by-step)
 4. [The monitor screen](#4-the-monitor-screen)
 5. [How the system works](#5-how-the-system-works)
@@ -225,12 +226,12 @@ Press **Simulation** (the soft key next to Settings) to open the simulation pane
 
 ## 2. What you need for a real session
 
-**The Uno R4 board (current build).** Pin-by-pin wiring and the flow path are in [docs/wiring.md](docs/wiring.md#uno-r4-board-digital-sensors): an [overview](docs/images/wiring-r4.svg) and [every connection, numbered](docs/images/connections-r4.svg), with the cable, wire and tube lists.
+**The Uno R4 board (current build).** Every connection is below in [Wiring the Uno R4 board](#wiring-the-uno-r4-board-every-connection): the diagrams, the cables, every wire numbered, the tubes, the build order and the first checks. The same is in [docs/wiring.md](docs/wiring.md#uno-r4-board-digital-sensors).
 
 | Part | Notes |
 | --- | --- |
 | Arduino Uno R4 Minima (ABX00080) | USB-C to the computer, through the USB isolator |
-| Adafruit 2107 USB isolator (ADuM4160 + ADuM5000) | Between the laptop and the Uno, set to Full Speed; its isolated 5 V powers the Uno and the flow sensor only |
+| Adafruit 2107 USB isolator (ADuM4160 + ADuM5000) | Between the laptop and the Uno (Micro-B to the laptop, USB-A socket to the Uno); low or full speed (the Uno R4 is full speed); its isolated 5 V (100 mA) powers the Uno and the flow sensor only |
 | Sensirion SFM3300-250-D flow sensor | I2C at 5 V straight to SDA/SCL (address 0x40, no level shifter), ±250 L/min, read every 1 ms and averaged per line |
 | GSS SprintIR-R-20 CO2 sensor (CO2meter) | UART 38,400 baud on D0/D1 through the BSS138 level shifter (pins 1 Rx_In, 2 Tx_Out, 3 GND, 4 VDD), 0–20 % CO2, 50 readings a second; powered from 5V_EXT |
 | Adafruit 757 BSS138 4-channel level shifter | 5 V ↔ 3.3 V for the SprintIR-R's UART |
@@ -243,6 +244,206 @@ Press **Simulation** (the soft key next to Settings) to open the simulation pane
 | A computer | Any terminal (Windows, macOS, Linux) with Python 3.10+, or the standalone programs |
 
 Firmware: `firmware/CO2ResponseR4/` (Arduino IDE, board "Arduino UNO R4 Minima", no extra libraries; or `pio run -d firmware/r4 -t upload`).
+
+### Wiring the Uno R4 board: every connection
+
+> [!CAUTION]
+> Research use only, and **not yet tested on hardware**. Two facts were not in any document available: the **pin order of the SFM3300's 4-wire lead** (use Sensirion's connector note or the label on your cable) and **which isolator connector faces the computer** (check the board's markings). Check both before powering up. Never connect the 5 V wall adapter to the Arduino's **5V** or **VIN** pin.
+
+#### The diagrams
+
+**Every connection, pin by pin.** The Arduino's headers are in their real order (top view, USB-C on the left). The three coloured lines across the middle are the breadboard's power rails. A dot joins a wire to a rail; wires that only cross are not joined. W = wire, C = USB cable, P = power plug, T = tube; the numbers match the lists below. Redraw it with `python scripts/draw_connections.py`.
+
+![Every wire, cable, plug and tube of the Uno R4 board, numbered](docs/images/connections-r4.svg)
+
+**Overview.** The same system as blocks: the electrical wiring on top, the gas path below.
+
+![Overview of the wiring and the gas path](docs/images/wiring-r4.svg)
+
+#### What each part does
+
+| Part (purchase list) | Its job | What it connects to |
+| --- | --- | --- |
+| Arduino UNO R4 Minima (ABX00080) | Reads both sensors, drives the pump, watches the valve switch, sends 100 lines a second to the laptop, lights its LED for alarms | USB-C to the isolator (C2); headers to the breadboard and sensors (W1–W26) |
+| Adafruit 2107 USB isolator (ADuM4160 + ADuM5000) | Keeps the laptop and mains electrically apart from everything on the subject's side | Laptop → its Micro-B (C1); its USB-A socket → the Uno (C2). Its isolated 5 V supply gives up to **100 mA**: the Uno and the SFM3300 only |
+| Sensirion SFM3300-250-D | Flow, ±250 L/min, a new value every 0.5 ms; breaths, VT, MV and RR all come from it | I2C to SDA/SCL (W4, W5), GND (W6), VDD from the +5V rail (W7) |
+| GSS SprintIR-R-20 (from CO2meter) | CO2, 0–20 %, 50 readings a second, sidestream (the sample line runs through its flow adaptor) | UART through the level shifter (W10–W14), VDD from the +5V_EXT rail (W15) |
+| Adafruit 757 BSS138 level shifter (4 channels) | Converts between the Uno's 5 V and the SprintIR-R's 3 V signals, both ways | HV side to the Uno (W8–W11), LV side to the SprintIR-R (W12–W14) and to 3V3 (W3); channels 3 and 4 spare |
+| ZR370-02PM pump (Adafruit 4699) | Pulls about 0.2 L/min of breath through the filter and the CO2 sensor | + to the +5V_EXT rail (W19), − to Q1's drain (W18) |
+| IRLZ44N MOSFET ×3 | Q1 switches the pump from D10 (PWM). Q2 and Q3 are spare: Q2 can drive the SFM3300's heater or a loud buzzer | Q1: gate from D10 through R1 (W16), source to GND (W17), drain to the pump (W18) |
+| 5 V / 2 A wall adapter (SparkFun TOL-15312) + 2.1 mm barrel jack (Adafruit 373) | The **+5V_EXT** supply: the pump (about 0.5 A) and the SprintIR-R | P1 into the jack; jack end pin → +5V_EXT rail (W22), middle pin → GND rail (W23) |
+| Magnetic contact switch (Adafruit 375) | Tells the app where the valve handle is: at the bag the rebreathing phase starts, back at room air the test ends | One lead to D3 (W20), the other to GND (W21); the magnet on the valve handle |
+| 0.2 µm PTFE syringe filters, 13 mm (ChromTech F13-PT020, pack of 100) | Keep moisture and droplets out of the CO2 sensor | T1, in the sample line close to the sample port; change it when it gets wet |
+| P-859 barbed adapter, female luer lock × ⅛" barb | Joins the filter's male luer to the silicone tube | T2 |
+| Silicone tubing, 3 mm ID / 5 mm OD, 1 m (Adafruit 4661) | The sample line | T3–T5 |
+| ½" Sch 40 PVC pipe, ¾×½" reducer bushings, ¾" S×FPT adapters, PTFE tape | The main breathing circuit from the flow sensor to the valve | The SFM3300's 22 mm socket, the valve's ports |
+
+Not on the purchase list yet: the 3-way valve, male luer adapters and stopcocks (in the budget increase request), the mouthpiece and rebreathing bag (from the mentors), a breadboard, jumper wires, R1 220 Ω, R2 100 kΩ, D1 1N5819 or 1N4001 and the optional 4.7 kΩ pull-ups (from the electronics kit).
+
+#### Facts from the datasheets
+
+| Part | What the datasheet or product page says | Where it matters |
+| --- | --- | --- |
+| SprintIR-R (GSS datasheet rev 4.12) | Pins: **1 Rx_In, 2 Tx_Out, 3 GND, 4 VDD**. UART **38,400 baud**, 8 data bits, no parity, 1 stop bit. 50 readings a second. VDD 3.25–5.5 V, about 21 mA (peak 35–40 mA). Inputs: high ≥ 1.8 V, **5 V absolute maximum**. Output high 2.6–3.0 V. Tested at 0.2 L/min sample flow | `CO2_BAUD 38400`; the level shifter is needed both ways (5 V would sit at its limit, and 3 V is too low for the 5 V Uno to read reliably) |
+| SFM3300-D (Sensirion datasheet v1.4) | I2C address **0x40 (64)**, up to 400 kHz. Supply 5 V ± 5 %, under 50 mW. I2C high ≥ 2.5 V, low ≤ 1.1 V, so 5 V signals are fine. Flow = (raw − **32768**) / **120** slm. Positive flow runs from the **22 mm female** end to the **22 mm male** end. Ports: one end 22 mm male outside / 15 mm female inside, the other 22 mm female socket / 15 mm male. Optional heater 51 Ω, 0.5 W max. Start-up 100 ms after power | No shifter for it; mount the male end towards the subject so inspiration reads positive |
+| Arduino UNO R4 Minima (Arduino docs and pinout) | USB-C. **5 V-only** board. VIN takes 6–24 V. SDA/SCL are D18/D19 at the left end of the digital header (next to AREF), and again on A4/A5. **8 mA per pin**, 60 mA for all pins together | Nothing drawing more than 8 mA hangs on a pin: the pump goes through Q1 |
+| ZR370-02PM pump (Adafruit 4699 and its spec sheet) | Rated 4.5 V, works 4.0–5.0 V, about 0.5 A. **Side port = inlet** (2 mm ID, 4.3 mm OD), **end port = outlet** (1 mm ID, 4.3 mm OD). Reversing the wires does not reverse the air. Not rated for continuous use; about 50 % duty cycle recommended | The sample line goes onto the side port; give the pump rest between tests |
+| Magnetic contact switch (Adafruit 375) | Normally open reed switch, two wires; closes when the magnet is within about 13 mm (15 mm max); 100 mA, 200 V DC max | Either wire to D3 |
+| 2.1 mm barrel jack (Adafruit 373, CUI PJ-102AH) | Three pins: the pin at the **end** is **positive**, the **middle** pin is **negative**, the **side** pin is a switch (leave it unconnected) | W22, W23 |
+| 5 V 2 A wall adapter (SparkFun TOL-15312) | 5.5 × 2.1 mm plug, centre positive | P1 |
+| USB isolator (Adafruit 2107) | Isolated 5 V supply of up to 100 mA; works with low-speed and full-speed USB devices; a Micro USB and a USB-A connector | Keep the pump and the SprintIR-R off its supply |
+| Silicone tubing (Adafruit 4661) | 3 mm ID, 5 mm OD; fits ports up to about 4 mm OD | It stretches over the pump's 4.3 mm ports |
+
+#### Cables and plugs: from the laptop to the Arduino, and power
+
+| # | From | To | Cable | Notes |
+| --- | --- | --- | --- | --- |
+| C1 | Laptop USB-A port | USB isolator **Micro-B** (computer side) | USB-A to Micro-B **data** cable (USB-C to Micro-B if the laptop has only USB-C) | A charge-only cable powers the board but shows no serial port |
+| C2 | USB isolator **USB-A socket** (device side) | Arduino **USB-C** | USB-A to USB-C data cable | Also how the firmware is uploaded |
+| P1 | 5 V 2 A wall adapter | 2.1 mm barrel jack on the breadboard | The adapter's own 5.5 × 2.1 mm plug | Plug in **last**, after checking the rails with a meter |
+
+The Arduino is powered only through C2 (the isolator's 5 V). Nothing goes into its VIN or 5V pin from outside.
+
+#### The Arduino's pins in use
+
+| Header | Pin (left to right, USB-C on the left) | Used for |
+| --- | --- | --- |
+| Digital, top | **SCL** (left end), **SDA**, AREF, **GND**, D13, D12, D11, **D10**, **D9**, **D8**, D7, D6, D5, D4, **D3**, **D2**, **D1/TX**, **D0/RX** (right end) | SCL/SDA: flow sensor · GND: flow sensor ground · D13: built-in alarm LED · D10: pump (PWM) · D9: optional heater · D8: optional buzzer · D3: valve switch · D2: optional button · D1/D0: CO2 sensor (`Serial1`) |
+| Power, bottom left | BOOT, IOREF, RESET, **3V3**, **5V**, **GND**, GND, VIN | 3V3: the shifter's LV reference · 5V: the +5V rail · GND: the GND rail · VIN: **nothing** |
+| Analog, bottom right | A0–A5 | Nothing (A4/A5 are SDA/SCL again: do not use them for anything else) |
+
+#### The breadboard's power rails
+
+| Rail | Fed by | Feeds | Current |
+| --- | --- | --- | --- |
+| **+5V** (red) | Arduino 5V pin (W1): the isolator's 5 V | SFM3300 VDD (W7), shifter HV (W8), optional pull-ups | about 10 mA for the sensor; the Uno itself takes most of the isolator's 100 mA |
+| **+5V_EXT** (orange) | Barrel jack end pin (W22) | SprintIR-R VDD (W15), pump + (W19), optional heater | pump about 0.5 A, SprintIR-R about 21 mA (40 mA peak), heater up to 0.1 A: well inside 2 A |
+| **GND** (black) | Arduino GND (W2) and the barrel jack's middle pin (W23) | Every ground | |
+
+**Never join +5V and +5V_EXT.** Both GND rails of a breadboard must be joined to each other if you use both. The adapter's ground joined to the Arduino's ground is expected: the adapter's output is isolated from mains, and the laptop stays isolated by the USB isolator.
+
+#### Every wire
+
+Arduino headers and breadboard holes are both sockets, so use **male-to-male** jumpers between them, **female-to-male** onto a sensor's header pins, and **solder** the pump's two contacts and the SFM3300's lead. Colours are a suggestion; keep red, orange and black for power.
+
+| # | From | To | Colour | Notes |
+| --- | --- | --- | --- | --- |
+| W1 | Arduino **5V** (power header) | +5V rail | red | |
+| W2 | Arduino **GND** (power header) | GND rail | black | |
+| W3 | Arduino **3V3** (power header) | Shifter **LV** | purple | A reference only; the shifter draws almost nothing |
+| W4 | Arduino **SCL** (top header, left end; also A5) | SFM3300 **SCL** | yellow | 5 V I2C, no shifter |
+| W5 | Arduino **SDA** (top header, second from left; also A4) | SFM3300 **SDA** | blue | |
+| W6 | Arduino **GND** (top header, next to AREF) | SFM3300 **GND** | black | |
+| W7 | +5V rail | SFM3300 **VDD** | red | 5 V ± 5 % |
+| W8 | +5V rail | Shifter **HV** | red | |
+| W9 | GND rail | Shifter **GND** (HV side) | black | The shifter's two GND pins are joined on its board |
+| W10 | Arduino **D1/TX** | Shifter **B1** | green | Arduino transmits |
+| W11 | Arduino **D0/RX** | Shifter **B2** | cyan | Arduino receives |
+| W12 | Shifter **A1** | SprintIR-R pin **1 Rx_In** | green | TX goes to Rx_In |
+| W13 | Shifter **A2** | SprintIR-R pin **2 Tx_Out** | cyan | Tx_Out comes back to RX |
+| W14 | Shifter **GND** (LV side) | SprintIR-R pin **3 GND** | black | |
+| W15 | +5V_EXT rail | SprintIR-R pin **4 VDD** | orange | 3.25–5.5 V |
+| W16 | Arduino **D10** | R1 **220 Ω** → Q1 **gate** | pink | R2 **100 kΩ** from the gate to the GND rail keeps the pump off while the Arduino starts |
+| W17 | Q1 **source** | GND rail | black | |
+| W18 | Q1 **drain** (middle leg or the metal tab) | Pump **−** contact | brown | |
+| W19 | +5V_EXT rail | Pump **+** contact | orange | |
+| W20 | Arduino **D3** | Reed switch, either wire | grey | The firmware turns on D3's pull-up |
+| W21 | Reed switch, the other wire | GND rail | grey | |
+| W22 | Barrel jack **end pin** (+) | +5V_EXT rail | orange | |
+| W23 | Barrel jack **middle pin** (−) | GND rail | black | The **side pin** stays unconnected |
+| W24 | Arduino **D8** | Active buzzer + (buzzer − to GND rail) | | Optional. If the buzzer takes more than 8 mA, drive it through Q2 like the pump |
+| W25 | Arduino **D2** | Push button, other side to GND rail | | Optional: stop / marker |
+| W26 | Arduino **D9** | Q2 gate (220 Ω in series, 100 kΩ to GND); Q2 drain → one SFM3300 heater pad, the other pad → +5V_EXT | | Optional: the sensor's heater against condensation. Set `HEATER_PIN 9` (it runs at `HEATER_DUTY 128`, about 0.25 W) |
+
+#### The small parts
+
+| Part | Value | Where | Which way round |
+| --- | --- | --- | --- |
+| Q1 | IRLZ44N (logic-level MOSFET, TO-220) | Pump switch | Facing its printed side, legs down: **G, D, S** from left to right. The metal tab is D |
+| R1 | 220 Ω | In series between D10 and Q1's gate | Either way |
+| R2 | 100 kΩ | From Q1's gate to the GND rail | Either way |
+| D1 | 1N5819 (or 1N4001) | Across the pump's contacts | The **band** (cathode) to the pump's **+**, the other end to the pump's **−**. Without it, the pump's switching spikes can damage Q1 |
+| R3, R4 (optional) | 4.7 kΩ | SDA → +5V rail, SCL → +5V rail | Only if the SFM3300 does not answer (the Uno R4 Minima has no I2C pull-ups of its own) |
+
+#### Tubes and the gas path
+
+| # | Part | Connects | Notes |
+| --- | --- | --- | --- |
+| — | Mouthpiece | Subject → sample port | From the mentors |
+| — | Sample port | Between the mouthpiece and the SFM3300's **male** end | A luer fitting (male luer adapters are in the budget request), as close to the mouth as possible |
+| — | SFM3300-250-D | **Male** end (22 mm outside, 15 mm inside) towards the subject; **female** end (22 mm socket) towards the valve | Positive flow runs female → male, so inspiration reads positive. Mounted the other way, set `SFM_FLOW_SIGN -1` |
+| — | ½" Sch 40 PVC pipe | Into the SFM3300's 22 mm socket | The pipe is 21.3 mm across: wrap tape until it seals |
+| — | ¾×½" reducer bushing + ¾" S×FPT adapter | Pipe → valve | PTFE tape on every thread |
+| — | 3-way valve | Bag or room air | Requested; the magnet for the reed switch goes on its handle |
+| T1 | 0.2 µm PTFE syringe filter | Sample port → filter (female luer in, male luer out) | Keeps moisture out of the CO2 sensor |
+| T2 | P-859 adapter | Filter's male luer → ⅛" barb | |
+| T3 | Silicone tube | Barb → SprintIR-R flow adaptor, in | Short: every centimetre adds CO2 delay |
+| T4 | Silicone tube | SprintIR-R flow adaptor, out → pump **side** port (inlet) | |
+| T5 | Silicone tube | Pump **end** port (outlet) → the valve's **bag side** | So the closed rebreathing circuit keeps its gas |
+
+The pump draws its sample on the subject's side of the flow sensor, so the SFM3300 reads the subject's flow plus the sample flow during inspiration and minus it during expiration. Zeroing the flow with the mouthpiece capped and the pump running removes that (step 6 below).
+
+#### Building it, in order
+
+1. Push the level shifter (with its headers soldered on), the barrel jack, Q1, R1, R2 and D1 into the breadboard.
+2. Wire the rails: W22, W23 (barrel jack), then W1, W2 (Arduino power header). Join the breadboard's two GND rails if it has two.
+3. Wire the flow sensor: W4–W7.
+4. Wire the CO2 sensor through the shifter: W3, W8–W15.
+5. Wire the pump: W16–W19, with D1 across the pump, band to +.
+6. Wire the reed switch: W20, W21. Fix the magnet on the valve handle so it is within 13 mm of the switch at the **bag** position.
+7. Connect the gas path and the sample line (T1–T5).
+8. Do **not** plug in P1 or C2 yet.
+
+#### First power-up and checks
+
+1. **Meter checks, nothing plugged in:** no continuity between +5V and +5V_EXT, between either 5 V rail and GND, or between any two of the SFM3300's four wires.
+2. **Upload the firmware** with only C2 plugged in (through the isolator, C1 to the laptop): open `firmware/CO2ResponseR4/CO2ResponseR4.ino` in the Arduino IDE, board **Arduino UNO R4 Minima**, no extra libraries, Upload. Or `pio run -d firmware/r4 -t upload`.
+3. **Plug in P1.** The pump starts (the board streams on power-up). Measure +5V_EXT: about 5 V.
+4. **Connect the app:** `python -m co2response` (or the website in Chrome/Edge) → **Connect Arduino (USB)**. The header shows about 100 Hz. **Settings > Connection > Connected device** lists what the board said: `FW 2.1.0`, `BOARD UNO_R4`, `CO2 SPRINTIR-R`, `FLOW SFM3300`, `CO2_MULT 10`, `PUMP_DUTY 140`, and `SFM_SN` (the flow sensor's serial number) when the flow sensor answered at start-up.
+5. **Hardware check:** **Settings > Diagnostics > Hardware check**. A "FLOW SENSOR NOT ANSWERING" alarm means power, the pin order or the pull-ups; "CO2 SENSOR NOT ANSWERING" means TX/RX swapped (W12/W13), the shifter's LV/HV, or VDD.
+6. **Sample flow and flow zero:** cap the mouthpiece. All the pump's flow now goes through the SFM3300, so the flow shown is the sample flow. Aim for about 0.2 L/min: change `PUMP_DUTY` in `config.h`, or send `PUMP 120` (any duty 2–255) from **Settings > Connection**. Still capped, zero the flow in **Settings > Calibration**.
+7. **CO2 zero:** with the pump running, put the sample line in fresh air for a minute, then **Settings > Connection > CO2 sensor zero > Zero in room air** (sends `CO2ZERO AIR`; the SprintIR-R takes it as 400 ppm). With nitrogen from the lab, **Zero in nitrogen**.
+8. **Valve switch (before recording):** turn the valve to the bag and back. The log says "Valve handle turned to the bag" and "... to room air". Turning it to the bag starts the rebreathing phase and back ends the test, so try it before pressing Record.
+9. **CO2 delay:** record a minute of quiet breathing, open it in **Data & recordings** (or run `co2response --analyze file.csv`), and set **Settings > Processing > CO2 delay** to (the analysis's "CO2 delay after expiration starts" − 0.2 s) × 1000 ms.
+10. **Alarm light:** **Settings > Alarms > Test alarm**. The Arduino's LED lights; close the app and within 3 s the LED flashes (the board's watchdog).
+
+#### Firmware settings (`firmware/CO2ResponseR4/config.h`)
+
+| Setting | Value | Meaning |
+| --- | --- | --- |
+| `BAUD_RATE` | 115200 | USB serial to the laptop |
+| `DEFAULT_RATE_HZ` | 100 | Data lines per second (1–200 with `RATE n`) |
+| `SFM_I2C_ADDRESS`, `I2C_CLOCK_HZ` | 0x40, 100 kHz | The flow sensor |
+| `SFM_OFFSET`, `SFM_SCALE` | 32768, 120 | Flow = (raw − 32768) / 120 L/min |
+| `SFM_FLOW_SIGN` | 1 | −1 if the sensor is mounted backwards |
+| `SFM_AVERAGE`, `SFM_READ_US` | 1, 1000 µs | Read the flow every 1 ms and send the mean per line |
+| `CO2_BAUD` | 38400 | The SprintIR-R |
+| `CO2_USE_FILTERED` | 0 | 0 = raw CO2 (fastest), 1 = the sensor's own smoothing |
+| `CO2_TIMEOUT_MS` | 500 | No CO2 reading for this long = not answering (sent as 9999) |
+| `PUMP_PIN`, `PUMP_DUTY` | 10, 140 | The pump's PWM duty, 0–255 |
+| `REED_PIN`, `REED_CLOSED_IS_BAG` | 3, 1 | The valve switch; closed = at the bag |
+| `ALARM_LED_PIN` | `LED_BUILTIN` (D13) | Or D7 with an external LED and 330 Ω |
+| `BUZZER_PIN`, `BUTTON_PIN` | 8, 2 | Optional; nothing wired = never pressed, silent |
+| `HEATER_PIN`, `HEATER_DUTY` | −1 (off), 128 | 9 for the optional heater through Q2 |
+| `SERVO_PIN` | −1 | D6 for a valve servo (none in this build) |
+| `WATCHDOG_TIMEOUT_MS` | 3000 | No heartbeat from the app for this long: the LED flashes, a servo valve goes to room air |
+
+Commands the app (or **Settings > Connection**) can send: `INFO`, `START`, `STOP`, `RATE n`, `PUMP 0` / `PUMP 1` / `PUMP <2-255>`, `CO2ZERO AIR`, `CO2ZERO N2`, `ALARM 0|1|2`, `HB`. The full protocol is in [docs/protocol.md](docs/protocol.md#the-uno-r4-board-digital-sensors).
+
+#### If something does not work
+
+| Symptom | Likely cause |
+| --- | --- |
+| No serial port appears | A charge-only cable (C1 or C2); C1 and C2 swapped on the isolator; try another USB port |
+| "FLOW SENSOR NOT ANSWERING" | SFM3300 wires in the wrong order or VDD not 5 V; SDA/SCL swapped (W4/W5); add R3/R4 4.7 kΩ pull-ups |
+| "CO2 SENSOR NOT ANSWERING" | W12/W13 swapped; shifter HV and LV swapped; no +5V_EXT (P1 not plugged in); `CO2_BAUD` not 38400 |
+| Flow reads negative when breathing in | The SFM3300 is mounted backwards: turn it round or set `SFM_FLOW_SIGN -1` |
+| Inspired and expired volumes differ, flow not 0 at rest | The pump's draw: zero the flow with the mouthpiece capped and the pump on (step 6) |
+| CO2 rises late against the flow | The sample line's delay: shorten T3, then set the CO2 delay (step 9) |
+| CO2 falls slowly or is noisy | A wet filter (change T1), a kink in the tube, too little sample flow |
+| The pump does not run | Q1 legs in the wrong order; D1 the wrong way round (shorts the pump); no +5V_EXT |
+| The valve phase is never detected | The magnet is too far from the switch (more than 13 mm) at the bag position |
+| The Arduino resets when the pump starts | The pump is on the Arduino's 5 V instead of +5V_EXT |
 
 **The ADC board (earlier build):**
 
@@ -265,8 +466,8 @@ Wiring, firmware upload and first checks are covered in detail, with a wiring di
 
 ### Once per setup
 
-1. **Wire the sensors.** Each sensor output goes to an ADS1115 input: CO2 to A0, flow sensor to A1, pneumotach transducer to A2. The ADS1115 connects to the Arduino over I2C (SDA, SCL, 5 V, GND). Every ground must be common. See [docs/wiring.md](docs/wiring.md).
-2. **Flash the firmware.** Use either of:
+1. **Wire the board.** The Uno R4 board (current build): follow [Wiring the Uno R4 board](#wiring-the-uno-r4-board-every-connection) wire by wire, then its [first power-up checks](#first-power-up-and-checks). The ADC board (earlier build): each sensor output goes to an ADS1115 input (CO2 to A0, flow sensor to A1, pneumotach transducer to A2), and the ADS1115 connects to the Arduino over I2C (SDA, SCL, 5 V, GND). Every ground must be common. See [docs/wiring.md](docs/wiring.md).
+2. **Flash the firmware.** The Uno R4 board: open `firmware/CO2ResponseR4/CO2ResponseR4.ino` in the Arduino IDE (board "Arduino UNO R4 Minima", no extra libraries), or `pio run -d firmware/r4 -t upload`. The ADC board, either of:
    - **Arduino IDE:** open `firmware/CO2Response/CO2Response.ino`, install **Adafruit ADS1X15** from the Library Manager, choose the board and port, and upload.
    - **PlatformIO:** `cd firmware && pio run -e uno -t upload` (environments: `uno`, `mega`, `nano`).
 3. **Install the app** (see [Try it now](#on-your-computer)), or use the [browser version](https://shrlak.github.io/CO2-Response/) in Chrome or Edge.
