@@ -1,7 +1,7 @@
 // CO2-Response firmware for the Arduino Uno R4 Minima board with digital sensors:
 //
 //   Sensirion SFM3300-250-D flow sensor  I2C 0x40, 5 V, wired straight to SDA/SCL
-//   GSS SprintIR-R-20 CO2 sensor         Serial1 (D0/D1) at 9600 baud, 3.3 V logic through
+//   GSS SprintIR-R-20 CO2 sensor         Serial1 (D0/D1) at 38400 baud, 3 V logic through
 //                                        the BSS138 level shifter, powered from 5V_EXT
 //   ZR370-02PM sample pump               IRLZ44N Q1 on D10 (PWM), powered from 5V_EXT
 //   valve reed switch D3, alarm LED D13 (built in), optional button D2, optional buzzer D8,

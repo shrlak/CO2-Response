@@ -47,59 +47,102 @@ def run(e, clock, seconds):
 # ---------------------------------------------------------------- pause and play
 
 
-def test_the_simulator_pauses_and_time_stands_still(tmp_path):
+def test_only_a_replayed_recording_has_play_and_pause(tmp_path):
+    """A live test (the Arduino) or a simulated one cannot be paused: nothing should stop
+    watching it. Only a recorded file being replayed gets the controls."""
     clock = Clock()
     e = make(tmp_path, clock)
-    assert not e.can_pause and not e.set_paused(True)  # nothing connected: nothing to pause
+    assert not e.can_pause and not e.set_paused(True)  # nothing connected
     e.connect("simulator")
-    e.start_recording()
-    run(e, clock, 30)
-    assert e.can_pause and e.snapshot().can_pause
-    assert e.set_paused(True) and e.snapshot().paused
-    n, t, rows = len(e.trend), e.clock(), e.recorder.rows
-    run(e, clock, 60)  # a minute on the wall: no data, no breaths, no alarms, the clock frozen
-    assert len(e.trend) == n and e.clock() == t and e.recorder.rows == rows
-    assert not e.alarms.is_active("noData") and not e.alarms.is_active("apnea")
-    assert not e.toggle_pause()
-    run(e, clock, 20)
-    assert len(e.trend) > n
-    res = e.stop_recording()
-    s = read_session(res.path)
-    texts = [x.text for x in s.events]
-    assert "PAUSED" in texts and "UNPAUSED" in texts
-    # the pause leaves no hole in the recording's time: time_s runs straight on
-    assert float(np.diff(s.time_s).max()) < 0.05
-    assert s.duration_s == pytest.approx(50, abs=1)
-
-
-def test_a_live_device_cannot_be_paused(tmp_path):
-    clock = Clock()
-    e = make(tmp_path, clock)
-    e.connect("simulator")
-    e._source.kind = "serial"  # stands in for an Arduino: its data would keep coming
+    run(e, clock, 5)
+    assert not e.can_pause and not e.set_paused(True) and not e.snapshot().can_pause
+    e._source.kind = "serial"  # stands in for an Arduino
     assert not e.can_pause and not e.set_paused(True)
+    e._source.kind = "simulator"
+    e.disconnect()
+    e.connect("replay", session=read_session(SAMPLE), file_name=SAMPLE.name)
+    assert e.can_pause and e.snapshot().can_pause
 
 
-def test_a_replay_pauses_plays_changes_speed_and_stops(tmp_path):
+def test_the_whole_recording_replays_and_stays_on_the_monitor(tmp_path):
     clock = Clock()
     e = make(tmp_path, clock)
     s = read_session(SAMPLE)
     e.connect("replay", session=s, file_name=SAMPLE.name)
     run(e, clock, 10)
     snap = e.snapshot()
-    assert snap.source_kind == "replay" and snap.replay_speed == 1
+    assert snap.source_kind == "replay" and snap.replay_speed == 1 and not snap.replay_at_end
     assert snap.replay_len_s == pytest.approx(180, abs=1) and 9 <= snap.replay_pos_s <= 11
-    e.set_paused(True)
-    run(e, clock, 30)
-    assert 9 <= e.snapshot().replay_pos_s <= 11  # paused: it has not moved on
-    e.set_paused(False)
+    # the engine runs on the recording's own time
+    assert e.clock() - e._replay_base == pytest.approx(s.time_s[0] * 1000 + snap.replay_pos_s * 1000, abs=30)
+
+    # paused: nothing moves, no alarm goes off for the missing data
+    assert e.set_paused(True) and e.snapshot().paused
+    n, t = len(e.trend), e.clock()
+    run(e, clock, 60)
+    assert len(e.trend) == n and e.clock() == t and 9 <= e.snapshot().replay_pos_s <= 11
+    assert not e.alarms.is_active("noData") and not e.alarms.is_active("apnea")
+    assert not e.toggle_pause()
+
+    # faster: 5 s at 10x is 50 s of the recording, and the test timers follow the recording
     e.set_replay_speed(10)
     run(e, clock, 5)
     snap = e.snapshot()
-    assert snap.replay_speed == 10 and 55 <= snap.replay_pos_s <= 65  # 5 s at 10x after the first 10 s
-    breaths = len(e.trend)
-    e.disconnect()  # stop
-    assert e.snapshot().source_kind is None and not e.snapshot().paused and breaths >= 10
+    assert snap.replay_speed == 10 and 55 <= snap.replay_pos_s <= 65
+
+    # forward to 2:30 (everything on the way is played), then back to 0:30 (played again from the start)
+    e.replay_seek(150)
+    run(e, clock, 0.5)
+    assert 150 <= e.snapshot().replay_pos_s <= 160
+    assert [m.label for m in e.markers] == ["Baseline", "CO2 rebreathing started"]
+    e.replay_seek(30)
+    run(e, clock, 0.1)
+    assert 30 <= e.snapshot().replay_pos_s <= 32 and len(e.trend) < 12 and [m.label for m in e.markers] == ["Baseline"]  # only what comes before 0:30
+
+    # paused and moved: it goes there and stays paused
+    e.set_paused(True)
+    e.replay_seek(100)
+    run(e, clock, 2)
+    assert e.snapshot().paused and e.snapshot().replay_pos_s == pytest.approx(100, abs=0.05)
+
+    # the whole recording: every breath and marker, the test ended and fitted, and it stays
+    e.set_paused(False)
+    e.show_whole_replay()
+    run(e, clock, 2)
+    snap = e.snapshot()
+    assert snap.replay_at_end and snap.status == "connected" and snap.replay_pos_s == pytest.approx(snap.replay_len_s)
+    assert len(e.trend) == len(s.breaths) and [m.label for m in e.markers] == ["Baseline", "CO2 rebreathing started", "End of test"]
+    assert snap.test.phase == "ended" and e.co2_response().slope == pytest.approx(0.29, abs=0.02)
+    run(e, clock, 30)
+    assert e.snapshot().replay_at_end and not e.alarms.is_active("noData")
+    # at the end, play starts it again
+    e.toggle_pause()
+    run(e, clock, 0.2)
+    assert e.snapshot().replay_pos_s < 3  # 0.2 s at 10x
+    # closing it: the computer's clock takes over, carrying on (never jumping back)
+    before = e.clock()
+    e.disconnect()
+    assert e.clock() >= before and e.snapshot().source_kind is None
+    run(e, clock, 1)
+    assert e.clock() == pytest.approx(before + 1000, abs=30)
+
+
+def test_a_file_spanning_a_resume_replays_as_one_stream(tmp_path):
+    """time_s never goes backwards, even where the device clock restarted (a resumed file)."""
+    clock = Clock()
+    e = make(tmp_path, clock)
+    s = read_session(SAMPLE)
+    e.resume_session(s, SAMPLE.name)
+    e.connect("simulator")
+    run(e, clock, 20)
+    done = read_session(e.stop_recording().path)
+    e.disconnect()
+    assert (np.diff(done.t_ms) < 0).any()  # the device clock started again
+    e.connect("replay", session=done, file_name="x.csv", speed=20)
+    e.show_whole_replay()
+    run(e, clock, 3)
+    snap = e.snapshot()
+    assert snap.replay_at_end and len(e.trend) >= len(done.breaths) - 1
 
 
 # ---------------------------------------------------------------- resuming a recording

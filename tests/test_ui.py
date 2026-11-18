@@ -231,7 +231,7 @@ def test_sample_session_replays_through_the_window(win):
     s = read_session(ROOT / "sample-data" / "synthetic_session.csv")
     assert win.engine.connect("replay", session=s, file_name="synthetic_session.csv", speed=10)
     advance(win, 19)
-    assert win.engine.snapshot().status_detail == "Replay finished"
+    assert win.engine.snapshot().replay_at_end  # the whole recording played, and it stays on the monitor
     assert len(win.engine.breaths) >= 30
     # the recording's markers are replayed, so the test is split and fitted as it was live
     assert [m.label for m in win.engine.markers] == ["Baseline", "CO2 rebreathing started", "End of test"]
@@ -579,7 +579,7 @@ def test_header_shows_how_long_the_program_has_run_and_the_test_time(win):
     assert "REBREATHING TEST 1:" in text  # and the test's own time, from when the valve was turned
 
 
-def test_replay_bar_pause_key_and_continuing_a_recording_from_the_review(win, tmp_path, monkeypatch):
+def test_replay_bar_and_continuing_a_recording_from_the_review(win, tmp_path, monkeypatch):
     from PySide6.QtWidgets import QFileDialog, QPlainTextEdit
 
     e, m = win.engine, win.monitor
@@ -595,22 +595,49 @@ def test_replay_bar_pause_key_and_continuing_a_recording_from_the_review(win, tm
     rv._export_analysis()
     assert out.read_text().startswith("section,metric,value,unit,note") and (tmp_path / "x_breath_detail.csv").exists()
 
-    # replay: the bar under the waveforms, pause and play, the speed, stop
-    rv._replay()
+    # no replay controls during a live or simulated test
+    e.connect("simulator")
+    advance(win, 2)
+    win._tick()
+    assert not m.replay_bar.isVisible() and not e.can_pause and not e.set_paused(True)
+    e.disconnect()
+
+    # a recorded file: the bar under the waveforms, the whole recording, pause and play, speed, close
+    win.open_review(rec.id)
+    win.review._replay()
     advance(win, 5)
     win._tick()
-    assert m.replay_bar.isVisible() and m.k_pause.isVisible()
-    assert "REPLAY" in m.replay_bar.text.text() and "3:00" in m.replay_bar.text.text()
-    m.k_pause.click()
+    bar = m.replay_bar
+    assert bar.isVisible() and "REPLAY" in bar.text.text() and "/ 3:00" in bar.text.text()
+    bar.play.click()
     win._tick()
-    assert e.paused and "PAUSED" in m.replay_bar.text.text() and "PLAY" in m.k_pause.main.text()
-    m.replay_bar.play.click()
+    assert e.paused and "PAUSED" in bar.text.text() and "Play" in bar.play.text()
+    advance(win, 5)
+    assert e.snapshot().replay_pos_s == pytest.approx(5, abs=0.3)  # paused: it stays put
+    bar.play.click()
     assert not e.paused
-    m.replay_bar.speed.group.button(4).click()  # 10x
+    bar.speed.group.button(4).click()  # 10x
     assert e.snapshot().replay_speed == 10
-    m.replay_bar.stop.click()
+    # the timeline: drag to the middle of the recording
+    bar.timeline.setValue(500)
+    bar._seek()
+    advance(win, 0.5)
+    assert 85 <= e.snapshot().replay_pos_s <= 100
+    # back to the start: the monitor starts again from the beginning
+    bar.restart.click()
+    advance(win, 0.2)
+    assert e.snapshot().replay_pos_s < 5 and len(e.trend) <= 2
+    # show all: the whole recording, every breath and marker, stays on the monitor
+    bar.whole.click()
+    advance(win, 1)
     win._tick()
-    assert not m.replay_bar.isVisible() and not m.k_pause.isVisible()
+    s = e.snapshot()
+    assert s.replay_at_end and "END OF RECORDING" in bar.text.text() and bar.timeline.value() == 1000
+    assert len(e.trend) == 48 and [mk.label for mk in e.markers] == ["Baseline", "CO2 rebreathing started", "End of test"]
+    assert not m.overlay.isVisible()  # the whole recording stays visible, not hidden by the connect card
+    bar.stop.click()
+    win._tick()
+    assert not bar.isVisible()
 
     # continue recording the session: a new file, the old breaths back on the monitor
     win.open_review(rec.id)

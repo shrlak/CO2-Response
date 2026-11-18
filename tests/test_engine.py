@@ -358,7 +358,8 @@ def test_record_stop_import_review_export(tmp_path):
     assert e.snapshot().using_file_calibration
     run(e, 5)
     s = e.snapshot()
-    assert s.source_kind is None and s.status == "idle" and s.status_detail == "Replay finished"
+    # the whole file has played; the replay stays open showing all of it until it is closed
+    assert s.source_kind == "replay" and s.replay_at_end and s.replay_pos_s == pytest.approx(s.replay_len_s)
     assert len(e.breaths) >= 6
     # the recording's marker is replayed too, with the label it was given
     assert [m.label for m in e.markers] == ["drug given"]

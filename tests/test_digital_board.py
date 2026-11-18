@@ -396,9 +396,9 @@ def test_both_firmwares_format_lines_the_same_way():
 
 def test_r4_firmware_matches_the_wiring():
     cfg = (ROOT / "firmware" / "CO2ResponseR4" / "config.h").read_text()
-    # the parts the team ordered: SFM3300-250-D (I2C 0x40, no heater), SprintIR-R-20 at 9600 baud,
+    # the parts the team ordered: SFM3300-250-D (I2C 0x40, no heater), SprintIR-R-20 at 38400 baud,
     # the pump on Q1 (D10), the reed switch on D3, the board's own LED for alarms
-    for pin in ("BUTTON_PIN 2", "REED_PIN 3", "ALARM_LED_PIN LED_BUILTIN", "BUZZER_PIN 8", "HEATER_PIN -1", "PUMP_PIN 10", "SFM_I2C_ADDRESS 0x40", "CO2_BAUD 9600"):
+    for pin in ("BUTTON_PIN 2", "REED_PIN 3", "ALARM_LED_PIN LED_BUILTIN", "BUZZER_PIN 8", "HEATER_PIN -1", "PUMP_PIN 10", "SFM_I2C_ADDRESS 0x40", "CO2_BAUD 38400"):
         assert f"#define {pin}" in cfg, pin
     for k in ("SFM_OFFSET 32768.0f", "SFM_SCALE 120.0f", "SFM_CMD_START 0x1000"):
         assert f"#define {k}" in cfg, k

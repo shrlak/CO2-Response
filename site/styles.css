@@ -250,6 +250,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .key:hover:not(:disabled) { border-color: var(--muted); }
 .softkeys > .replaybar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid var(--line, var(--muted)); border-radius: 6px; }
 .softkeys > .replaybar .note { flex: 1 1 200px; }
+.softkeys > .replaybar input[type=range] { flex: 3 1 220px; min-width: 120px; accent-color: var(--co2, currentColor); }
 .key .sub { display: block; font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: 0.03em; text-transform: none; margin-top: 2px; }
 .key.armed { border-color: var(--ok); color: var(--ok); }
 .key.need { border-color: var(--advisory); color: var(--advisory); }

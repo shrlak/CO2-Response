@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -43,31 +44,54 @@ ROW_STRETCH_SINGLE = (155, 100, 0)
 
 
 class ReplayBar(QFrame):
-    """Under the waveforms while a recording is replayed: where it is, pause and play,
-    its speed, and stop."""
+    """Under the waveforms only while a recorded file is replayed (never during a live or
+    simulated test): a timeline of the whole recording to drag to any moment, start
+    again, play and pause, the speed, show the whole recording at once, and close."""
 
     def __init__(self, engine: MonitorEngine) -> None:
         super().__init__()
         self.setObjectName("replaybar")
         self.engine = engine
         self.text = label("", "muted")
-        self.play = button("Pause", engine.toggle_pause, small=True, tooltip="Pause or play the replay (P)")
+        self.text.setMinimumWidth(150)
+        self.restart = button("⏮ Start", lambda: engine.replay_seek(0), small=True, tooltip="Play the recording again from the beginning")
+        self.play = button("❚❚ Pause", engine.toggle_pause, small=True, tooltip="Pause or play the replay (P)")
+        self.whole = button("Show all ⏭", engine.show_whole_replay, small=True, tooltip="Play the rest at once: the whole recording on the monitor")
+        self.timeline = QSlider(Qt.Orientation.Horizontal)
+        self.timeline.setRange(0, 1000)
+        self.timeline.setToolTip("The whole recording: drag to go to any moment")
+        self.timeline.sliderReleased.connect(self._seek)
         self.speed = Seg(REPLAY_BAR_SPEEDS, 1)
         self.speed.changed.connect(lambda v: engine.set_replay_speed(float(v)))
-        self.stop = button("Stop replay", engine.disconnect, small=True)
-        lay = hbox(self.text, 1, label("Speed", "muted"), self.speed, self.play, self.stop, margins=(6, 2, 6, 2))
-        self.setLayout(lay)
+        self.stop = button("Close replay", engine.disconnect, small=True)
+        row1 = hbox(self.restart, self.play, self.timeline, 1, self.whole, spacing=6)
+        row2 = hbox(self.text, 1, label("Speed", "muted"), self.speed, self.stop, spacing=6)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(6, 4, 6, 4)
+        lay.setSpacing(4)
+        lay.addLayout(row1)
+        lay.addLayout(row2)
         self._key = None
 
+    def _seek(self) -> None:
+        s = self.engine.snapshot()
+        if s.replay_len_s:
+            self.engine.replay_seek(self.timeline.value() / 1000 * s.replay_len_s)
+
     def update_from(self, s: Snapshot) -> None:
-        key = (s.paused, s.replay_speed, int(s.replay_pos_s or 0), s.replay_len_s, s.source_label)
+        key = (s.paused, s.replay_at_end, s.replay_speed, int((s.replay_pos_s or 0) * 4), s.replay_len_s, s.source_label)
         if key == self._key:
             return
         self._key = key
         pos, length = s.replay_pos_s or 0.0, s.replay_len_s or 0.0
-        state = "PAUSED" if s.paused else "REPLAY"
+        state = "END OF RECORDING" if s.replay_at_end else "PAUSED" if s.paused else "REPLAY"
         self.text.setText(f"{state} · {mss(pos * 1000)} / {mss(length * 1000)} · {s.source_label}")
-        self.play.setText("▶ Play" if s.paused else "❚❚ Pause")
+        self.play.setText("⟲ Play again" if s.replay_at_end else "▶ Play" if s.paused else "❚❚ Pause")
+        self.whole.setEnabled(not s.replay_at_end)
+        if not self.timeline.isSliderDown():
+            self.timeline.blockSignals(True)
+            self.timeline.setValue(round(pos / length * 1000) if length else 0)
+            self.timeline.blockSignals(False)
         if s.replay_speed is not None:
             self.speed.set_value(min((v for v, _ in REPLAY_BAR_SPEEDS), key=lambda v: abs(v - s.replay_speed)))
 
@@ -147,6 +171,9 @@ class ConnectOverlay(Overlay):
         for w in (self.title, self.detail, self.waiting, info):
             lay.addWidget(w)
         lay.addLayout(row)
+        # a recorded session: the whole file replays here, with play, pause and a timeline
+        self.upload = button("Replay a recorded CSV…", screen.replay_file, tooltip="Open a session CSV recorded by this app and play the whole of it back")
+        lay.addLayout(hbox(self.upload, label("pause, play and go anywhere in it", "muted"), stretch_end=True))
         outer.addWidget(card)
 
     def update_from(self, s: Snapshot) -> None:
@@ -321,11 +348,10 @@ class MonitorScreen(QWidget):
         self.k_mark = SoftKey(self.mark)
         self.k_rec = SoftKey(self.toggle_recording.emit)
         self.k_freeze = SoftKey(lambda: engine.set_frozen(not engine.frozen))
-        self.k_pause = SoftKey(engine.toggle_pause)
         self.k_limits = SoftKey(self.show_drawer)
         self.k_sim = SoftKey(self.toggle_sim)
         self.k_settings = SoftKey(lambda: self.open_settings.emit(""))
-        for k in (self.k_silence, self.k_audio, self.k_mark, self.k_rec, self.k_freeze, self.k_pause, self.k_limits, self.k_sim, self.k_settings):
+        for k in (self.k_silence, self.k_audio, self.k_mark, self.k_rec, self.k_freeze, self.k_limits, self.k_sim, self.k_settings):
             keys.addWidget(k, 1)
         outer.addLayout(keys)
 
@@ -354,6 +380,27 @@ class MonitorScreen(QWidget):
 
     def start_simulator(self) -> None:
         self.engine.connect("simulator")
+
+    def replay_file(self) -> None:
+        """Choose a recorded session CSV and replay the whole of it."""
+        from pathlib import Path
+
+        from PySide6.QtWidgets import QFileDialog
+
+        from ..storage.session_file import read_session
+        from .settings.common import downloads_dir
+
+        path, _ = QFileDialog.getOpenFileName(self, "Replay a recorded session", str(downloads_dir()), "Session files (*.csv);;All files (*)")
+        if not path:
+            return
+        try:
+            s = read_session(path)
+            if not s.n:
+                raise ValueError("it has no samples")
+        except (OSError, ValueError, UnicodeDecodeError) as e:
+            self.toast.emit(f"Could not replay {Path(path).name}: {e}")
+            return
+        self.engine.connect("replay", session=s, file_name=Path(path).name)
 
     def toggle_sim(self) -> None:
         self.show_sim(not self.sim.isVisible())
@@ -510,11 +557,6 @@ class MonitorScreen(QWidget):
         self.k_mark.set("Mark event", "hotkey M", None, p)
         self.k_rec.set("■ Stop rec" if s.recording.active else "● Record", "finishes the CSV file" if s.recording.active else "one CSV per session", "rec" if s.recording.active else None, p)
         self.k_freeze.set("Unfreeze" if s.frozen else "Freeze", "waveforms only", "active" if s.frozen else None, p)
-        # a replay or the simulator can be paused (time stands still); a live device cannot
-        self.k_pause.setVisible(s.can_pause)
-        if s.can_pause:
-            what = "the replay" if s.source_kind == "replay" else "the simulator"
-            self.k_pause.set("▶ Play" if s.paused else "❚❚ Pause", f"{what} · hotkey P", "active" if s.paused else None, p)
         self.replay_bar.setVisible(s.source_kind == "replay")
         if s.source_kind == "replay":
             self.replay_bar.update_from(s)

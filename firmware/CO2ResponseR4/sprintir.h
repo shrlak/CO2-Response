@@ -12,7 +12,7 @@ class SprintIR {
     port_.begin(CO2_BAUD);
     delay(50);
     port_.print(F("K 1\r\n"));  // streaming mode
-    // one field only: at 50 readings a second two fields would not fit in 9600 baud
+    // one field: the CO2 value the app uses (the datasheet allows two at most at 50 Hz)
     port_.print(CO2_USE_FILTERED ? F("M 4\r\n") : F("M 2\r\n"));
     port_.print(F(".\r\n"));    // ask for the ppm multiplier
   }

@@ -542,7 +542,12 @@ class MonitorApp(App):
         Binding("c", "record", "Record"),
         Binding("v", "view", "Graph"),
         Binding("f", "freeze", "Freeze", show=False),
-        Binding("p", "pause", "Pause"),
+        # only while a recorded file is replayed (the CO2 panel's title lists them then)
+        Binding("p", "pause", "Pause", show=False),
+        Binding("left", "replay_jump(-30)", "Back 30 s", show=False),
+        Binding("right", "replay_jump(30)", "On 30 s", show=False),
+        Binding("home", "replay_start", "Start", show=False),
+        Binding("end", "replay_whole", "Show all", show=False),
         Binding("l", "wave_style", "Line/fill", show=False),
         Binding("a", "arm_audio", "Audio", show=False),
         Binding("h", "hardware", "Board", show=False),
@@ -727,8 +732,8 @@ class MonitorApp(App):
         unit = "%" if pct else "mmHg"
         tag = f" · SIMULATED · {st.sweep_sec * k:g} s per screen" if s.source_kind == "simulator" else " · REPLAY" if s.source_kind == "replay" else ""
         if s.source_kind == "replay":
-            tag += f" {mss(s.replay_pos_s or 0)}/{mss(s.replay_len_s or 0)} · {s.replay_speed or 1:g}×"
-        extra = (" · PAUSED (p)" if s.paused else "") + (" · FROZEN" if s.frozen else "")
+            tag += f" {mss(s.replay_pos_s or 0)}/{mss(s.replay_len_s or 0)} · {s.replay_speed or 1:g}× · p play/pause, ←/→ 30 s, Home start, End show all"
+        extra = (" · END OF RECORDING" if s.replay_at_end else " · PAUSED" if s.paused else "") + (" · FROZEN" if s.frozen else "")
         panels["co2"].border_title = f"CO2 {unit}{tag}{extra}"
         panels["co2"].tag = (tag.replace(" · SIMULATED", "SIMULATED").replace(" per screen", "/screen").replace(" · REPLAY", "REPLAY") + extra).strip(" ·")
         self._frame_n += 1
@@ -760,8 +765,16 @@ class MonitorApp(App):
         if not ports:
             opts.append(("", "No serial ports found (plug in the Arduino and press o again)"))
         sample = Path(__file__).resolve().parents[2] / "sample-data" / "synthetic_session.csv"
+        # recorded sessions in the sessions folder (recorded here or imported): the whole file replays
+        try:
+            recs = [r for r in self.engine.library.list() if r.status != "recording"][:6]
+        except OSError:
+            recs = []
+        for rec in recs:
+            opts.append((f"replay:{self.engine.library.path(rec)}", f"Replay {rec.file_name}"))
         if sample.exists():
             opts.append((f"replay:{sample}", "Replay the sample session"))
+        opts.append(("", "Any other CSV: co2response-tui --replay FILE.csv"))
         opts.append(("disconnect", "Disconnect"))
         opts.append(("quit", "Quit"))
 
@@ -805,9 +818,21 @@ class MonitorApp(App):
     def action_pause(self) -> None:
         e = self.engine
         if not e.can_pause:
-            self.notify("Only a replay or the simulator can be paused", timeout=3)
+            self.notify("Only a replayed recording can be paused", timeout=3)
             return
         self.notify("Paused: p to carry on" if e.toggle_pause() else "Playing", timeout=2)
+
+    def action_replay_jump(self, sec: float) -> None:
+        s = self.engine.snapshot()
+        if s.replay_pos_s is not None:
+            self.engine.replay_seek(s.replay_pos_s + sec)
+
+    def action_replay_start(self) -> None:
+        if self.engine.replay is not None:
+            self.engine.replay_seek(0)
+
+    def action_replay_whole(self) -> None:
+        self.engine.show_whole_replay()
 
     def action_speed(self, step: int) -> None:
         if self.engine.source is not None and self.engine.source.kind == "replay":

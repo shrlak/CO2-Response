@@ -1,0 +1,405 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1720 1230" font-family="Helvetica, Arial, sans-serif">
+<title>CO2-Response: every connection of the Uno R4 board</title>
+<rect x="0" y="0" width="1720" height="1230" fill="#ffffff"/>
+<text x="24" y="34" font-size="20" text-anchor="start" font-weight="bold" fill="#111">CO2-Response · every connection, pin by pin (Uno R4 board, parts as ordered)</text>
+<text x="24" y="56" font-size="12" text-anchor="start" font-weight="normal" fill="#444">W = wire (numbers match the wire list in docs/wiring.md) · C = USB cable · P = power plug · T = tube or fitting. Dashed = optional or not bought yet. A dot joins a wire to a rail; wires that only cross are not joined.</text>
+<rect x="320" y="288" width="1388" height="56" rx="4" fill="#f6f2e8" stroke="#c8bfa6" stroke-width="1.2"/>
+<path d="M330 300 L1700 300" fill="none" stroke="#ff7f0e" stroke-width="3.4" stroke-linejoin="round"/>
+<path d="M330 316 L1700 316" fill="none" stroke="#d62728" stroke-width="3.4" stroke-linejoin="round"/>
+<path d="M330 332 L1700 332" fill="none" stroke="#111111" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="316" y="304" font-size="11" text-anchor="end" font-weight="bold" fill="#ff7f0e">+5V_EXT</text>
+<text x="316" y="320" font-size="11" text-anchor="end" font-weight="bold" fill="#d62728">+5V</text>
+<text x="316" y="336" font-size="11" text-anchor="end" font-weight="bold" fill="#111111">GND</text>
+<text x="1196" y="358" font-size="11" text-anchor="start" font-weight="bold" fill="#7a6a3a">BREADBOARD POWER RAILS:</text>
+<text x="1368" y="358" font-size="10" text-anchor="start" font-weight="normal" fill="#555">+5V_EXT = wall adapter · +5V = Arduino 5V</text>
+<text x="1196" y="374" font-size="10" text-anchor="start" font-weight="bold" fill="#c0392b">(isolated USB) · GND = every ground. Never join the two +5 V rails.</text>
+<rect x="330" y="410" width="540" height="300" rx="10" fill="#e8f4f6" stroke="#00878f" stroke-width="2.2"/>
+<rect x="415" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="424" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 424 436)">SCL</text>
+<rect x="437" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="446" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 446 436)">SDA</text>
+<rect x="459" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="468" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 468 436)">AREF</text>
+<rect x="481" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="490" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 490 436)">GND</text>
+<rect x="503" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="512" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 512 436)">D13</text>
+<rect x="525" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="534" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 534 436)">D12</text>
+<rect x="547" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="556" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 556 436)">D11</text>
+<rect x="569" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="578" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 578 436)">D10</text>
+<rect x="591" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="600" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 600 436)">D9</text>
+<rect x="613" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="622" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 622 436)">D8</text>
+<rect x="647" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="656" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 656 436)">D7</text>
+<rect x="669" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="678" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 678 436)">D6</text>
+<rect x="691" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="700" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 700 436)">D5</text>
+<rect x="713" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="722" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 722 436)">D4</text>
+<rect x="735" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="744" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 744 436)">D3</text>
+<rect x="757" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="766" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 766 436)">D2</text>
+<rect x="779" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="788" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 788 436)">D1/TX</text>
+<rect x="801" y="419" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="810" y="436" font-size="10" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 810 436)">D0/RX</text>
+<rect x="447" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="456" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 456 684)">BOOT</text>
+<rect x="469" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="478" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 478 684)">IOREF</text>
+<rect x="491" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="500" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 500 684)">RESET</text>
+<rect x="513" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="522" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 522 684)">3V3</text>
+<rect x="535" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="544" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 544 684)">5V</text>
+<rect x="557" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="566" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 566 684)">GND</text>
+<rect x="579" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="588" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 588 684)">GND</text>
+<rect x="601" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="610" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 610 684)">VIN</text>
+<rect x="635" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="644" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 644 684)">A0</text>
+<rect x="657" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="666" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 666 684)">A1</text>
+<rect x="679" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="688" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 688 684)">A2</text>
+<rect x="701" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="710" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 710 684)">A3</text>
+<rect x="723" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="732" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 732 684)">A4</text>
+<rect x="745" y="691" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="754" y="684" font-size="10" text-anchor="end" font-weight="bold" fill="#00585e" transform="rotate(90 754 684)">A5</text>
+<text x="600" y="570" font-size="18" text-anchor="middle" font-weight="bold" fill="#111">Arduino UNO R4 Minima</text>
+<text x="600" y="590" font-size="12" text-anchor="middle" font-weight="normal" fill="#444">top view · 5 V logic · max 8 mA per pin</text>
+<text x="600" y="608" font-size="11" text-anchor="middle" font-weight="normal" fill="#444">built-in LED on D13 = the alarm light (nothing to wire)</text>
+<text x="600" y="626" font-size="11" text-anchor="middle" font-weight="normal" fill="#888">D2, D8, D9: optional (box on the right)</text>
+<rect x="316" y="440" width="30" height="34" rx="3" fill="#bbb" stroke="#555" stroke-width="1.6"/>
+<text x="352" y="462" font-size="11" text-anchor="start" font-weight="bold" fill="#00585e">USB-C</text>
+<text x="442" y="722" font-size="10" text-anchor="start" font-weight="normal" fill="#555">power header</text>
+<text x="636" y="722" font-size="10" text-anchor="start" font-weight="normal" fill="#555">analog header (A4/A5 = SDA/SCL again)</text>
+<rect x="20" y="250" width="200" height="70" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
+<text x="120" y="276" font-size="15" text-anchor="middle" font-weight="bold" fill="#111">Laptop</text>
+<text x="120" y="295" font-size="12" text-anchor="middle" font-weight="normal" fill="#444">USB-A port (or USB-C)</text>
+<text x="120" y="311" font-size="11" text-anchor="middle" font-weight="normal" fill="#444">runs co2response</text>
+<path d="M120 320 L120 400" fill="none" stroke="#555" stroke-width="7" stroke-linejoin="round"/>
+<text x="130" y="352" font-size="12" text-anchor="start" font-weight="bold" fill="#111">C1</text>
+<text x="130" y="366" font-size="11" text-anchor="start" font-weight="bold" fill="#111">USB-A → Micro-B</text>
+<text x="130" y="380" font-size="10" text-anchor="start" font-weight="normal" fill="#444">data cable</text>
+<rect x="20" y="400" width="200" height="140" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
+<text x="120" y="420" font-size="13" text-anchor="middle" font-weight="bold" fill="#111">USB isolator</text>
+<text x="120" y="435" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">Adafruit 2107 (ADuM4160)</text>
+<line x1="120" y1="444" x2="120" y2="500" stroke="#c0392b" stroke-width="2" stroke-dasharray="4 3"/>
+<text x="68" y="458" font-size="11" text-anchor="middle" font-weight="bold" fill="#00585e">Micro-B</text>
+<text x="68" y="472" font-size="9" text-anchor="middle" font-weight="normal" fill="#444">computer side</text>
+<text x="172" y="458" font-size="11" text-anchor="middle" font-weight="bold" fill="#00585e">USB-A socket</text>
+<text x="172" y="472" font-size="9" text-anchor="middle" font-weight="normal" fill="#444">device side</text>
+<text x="120" y="514" font-size="10" text-anchor="middle" font-weight="normal" fill="#c0392b">isolation barrier</text>
+<text x="120" y="530" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">≤100 mA: Uno + SFM3300 only</text>
+<path d="M220 457 L316 457" fill="none" stroke="#555" stroke-width="7" stroke-linejoin="round"/>
+<text x="228" y="432" font-size="12" text-anchor="start" font-weight="bold" fill="#111">C2</text>
+<text x="228" y="446" font-size="10" text-anchor="start" font-weight="bold" fill="#111">USB-A → USB-C</text>
+<text x="228" y="482" font-size="10" text-anchor="start" font-weight="normal" fill="#444">data cable</text>
+<text x="20" y="560" font-size="10" text-anchor="start" font-weight="normal" fill="#666">Check the board's markings for the</text>
+<text x="20" y="573" font-size="10" text-anchor="start" font-weight="normal" fill="#666">computer side before plugging in.</text>
+<text x="20" y="586" font-size="10" text-anchor="start" font-weight="normal" fill="#666">Use data cables, not charge-only ones.</text>
+<rect x="360" y="96" width="250" height="92" rx="6" fill="#fff6e6" stroke="#b36b00" stroke-width="1.6"/>
+<text x="485" y="118" font-size="13" text-anchor="middle" font-weight="bold" fill="#111">Sensirion SFM3300-250-D</text>
+<text x="485" y="134" font-size="11" text-anchor="middle" font-weight="normal" fill="#444">I2C 0x40 · VDD 5 V ±5% · &lt;50 mW</text>
+<text x="485" y="149" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">4-wire lead: pin order from Sensirion's</text>
+<text x="485" y="162" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">connector note or your cable's label</text>
+<rect x="415" y="183" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="420" y="179" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">SCL</text>
+<rect x="437" y="183" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="442" y="179" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">SDA</text>
+<rect x="481" y="183" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="486" y="179" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">GND</text>
+<rect x="555" y="183" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="560" y="179" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">VDD</text>
+<path d="M420 188 L420 424" fill="none" stroke="#bcbd22" stroke-width="2.6" stroke-linejoin="round"/>
+<rect x="408.0" y="227" width="24" height="18" rx="9" fill="#fff" stroke="#bcbd22" stroke-width="2"/>
+<text x="420" y="240.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#6b6c00">W4</text>
+<path d="M442 188 L442 424" fill="none" stroke="#1f77b4" stroke-width="2.6" stroke-linejoin="round"/>
+<rect x="430.0" y="367" width="24" height="18" rx="9" fill="#fff" stroke="#1f77b4" stroke-width="2"/>
+<text x="442" y="380.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#1f77b4">W5</text>
+<path d="M486 188 L486 424" fill="none" stroke="#111111" stroke-width="2.6" stroke-linejoin="round"/>
+<rect x="474.0" y="227" width="24" height="18" rx="9" fill="#fff" stroke="#111111" stroke-width="2"/>
+<text x="486" y="240.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#111111">W6</text>
+<path d="M560 188 L560 316" fill="none" stroke="#d62728" stroke-width="2.6" stroke-linejoin="round"/>
+<circle cx="560" cy="316" r="4.2" fill="#d62728"/>
+<rect x="548.0" y="227" width="24" height="18" rx="9" fill="#fff" stroke="#d62728" stroke-width="2"/>
+<text x="560" y="240.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#d62728">W7</text>
+<text x="360" y="84" font-size="10" text-anchor="start" font-weight="normal" fill="#666">optional 4.7 kΩ pull-ups R3, R4: SDA → +5V, SCL → +5V</text>
+<rect x="660" y="80" width="340" height="70" rx="6" fill="#fff6e6" stroke="#b36b00" stroke-width="1.6"/>
+<text x="670" y="98" font-size="13" text-anchor="start" font-weight="bold" fill="#111">GSS SprintIR-R 20 % (CO2meter)</text>
+<text x="670" y="113" font-size="10" text-anchor="start" font-weight="normal" fill="#444">UART 38400 8N1 · 50 readings/s · VDD 3.25-5.5 V</text>
+<text x="670" y="126" font-size="10" text-anchor="start" font-weight="normal" fill="#444">4-pin header (datasheet): 1 Rx_In, 2 Tx_Out, 3 GND, 4 VDD</text>
+<rect x="779" y="145" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="784" y="141" font-size="10" text-anchor="middle" font-weight="bold" fill="#00585e">1</text>
+<rect x="801" y="145" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="806" y="141" font-size="10" text-anchor="middle" font-weight="bold" fill="#00585e">2</text>
+<rect x="823" y="145" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="828" y="141" font-size="10" text-anchor="middle" font-weight="bold" fill="#00585e">3</text>
+<rect x="845" y="145" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="850" y="141" font-size="10" text-anchor="middle" font-weight="bold" fill="#00585e">4</text>
+<rect x="762" y="200" width="132" height="54" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
+<rect x="779" y="195" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="784" y="218" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">A1</text>
+<rect x="801" y="195" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="806" y="218" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">A2</text>
+<rect x="823" y="195" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="828" y="218" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">GND</text>
+<rect x="867" y="195" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="872" y="218" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">LV</text>
+<rect x="779" y="249" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="784" y="245" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">B1</text>
+<rect x="801" y="249" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="806" y="245" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">B2</text>
+<rect x="823" y="249" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="828" y="245" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">GND</text>
+<rect x="867" y="249" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="872" y="245" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">HV</text>
+<text x="754" y="216" font-size="12" text-anchor="end" font-weight="bold" fill="#111">BSS138 level shifter</text>
+<text x="754" y="231" font-size="10" text-anchor="end" font-weight="normal" fill="#444">(Adafruit 757)</text>
+<text x="754" y="245" font-size="10" text-anchor="end" font-weight="normal" fill="#444">top: 3 V side · bottom: 5 V side</text>
+<path d="M784 200 L784 150" fill="none" stroke="#2ca02c" stroke-width="2.6" stroke-linejoin="round"/>
+<path d="M806 200 L806 150" fill="none" stroke="#17becf" stroke-width="2.6" stroke-linejoin="round"/>
+<path d="M828 200 L828 150" fill="none" stroke="#111111" stroke-width="2.6" stroke-linejoin="round"/>
+<rect x="751.0" y="167" width="30" height="18" rx="9" fill="#fff" stroke="#2ca02c" stroke-width="2"/>
+<text x="766" y="180.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#2ca02c">W12</text>
+<rect x="793.0" y="167" width="30" height="18" rx="9" fill="#fff" stroke="#17becf" stroke-width="2"/>
+<text x="808" y="180.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#17becf">W13</text>
+<rect x="835.0" y="167" width="30" height="18" rx="9" fill="#fff" stroke="#111111" stroke-width="2"/>
+<text x="850" y="180.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#111111">W14</text>
+<path d="M850 150 L850 166 L1010 166 L1010 300" fill="none" stroke="#ff7f0e" stroke-width="2.6" stroke-linejoin="round"/>
+<circle cx="1010" cy="300" r="4.2" fill="#ff7f0e"/>
+<rect x="995.0" y="227" width="30" height="18" rx="9" fill="#fff" stroke="#ff7f0e" stroke-width="2"/>
+<text x="1010" y="240.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#ff7f0e">W15</text>
+<path d="M784 254 L784 424" fill="none" stroke="#2ca02c" stroke-width="2.6" stroke-linejoin="round"/>
+<path d="M806 254 L806 424" fill="none" stroke="#17becf" stroke-width="2.6" stroke-linejoin="round"/>
+<rect x="751.0" y="263" width="30" height="18" rx="9" fill="#fff" stroke="#2ca02c" stroke-width="2"/>
+<text x="766" y="276.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#2ca02c">W10</text>
+<rect x="793.0" y="363" width="30" height="18" rx="9" fill="#fff" stroke="#17becf" stroke-width="2"/>
+<text x="808" y="376.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#17becf">W11</text>
+<path d="M828 254 L828 332" fill="none" stroke="#111111" stroke-width="2.6" stroke-linejoin="round"/>
+<circle cx="828" cy="332" r="4.2" fill="#111"/>
+<rect x="822.0" y="267" width="24" height="18" rx="9" fill="#fff" stroke="#111111" stroke-width="2"/>
+<text x="834" y="280.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#111111">W9</text>
+<path d="M872 254 L872 316" fill="none" stroke="#d62728" stroke-width="2.6" stroke-linejoin="round"/>
+<circle cx="872" cy="316" r="4.2" fill="#d62728"/>
+<rect x="860.0" y="267" width="24" height="18" rx="9" fill="#fff" stroke="#d62728" stroke-width="2"/>
+<text x="872" y="280.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#d62728">W8</text>
+<path d="M540 696 L540 750 L940 750 L940 316" fill="none" stroke="#d62728" stroke-width="2.6" stroke-linejoin="round"/>
+<circle cx="940" cy="316" r="4.2" fill="#d62728"/>
+<rect x="748.0" y="741" width="24" height="18" rx="9" fill="#fff" stroke="#d62728" stroke-width="2"/>
+<text x="760" y="754.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#d62728">W1</text>
+<path d="M584 696 L584 736 L925 736 L925 332" fill="none" stroke="#111111" stroke-width="2.6" stroke-linejoin="round"/>
+<circle cx="925" cy="332" r="4.2" fill="#111"/>
+<rect x="808.0" y="727" width="24" height="18" rx="9" fill="#fff" stroke="#111111" stroke-width="2"/>
+<text x="820" y="740.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#111111">W2</text>
+<path d="M518 696 L518 764 L980 764 L980 186 L872 186 L872 200" fill="none" stroke="#9467bd" stroke-width="2.6" stroke-linejoin="round"/>
+<rect x="688.0" y="755" width="24" height="18" rx="9" fill="#fff" stroke="#9467bd" stroke-width="2"/>
+<text x="700" y="768.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#9467bd">W3</text>
+<text x="880" y="182" font-size="10" text-anchor="start" font-weight="bold" fill="#9467bd">3V3 → LV</text>
+<rect x="1060" y="200" width="130" height="56" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
+<text x="1125" y="221" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">Q1 IRLZ44N</text>
+<text x="1125" y="235" font-size="9" text-anchor="middle" font-weight="normal" fill="#444">front view, legs down</text>
+<rect x="1085" y="251" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="1090" y="250" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">G</text>
+<rect x="1120" y="251" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="1125" y="250" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">D</text>
+<rect x="1155" y="251" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="1160" y="250" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">S</text>
+<rect x="1105" y="188" width="40" height="12" rx="2" fill="#bbb" stroke="#555" stroke-width="1.6"/>
+<text x="1152" y="197" font-size="9" text-anchor="start" font-weight="normal" fill="#444">tab = D</text>
+<path d="M574 424 L574 392 L1020 392" fill="none" stroke="#e377c2" stroke-width="2.6" stroke-linejoin="round"/>
+<path d="M1020 392 H1038.0 l4 -7 l4 7 l4 -7 l4 7 l4 -7 l4 7 l0 0 H1080" fill="none" stroke="#e377c2" stroke-width="2.4"/>
+<path d="M1038.0 392 l2 -7 l4 14 l4 -14 l4 14 l4 -14 l4 14 l2 -7" fill="none" stroke="#e377c2" stroke-width="2.4"/>
+<text x="1050.0" y="380" font-size="11" text-anchor="middle" font-weight="bold" fill="#444">R1 220 Ω</text>
+<path d="M1080 392 L1090 392 L1090 256" fill="none" stroke="#e377c2" stroke-width="2.6" stroke-linejoin="round"/>
+<rect x="885.0" y="383" width="30" height="18" rx="9" fill="#fff" stroke="#e377c2" stroke-width="2"/>
+<text x="900" y="396.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#e377c2">W16</text>
+<path d="M1090 272 L1064 272" fill="none" stroke="#e377c2" stroke-width="2" stroke-linejoin="round"/>
+<rect x="1057" y="272" width="14" height="10" fill="#fff" stroke="#e377c2" stroke-width="2"/>
+<path d="M1064 282 L1064 332" fill="none" stroke="#e377c2" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="1064" cy="332" r="4.2" fill="#111"/>
+<text x="1054" y="270" font-size="9" text-anchor="end" font-weight="bold" fill="#444">R2 100 kΩ</text>
+<circle cx="1090" cy="272" r="4.2" fill="#e377c2"/>
+<path d="M1160 256 L1160 332" fill="none" stroke="#111111" stroke-width="2.6" stroke-linejoin="round"/>
+<circle cx="1160" cy="332" r="4.2" fill="#111"/>
+<rect x="1163.0" y="269" width="30" height="18" rx="9" fill="#fff" stroke="#111111" stroke-width="2"/>
+<text x="1178" y="282.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#111111">W17</text>
+<rect x="1230" y="96" width="190" height="60" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
+<text x="1325" y="116" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">Sample pump ZR370-02PM</text>
+<text x="1325" y="131" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">4.5 V (4.0-5.0 V) · ~0.5 A</text>
+<text x="1325" y="145" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">two solder contacts</text>
+<rect x="1255" y="151" width="10" height="10" fill="#222" stroke="#000"/>
+<rect x="1385" y="151" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="1250" y="170" font-size="14" text-anchor="middle" font-weight="bold" fill="#111">−</text>
+<text x="1400" y="170" font-size="14" text-anchor="middle" font-weight="bold" fill="#111">+</text>
+<path d="M1125 188 L1125 176 L1260 176 L1260 156" fill="none" stroke="#8c564b" stroke-width="2.6" stroke-linejoin="round"/>
+<rect x="1165.0" y="167" width="30" height="18" rx="9" fill="#fff" stroke="#8c564b" stroke-width="2"/>
+<text x="1180" y="180.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#8c564b">W18</text>
+<path d="M1260 176 L1260 214 L1310 214" fill="none" stroke="#333" stroke-width="2" stroke-linejoin="round"/>
+<path d="M1310 206 L1310 222 L1330 214 Z" fill="#333"/>
+<line x1="1332" y1="206" x2="1332" y2="222" stroke="#333" stroke-width="3"/>
+<path d="M1332 214 L1390 214" fill="none" stroke="#333" stroke-width="2" stroke-linejoin="round"/>
+<circle cx="1260" cy="176" r="4.2" fill="#8c564b"/>
+<circle cx="1390" cy="214" r="4.2" fill="#333"/>
+<text x="1322" y="236" font-size="10" text-anchor="middle" font-weight="bold" fill="#444">D1 1N5819: band to +</text>
+<path d="M1390 156 L1390 300" fill="none" stroke="#ff7f0e" stroke-width="2.6" stroke-linejoin="round"/>
+<circle cx="1390" cy="300" r="4.2" fill="#ff7f0e"/>
+<rect x="1395.0" y="253" width="30" height="18" rx="9" fill="#fff" stroke="#ff7f0e" stroke-width="2"/>
+<text x="1410" y="266.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#ff7f0e">W19</text>
+<rect x="1470" y="70" width="220" height="46" rx="6" fill="#fff0ec" stroke="#c0392b" stroke-width="1.6"/>
+<text x="1580" y="90" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">5 V 2 A wall adapter</text>
+<text x="1580" y="106" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">SparkFun TOL-15312 · into mains</text>
+<path d="M1580 116 L1580 156" fill="none" stroke="#555" stroke-width="6" stroke-linejoin="round"/>
+<text x="1572" y="134" font-size="10" text-anchor="end" font-weight="bold" fill="#111">P1 · 5.5×2.1 mm plug</text>
+<text x="1572" y="147" font-size="10" text-anchor="end" font-weight="normal" fill="#444">centre positive</text>
+<rect x="1470" y="156" width="220" height="70" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
+<text x="1580" y="176" font-size="11" text-anchor="middle" font-weight="bold" fill="#111">2.1 mm barrel jack (Adafruit 373)</text>
+<text x="1580" y="191" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">plugged into the breadboard</text>
+<rect x="1505" y="221" width="10" height="10" fill="#222" stroke="#000"/>
+<rect x="1575" y="221" width="10" height="10" fill="#222" stroke="#000"/>
+<rect x="1645" y="221" width="10" height="10" fill="#222" stroke="#000"/>
+<text x="1510" y="214" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">end pin +</text>
+<text x="1580" y="214" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">middle pin −</text>
+<text x="1650" y="214" font-size="9" text-anchor="middle" font-weight="bold" fill="#999">side pin: none</text>
+<path d="M1510 226 L1510 300" fill="none" stroke="#ff7f0e" stroke-width="2.6" stroke-linejoin="round"/>
+<circle cx="1510" cy="300" r="4.2" fill="#ff7f0e"/>
+<rect x="1495.0" y="255" width="30" height="18" rx="9" fill="#fff" stroke="#ff7f0e" stroke-width="2"/>
+<text x="1510" y="268.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#ff7f0e">W22</text>
+<path d="M1580 226 L1580 332" fill="none" stroke="#111111" stroke-width="2.6" stroke-linejoin="round"/>
+<circle cx="1580" cy="332" r="4.2" fill="#111"/>
+<rect x="1565.0" y="255" width="30" height="18" rx="9" fill="#fff" stroke="#111111" stroke-width="2"/>
+<text x="1580" y="268.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#111111">W23</text>
+<rect x="1330" y="400" width="230" height="52" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
+<text x="1445" y="420" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">Reed switch (Adafruit 375)</text>
+<text x="1445" y="435" font-size="9" text-anchor="middle" font-weight="normal" fill="#444">normally open · closes &lt; 13 mm from the magnet</text>
+<text x="1445" y="447" font-size="9" text-anchor="middle" font-weight="normal" fill="#444">two leads, either way round</text>
+<path d="M740 424 L740 404 L740 404" fill="none" stroke="#7f7f7f" stroke-width="2.6" stroke-linejoin="round"/>
+<path d="M740 404 L1300 404 L1300 426 L1330 426" fill="none" stroke="#7f7f7f" stroke-width="2.6" stroke-linejoin="round"/>
+<rect x="1235.0" y="395" width="30" height="18" rx="9" fill="#fff" stroke="#7f7f7f" stroke-width="2"/>
+<text x="1250" y="408.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#7f7f7f">W20</text>
+<path d="M1560 426 L1590 426 L1590 332" fill="none" stroke="#7f7f7f" stroke-width="2.6" stroke-linejoin="round"/>
+<circle cx="1590" cy="332" r="4.2" fill="#111"/>
+<rect x="1575.0" y="363" width="30" height="18" rx="9" fill="#fff" stroke="#7f7f7f" stroke-width="2"/>
+<text x="1590" y="376.5" font-size="11" text-anchor="middle" font-weight="bold" fill="#7f7f7f">W21</text>
+<rect x="1000" y="470" width="380" height="130" rx="6" fill="#fafafa" stroke="#999" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1012" y="490" font-size="12" text-anchor="start" font-weight="bold" fill="#111">Optional (from the electronics kit)</text>
+<text x="1012" y="512" font-size="10" text-anchor="start" font-weight="normal" fill="#444">W24  D8 → active buzzer +; buzzer − → GND rail</text>
+<text x="1012" y="529" font-size="10" text-anchor="start" font-weight="normal" fill="#444">W25  D2 → push button → GND rail (stop / marker)</text>
+<text x="1012" y="546" font-size="10" text-anchor="start" font-weight="normal" fill="#444">W26  D9 → Q2 gate (220 Ω, 100 kΩ to GND); Q2 drain → one</text>
+<text x="1012" y="563" font-size="10" text-anchor="start" font-weight="normal" fill="#444">         SFM3300 heater pad, other pad → +5V_EXT (51 Ω heater)</text>
+<text x="1012" y="580" font-size="10" text-anchor="start" font-weight="normal" fill="#444">R3, R4  4.7 kΩ: SDA → +5V rail, SCL → +5V rail</text>
+<line x1="20" y1="790" x2="1700" y2="790" stroke="#ccc"/>
+<text x="24" y="816" font-size="15" text-anchor="start" font-weight="bold" fill="#111">Gas path and tubing</text>
+<text x="190" y="816" font-size="11" text-anchor="start" font-weight="normal" fill="#555">(main circuit in grey; the CO2 sample line in green)</text>
+<rect x="20" y="842" width="170" height="64" rx="6" fill="#f4f4f4" stroke="#888" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="28" y="861" font-size="11" text-anchor="start" font-weight="bold" fill="#111">Subject +</text>
+<text x="28" y="877" font-size="10" text-anchor="start" font-weight="normal" fill="#444">mouthpiece (from mentors)</text>
+<rect x="220" y="842" width="170" height="64" rx="6" fill="#f4f4f4" stroke="#888" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="228" y="861" font-size="11" text-anchor="start" font-weight="bold" fill="#111">Sample port</text>
+<text x="228" y="877" font-size="10" text-anchor="start" font-weight="normal" fill="#444">luer fitting between mouth-</text>
+<text x="228" y="891" font-size="10" text-anchor="start" font-weight="normal" fill="#444">piece and sensor (requested)</text>
+<rect x="420" y="842" width="330" height="64" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
+<text x="428" y="861" font-size="11" text-anchor="start" font-weight="bold" fill="#111">SFM3300-250-D</text>
+<text x="428" y="877" font-size="10" text-anchor="start" font-weight="normal" fill="#444">22 mm MALE end → subject  |  22 mm</text>
+<text x="428" y="891" font-size="10" text-anchor="start" font-weight="normal" fill="#444">FEMALE end → circuit (+ = inspiration)</text>
+<rect x="780" y="842" width="190" height="64" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
+<text x="788" y="861" font-size="11" text-anchor="start" font-weight="bold" fill="#111">½" Sch 40 PVC pipe</text>
+<text x="788" y="877" font-size="10" text-anchor="start" font-weight="normal" fill="#444">21.3 mm OD into the sensor's</text>
+<text x="788" y="891" font-size="10" text-anchor="start" font-weight="normal" fill="#444">22 mm socket: tape if loose</text>
+<rect x="1000" y="842" width="200" height="64" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
+<text x="1008" y="861" font-size="11" text-anchor="start" font-weight="bold" fill="#111">¾×½" reducer bushing</text>
+<text x="1008" y="877" font-size="10" text-anchor="start" font-weight="normal" fill="#444">+ ¾" S×FPT adapter;</text>
+<text x="1008" y="891" font-size="10" text-anchor="start" font-weight="normal" fill="#444">PTFE tape on the threads</text>
+<rect x="1230" y="842" width="190" height="64" rx="6" fill="#f4f4f4" stroke="#888" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1238" y="861" font-size="11" text-anchor="start" font-weight="bold" fill="#111">3-way valve</text>
+<text x="1238" y="877" font-size="10" text-anchor="start" font-weight="normal" fill="#444">¾" PVC (requested); magnet</text>
+<text x="1238" y="891" font-size="10" text-anchor="start" font-weight="normal" fill="#444">on its handle for the reed switch</text>
+<path d="M190 872 L220 872" fill="none" stroke="#888" stroke-width="8" stroke-linejoin="round"/>
+<path d="M390 872 L420 872" fill="none" stroke="#888" stroke-width="8" stroke-linejoin="round"/>
+<path d="M750 872 L780 872" fill="none" stroke="#888" stroke-width="8" stroke-linejoin="round"/>
+<path d="M970 872 L1000 872" fill="none" stroke="#888" stroke-width="8" stroke-linejoin="round"/>
+<path d="M1200 872 L1230 872" fill="none" stroke="#888" stroke-width="8" stroke-linejoin="round"/>
+<rect x="1480" y="808" width="170" height="34" rx="6" fill="#f4f4f4" stroke="#888" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1492" y="830" font-size="11" text-anchor="start" font-weight="bold" fill="#111">Rebreathing bag</text>
+<rect x="1480" y="902" width="170" height="34" rx="6" fill="#f4f4f4" stroke="#888" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1492" y="924" font-size="11" text-anchor="start" font-weight="bold" fill="#111">Room air</text>
+<path d="M1420 872 L1450 872 L1450 825 L1480 825" fill="none" stroke="#888" stroke-width="8" stroke-linejoin="round"/>
+<path d="M1450 872 L1450 919 L1480 919" fill="none" stroke="#888" stroke-width="8" stroke-linejoin="round"/>
+<rect x="220" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="228" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T1 · 0.2 µm PTFE filter</text>
+<text x="228" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">13 mm syringe filter: female</text>
+<text x="228" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">luer in, male luer out</text>
+<rect x="470" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="478" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T2 · P-859 adapter</text>
+<text x="478" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">female luer lock → ⅛" barb</text>
+<text x="478" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">(onto the filter's male luer)</text>
+<rect x="720" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="728" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T3 · silicone tube</text>
+<text x="728" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">3 mm ID / 5 mm OD</text>
+<text x="728" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">(Adafruit 4661)</text>
+<rect x="970" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="978" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">SprintIR-R flow adaptor</text>
+<text x="978" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">tube on one barb, out the other</text>
+<text x="978" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">(check the barb fits 3 mm ID)</text>
+<rect x="1220" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="1228" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T4 · tube → pump SIDE port</text>
+<text x="1228" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">the inlet: 2 mm ID, 4.3 mm OD</text>
+<text x="1228" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">(the pump pulls the sample)</text>
+<rect x="1470" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="1478" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T5 · pump END port → tube</text>
+<text x="1478" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">the outlet: 1 mm ID, 4.3 mm OD</text>
+<text x="1478" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">→ back into the bag side</text>
+<path d="M440 1010 L470 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M460 1004 L470 1010 L460 1016 Z" fill="#0a7d55"/>
+<path d="M690 1010 L720 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M710 1004 L720 1010 L710 1016 Z" fill="#0a7d55"/>
+<path d="M940 1010 L970 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M960 1004 L970 1010 L960 1016 Z" fill="#0a7d55"/>
+<path d="M1190 1010 L1220 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M1210 1004 L1220 1010 L1210 1016 Z" fill="#0a7d55"/>
+<path d="M1440 1010 L1470 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M1460 1004 L1470 1010 L1460 1016 Z" fill="#0a7d55"/>
+<path d="M305 906 L305 978" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M299 968 L305 978 L311 968 Z" fill="#0a7d55"/>
+<path d="M1580 978 L1580 950 L1700 950 L1700 825 L1650 825" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M1660 819 L1650 825 L1660 831 Z" fill="#0a7d55"/>
+<text x="1572" y="968" font-size="10" text-anchor="end" font-weight="normal" fill="#0a7d55">exhaust back into the bag side</text>
+<rect x="20" y="1090" width="1680" height="124" rx="6" fill="#fafafa" stroke="#ccc" stroke-width="1.6"/>
+<text x="34" y="1112" font-size="12" text-anchor="start" font-weight="bold" fill="#111">Wire colours (suggested; keep red, orange and black for power)</text>
+<path d="M34 1132 L68 1132" fill="none" stroke="#d62728" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="76" y="1136" font-size="11" text-anchor="start" font-weight="normal" fill="#111">+5V from the Arduino (W1, W7, W8)</text>
+<path d="M454 1132 L488 1132" fill="none" stroke="#ff7f0e" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="496" y="1136" font-size="11" text-anchor="start" font-weight="normal" fill="#111">+5V_EXT, wall adapter (W15, W19, W22)</text>
+<path d="M874 1132 L908 1132" fill="none" stroke="#9467bd" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="916" y="1136" font-size="11" text-anchor="start" font-weight="normal" fill="#111">3V3 reference (W3)</text>
+<path d="M1294 1132 L1328 1132" fill="none" stroke="#111111" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="1336" y="1136" font-size="11" text-anchor="start" font-weight="normal" fill="#111">ground (W2, W6, W9, W14, W17, W23)</text>
+<path d="M34 1156 L68 1156" fill="none" stroke="#1f77b4" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="76" y="1160" font-size="11" text-anchor="start" font-weight="normal" fill="#111">I2C SDA (W5)</text>
+<path d="M454 1156 L488 1156" fill="none" stroke="#bcbd22" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="496" y="1160" font-size="11" text-anchor="start" font-weight="normal" fill="#111">I2C SCL (W4)</text>
+<path d="M874 1156 L908 1156" fill="none" stroke="#2ca02c" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="916" y="1160" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino TX → sensor Rx_In (W10, W12)</text>
+<path d="M1294 1156 L1328 1156" fill="none" stroke="#17becf" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="1336" y="1160" font-size="11" text-anchor="start" font-weight="normal" fill="#111">sensor Tx_Out → Arduino RX (W11, W13)</text>
+<path d="M34 1180 L68 1180" fill="none" stroke="#e377c2" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="76" y="1184" font-size="11" text-anchor="start" font-weight="normal" fill="#111">pump gate, PWM (W16)</text>
+<path d="M454 1180 L488 1180" fill="none" stroke="#8c564b" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="496" y="1184" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Q1 drain → pump − (W18)</text>
+<path d="M874 1180 L908 1180" fill="none" stroke="#7f7f7f" stroke-width="3.4" stroke-linejoin="round"/>
+<text x="916" y="1184" font-size="11" text-anchor="start" font-weight="normal" fill="#111">reed switch leads (W20, W21)</text>
+<text x="34" y="1204" font-size="10" text-anchor="start" font-weight="normal" fill="#444">Jumpers: male-to-male from the Arduino's headers to the breadboard; female-to-male onto a sensor's header pins; solder the pump's contacts and the SFM3300's lead. The Arduino's GND pins are joined inside the board.</text>
+</svg>

@@ -54,7 +54,7 @@
   <text x="160" y="312" text-anchor="middle" class="s">device</text>
   <text x="160" y="325" text-anchor="middle" class="s">side</text>
   <text x="119" y="366" text-anchor="middle" class="s" fill="#c0392b">isolation barrier</text>
-  <text x="119" y="380" text-anchor="middle" class="s">speed switch: Full Speed</text>
+  <text x="119" y="380" text-anchor="middle" class="s">Micro-B: computer · USB-A: Uno</text>
   <text x="119" y="394" text-anchor="middle" class="s">≤100 mA isolated power:</text>
   <text x="119" y="408" text-anchor="middle" class="s">the Uno + SFM3300 only</text>
   <path d="M204 318 H300" class="usb"/>
@@ -85,9 +85,7 @@
   <text x="875" y="122" text-anchor="middle" class="t b">Sensirion SFM3300-250-D</text>
   <text x="875" y="134" text-anchor="middle" class="s">flow ±250 L/min · I2C 0x40 · 5 V</text>
   <g class="pin"><text x="778" y="164">SDA</text><text x="778" y="189">SCL</text><text x="778" y="214">VDD</text><text x="778" y="239">GND</text></g>
-  <text x="900" y="200" text-anchor="middle" class="s">sensor's 4-pin</text>
-  <text x="900" y="214" text-anchor="middle" class="s">connector (check the</text>
-  <text x="900" y="228" text-anchor="middle" class="s">pin order on the datasheet)</text>
+  <text x="900" y="200" text-anchor="middle" class="s">4-wire lead</text><text x="900" y="214" text-anchor="middle" class="s">(pin order: Sensirion's</text><text x="900" y="228" text-anchor="middle" class="s">connector note)</text>
   <path d="M560 160 H770" class="wi"/><path d="M560 185 H770" class="wi"/>
   <path d="M560 210 H770" class="w5"/><path d="M560 235 H770" class="wg"/>
   <text x="665" y="155" text-anchor="middle" class="lbl" fill="#1f77b4">SDA</text>
@@ -118,9 +116,9 @@
   <rect x="990" y="282" width="250" height="104" class="sens" rx="8"/>
   <text x="1115" y="276" text-anchor="middle" class="t b">GSS SprintIR-R 20 % CO2</text>
   <g class="pin"><text x="998" y="304">VDD</text><text x="998" y="324">Rx_In</text><text x="998" y="354">Tx_Out</text><text x="998" y="378">GND</text></g>
-  <text x="1150" y="324" text-anchor="middle" class="s">UART 9600 8N1</text>
-  <text x="1150" y="338" text-anchor="middle" class="s">3.3 V logic · 50 readings/s</text>
-  <text x="1150" y="352" text-anchor="middle" class="s">VDD 3.25–5.5 V</text>
+  <text x="1150" y="324" text-anchor="middle" class="s">UART 38400 8N1 · pins 1 Rx_In,</text><text x="1150" y="338" text-anchor="middle" class="s">2 Tx_Out, 3 GND, 4 VDD · 50/s</text>
+  <text x="1150" y="338" text-anchor="middle" class="s"></text>
+  <text x="1150" y="352" text-anchor="middle" class="s">VDD 3.25–5.5 V · ~21 mA</text>
   <path d="M850 320 H990" class="wu" marker-end="url(#arr)"/>
   <path d="M990 350 H850" class="wu" marker-end="url(#arr)"/>
   <path d="M990 300 H950" class="wx"/>
@@ -206,12 +204,12 @@
 
   <rect x="160" y="736" width="110" height="48" class="box"/>
   <text x="215" y="756" text-anchor="middle" class="t b">Sample port</text>
-  <text x="215" y="772" text-anchor="middle" class="s">luer on ½" PVC</text>
+  <text x="215" y="772" text-anchor="middle" class="s">luer (requested)</text>
 
   <rect x="320" y="728" width="190" height="64" class="sens" rx="8"/>
   <text x="415" y="752" text-anchor="middle" class="t b">SFM3300-250-D</text>
-  <text x="415" y="768" text-anchor="middle" class="s">arrow → subject = + (inspiration)</text>
-  <text x="415" y="782" text-anchor="middle" class="s">or set SFM_FLOW_SIGN -1</text>
+  <text x="415" y="768" text-anchor="middle" class="s">22 mm male end → subject</text><text x="415" y="782" text-anchor="middle" class="s">(+ = inspiration)</text>
+  <text x="415" y="782" text-anchor="middle" class="s"></text>
 
   <rect x="550" y="736" width="140" height="48" class="box"/>
   <text x="620" y="756" text-anchor="middle" class="t b">½" Sch 40 pipe</text>

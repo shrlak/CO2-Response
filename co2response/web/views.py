@@ -424,6 +424,8 @@ class MonitorView:
             "Choose another port…" if known else "Connect Arduino (USB)", "connect-serial", "btn" if known else "btn primary", disabled=not ws
         )
         buttons += btn("Start simulator", "start-sim") + btn("Replay the sample session", "replay-sample") + btn("More sources…", "open-settings", arg="connection")
+        # a recorded session: the whole file replays, with play, pause and a timeline
+        buttons += '<label class="btn" style="display:inline-flex;align-items:center" title="Open a session CSV recorded by this app and play the whole of it back">Replay a recorded CSV…<input type="file" accept=".csv,text/csv" hidden data-change="replay-file"></label>'
         note = "" if ws else '<p class="note">This browser has no Web Serial, so it cannot read the Arduino directly. Use desktop Chrome or Edge, Python acquisition (co2r-daq, in Settings > Connection), or the desktop app (python -m co2response).</p>'
         return (
             f'<div class="connect-overlay"><div class="connect-card"><h2>{title}</h2>{detail}{waiting}'
@@ -453,12 +455,7 @@ class MonitorView:
             + key("Audio armed" if s.audio_armed else "Arm audio", "tones will sound" if s.audio_armed else "click once per session", "arm-audio", "armed" if s.audio_armed else "need")
             + f'<div style="position:relative;display:grid">{key("Mark event", "hotkey M", "mark")}{mark}</div>'
             + key("■ Stop rec" if s.recording.active else "● Record", "saves one CSV on stop" if s.recording.active else "one CSV per session", "record", "rec-on" if s.recording.active else "")
-            + (
-                # a replay or the simulator can be paused (time stands still); a live device cannot
-                key("▶ Play" if s.paused else "❚❚ Pause", f"{'the replay' if s.source_kind == 'replay' else 'the simulator'} · hotkey P", "pause", "active" if s.paused else "")
-                if s.can_pause
-                else key("Unfreeze" if s.frozen else "Freeze", "waveforms only", "freeze", "active" if s.frozen else "")
-            )
+            + key("Unfreeze" if s.frozen else "Freeze", "waveforms only", "freeze", "active" if s.frozen else "")
             + key("Alarm limits", f"{'warn' if stop else 'high'} {fmt(disp(a.high_mm_hg), digits)}{stop}{low}", "drawer-open")
             + key(
                 "Simulation",
@@ -469,13 +466,22 @@ class MonitorView:
             + key("Settings", "calibration, connection", "open-settings")
         )
         if s.source_kind == "replay":
+            # only for a recorded file being replayed, never during a live or simulated test
             pos, length = s.replay_pos_s or 0.0, s.replay_len_s or 0.0
             speeds = [(0.5, "½×"), (1, "1×"), (2, "2×"), (5, "5×"), (10, "10×"), (20, "20×")]
             cur = min((v for v, _ in speeds), key=lambda v: abs(v - (s.replay_speed or 1)))
+            state = "END OF RECORDING" if s.replay_at_end else "PAUSED" if s.paused else "REPLAY"
+            play = "⟲ Play again" if s.replay_at_end else "▶ Play" if s.paused else "❚❚ Pause"
+            permille = round(pos / length * 1000) if length else 0
             html = (
-                f'<div class="replaybar"><span class="note">{"PAUSED" if s.paused else "REPLAY"} · {mss(pos * 1000)} / {mss(length * 1000)} · {esc(s.source_label)}</span>'
+                '<div class="replaybar">'
+                f'{btn("⏮ Start", "replay-restart", "btn small", title="Play the recording again from the beginning")}'
+                f'{btn(play, "pause", "btn small", title="Pause or play the replay (P)")}'
+                f'<input type="range" id="replay-timeline" min="0" max="1000" step="1" value="{permille}" data-change="replay-seek" aria-label="Position in the recording" title="The whole recording: drag to go to any moment">'
+                f'{btn("Show all ⏭", "replay-whole", "btn small", disabled=s.replay_at_end, title="Play the rest at once: the whole recording on the monitor")}'
+                f'<span class="note">{state} · {mss(pos * 1000)} / {mss(length * 1000)} · {esc(s.source_label)}</span>'
                 f'<span class="flabel">Speed</span>{seg("replay-speed-live", cur, speeds)}'
-                f'{btn("▶ Play" if s.paused else "❚❚ Pause", "pause", "btn small")}{btn("Stop replay", "replay-stop", "btn small")}</div>'
+                f'{btn("Close replay", "replay-stop", "btn small")}</div>'
             ) + html
         if set_html("softkeys", html) and self.mark:
             el = byid("mark-label")
@@ -625,6 +631,12 @@ def install_monitor_actions(app: "WebApp") -> None:
         if mv.response_click(dom.last_click[0], dom.last_click[1]):
             app.refresh()
 
+    def replay_seek(el):
+        s = e.snapshot()
+        if s.replay_len_s:
+            e.replay_seek(float(el.value) / 1000 * s.replay_len_s)
+        app.refresh()
+
     actions(
         silence=lambda el: (e.toggle_silence(), app.refresh()),
         freeze=lambda el: (e.set_frozen(not e.frozen), app.refresh()),
@@ -650,6 +662,9 @@ def install_monitor_actions(app: "WebApp") -> None:
             "fullscreen": lambda el: toggle_fullscreen(),
             "replay-speed-live": lambda el: (e.set_replay_speed(float(data(el, "arg"))), app.refresh()),
             "replay-stop": lambda el: (e.disconnect(), app.refresh()),
+            "replay-restart": lambda el: (e.replay_seek(0), app.refresh()),
+            "replay-whole": lambda el: (e.show_whole_replay(), app.refresh()),
+            "replay-seek": replay_seek,
         },
     )
     app.hotkey_mark = mark

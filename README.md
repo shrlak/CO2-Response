@@ -111,7 +111,7 @@ The whole monitor is drawn in the terminal, so it works in the terminal panel of
 | `v` | The graph: ventilatory response (the default), EtCO2 trend, MV trend |
 | `k` | Capnostream 35 as the CO2 source: a serial port, simulated, or off |
 | `l` | In text mode: waveforms as a thin smooth line (the default) or a solid filled shape |
-| `p` | Pause or play a replay or the simulator (time stands still: no data, no alarms timing out, the recording carries on afterwards). While replaying, `+` / `-` change the replay's speed (½× to 20×) |
+| `p`, `←` `→`, `Home`, `End` | Only while a recorded file is replayed: play/pause, 30 s back/on, the start, the whole recording. `+` / `-` change its speed (½× to 20×). A live or simulated test cannot be paused |
 | `f`, `a`, `h`, `q` | Freeze the waveforms, arm the alarm sound, switch the expected board, quit |
 
 `co2response-tui --situation test_normal --speed 10` starts a whole simulated test straight away, and `co2response-tui --port COM3` (or `/dev/ttyACM0`, `/dev/cu.usbmodem…`) connects to the Arduino.
@@ -225,14 +225,14 @@ Press **Simulation** (the soft key next to Settings) to open the simulation pane
 
 ## 2. What you need for a real session
 
-**The Uno R4 board (current build).** Pin-by-pin wiring and the flow path are in [docs/wiring.md](docs/wiring.md#uno-r4-board-digital-sensors).
+**The Uno R4 board (current build).** Pin-by-pin wiring and the flow path are in [docs/wiring.md](docs/wiring.md#uno-r4-board-digital-sensors): an [overview](docs/images/wiring-r4.svg) and [every connection, numbered](docs/images/connections-r4.svg), with the cable, wire and tube lists.
 
 | Part | Notes |
 | --- | --- |
 | Arduino Uno R4 Minima (ABX00080) | USB-C to the computer, through the USB isolator |
 | Adafruit 2107 USB isolator (ADuM4160 + ADuM5000) | Between the laptop and the Uno, set to Full Speed; its isolated 5 V powers the Uno and the flow sensor only |
 | Sensirion SFM3300-250-D flow sensor | I2C at 5 V straight to SDA/SCL (address 0x40, no level shifter), ±250 L/min, read every 1 ms and averaged per line |
-| GSS SprintIR-R-20 CO2 sensor (CO2meter) | UART 9600 baud on D0/D1 through the BSS138 level shifter (its logic is 3.3 V), 0–20 % CO2, 50 readings a second; powered from 5V_EXT |
+| GSS SprintIR-R-20 CO2 sensor (CO2meter) | UART 38,400 baud on D0/D1 through the BSS138 level shifter (pins 1 Rx_In, 2 Tx_Out, 3 GND, 4 VDD), 0–20 % CO2, 50 readings a second; powered from 5V_EXT |
 | Adafruit 757 BSS138 4-channel level shifter | 5 V ↔ 3.3 V for the SprintIR-R's UART |
 | ZR370-02PM 4.5 V air pump (Adafruit 4699) + IRLZ44N (×3, Q1 used) | The CO2 sample pump on D10 (PWM duty 140/255 to start, aim for 0.15–0.25 L/min); a flyback diode across it |
 | 0.2 µm PTFE syringe filters (13 mm), P-859 luer-to-barb adapter, silicone tubing | The sample line: port → filter → adapter → SprintIR-R → pump → back to the bag side |
@@ -622,7 +622,7 @@ Every row has the same columns, so it opens directly in Excel, pandas, MATLAB or
 - zoomable EtCO2/RR, VT/MV and waveform charts (drag to zoom all three)
 - the event list; click an event to jump to it
 - the **in-depth analysis**: every number worked out again from the samples. The recording (sample rate, gaps, dropped samples, times resumed), data quality (breaths left out and why, flow at the sensor's limit, CO2 missing), the set-up (the sample line's CO2 delay, the flow bias a sample pump adds, inspired − expired volume), each phase of the test (EtCO2, RR, VT, MV, Ti, Te, Ti/Ttot, mean inspiratory flow, phase III slope, with SDs and CVs), and the response with its 95 % confidence interval, r², x-intercept and how fast EtCO2 rose. **In-depth analysis (.csv)** saves it, with a per-breath table
-- **Replay on the monitor**, with a bar under the waveforms to pause and play (or press P), change the speed (½× to 20×) and stop
+- **Replay on the monitor**: the whole recording, start to end, with a bar under the waveforms (only for a replayed file, never during a live or simulated test): a timeline to drag to any moment, start, play/pause (or P), show all, the speed (½× to 20×) and close. At the end the whole recording stays on the monitor. The start screen's **Replay a recorded CSV…** opens a file straight away
 - **Continue recording**: the session goes back on the monitor (breaths, markers, the test phase, the response graph) and recording carries on into `<name>_resumed.csv`, which holds the whole earlier session followed by the new data. The earlier file is not changed. **Settings > Connection > Continue recording a file…** does the same for a CSV from anywhere (another computer, a USB stick), in the desktop app and the browser
 
 **Import.** Besides its own files, the app imports a **LabChart (PowerLab) text export** (`.txt`) that has a flow channel and a CO2 channel, such as CHOP's current recordings. It finds the channels by name and unit, converts the units (mL/s, L/s or L/min; mmHg, % or kPa), turns the flow the right way up, and keeps LabChart comments as markers. The breaths, the response and the report are then worked out by this app, so an old test can be compared with a new one. No real CHOP export was available to test against ([open question 34](docs/open-questions.md)): check the first imported file against LabChart's own numbers.

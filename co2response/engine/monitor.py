@@ -77,7 +77,7 @@ from ..sim.controls import (
     switch_patch,
 )
 from ..sim.core import Encoders
-from ..sources.base import MarkerEvent, Source, StatusEvent
+from ..sources.base import ClockEvent, MarkerEvent, Source, StatusEvent
 from ..sources.bridge import BridgeSource
 from ..sources.capnostream import CapnoDecoder, CapnoMerge, CapnostreamSource, SimulatedCapnostream, mmhg_to_line_pct
 from ..sources.replay import ReplaySource
@@ -317,16 +317,55 @@ class Snapshot:
     capno: dict | None = None
     #: when the program started (same clock as ``now``)
     started_at: float = 0.0
-    #: time stands still (a replay or the simulator paused); see ``MonitorEngine.set_paused``
+    #: a replayed recording is paused; see ``MonitorEngine.set_paused``
     paused: bool = False
-    #: the source can be paused (a replay or the simulator; never a live device)
+    #: the source can be paused: only a replayed recording (never a live device or the simulator)
     can_pause: bool = False
+    #: a replay has played the whole recording and is showing all of it
+    replay_at_end: bool = False
     #: a replay's speed, and how far into the recording it has played (s) and how long it is
     replay_speed: float | None = None
     replay_pos_s: float | None = None
     replay_len_s: float | None = None
     #: the recording continues an earlier session file (its name), if it was resumed
     resumed_from: str | None = None
+
+
+class EngineClock:
+    """The engine's clock, ms. Normally the computer's clock (``base``, plus an offset
+    that keeps it running on smoothly after a replay); while a recording is replayed it
+    is the recording's own time (``follow``), so the trends, the test timers and the
+    alarm delays come out as they were at any replay speed, paused, or jumped forward.
+
+    Attributes it does not have itself (``t`` of a test's fake clock) are the base clock's."""
+
+    def __init__(self, base: Callable[[], float]) -> None:
+        object.__setattr__(self, "base", base)
+        object.__setattr__(self, "offset", 0.0)
+        object.__setattr__(self, "following", None)
+
+    def __call__(self) -> float:
+        f = self.following
+        return f if f is not None else self.base() + self.offset
+
+    def follow(self, t_ms: float) -> None:
+        object.__setattr__(self, "following", t_ms)
+
+    def release(self) -> None:
+        """Back on the computer's clock, carrying on from where the followed time was."""
+        f = self.following
+        if f is not None:
+            object.__setattr__(self, "offset", max(self.offset, f - self.base()))
+            object.__setattr__(self, "following", None)
+
+    def __getattr__(self, name: str):
+        return getattr(self.base, name)
+
+    def __setattr__(self, name: str, value) -> None:
+        if name in ("base", "offset", "following"):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self.base, name, value)
 
 
 @dataclass
@@ -407,14 +446,12 @@ class MonitorEngine:
         prevent_sleep: bool = True,
         library_factory: Callable[..., SessionLibrary] = SessionLibrary,
     ) -> None:
-        #: the computer's clock. ``clock`` (what everything in the engine uses) is this
-        #: minus the time spent paused, so pausing a replay or the simulator freezes the
-        #: data, the trends, the test timers and the alarm timers together
+        #: the computer's clock
         self._real_clock = clock
-        self._paused_at: float | None = None
-        self._paused_total = 0.0
-        #: (the computer's clock itself until the first pause)
-        self.clock: Callable[[], float] = clock
+        #: what everything in the engine uses: the computer's clock, or a replay's own time
+        self.clock = EngineClock(clock)
+        #: a replay's clock: the engine's time at the recording's first sample, ms
+        self._replay_base = 0.0
         #: when the program started (the engine's clock, ms): the header shows how long it has run
         self.started_at = clock()
         self.store = store or SettingsStore()
@@ -434,7 +471,7 @@ class MonitorEngine:
         self._sessions_override = Path(sessions_dir) if sessions_dir else None
         self._library_factory = library_factory
         self.library = library_factory(self.sessions_dir, clock)
-        self.recorder = SessionRecorder(self.library, self._virtual_clock)
+        self.recorder = SessionRecorder(self.library, self.clock)
         #: the file a resumed recording continues (see ``resume_session``)
         self.resumed_from: str | None = None
         self.port_lister = port_lister
@@ -842,7 +879,7 @@ class MonitorEngine:
         elif kind == "replay":
             if session is None:
                 raise ValueError("No session to replay")
-            src = ReplaySource(session, file_name or "session.csv", speed, clock=self._seconds)
+            src = ReplaySource(session, file_name or "session.csv", speed, clock=self._real_seconds)  # paced by the computer, not by its own time
         else:
             raise ValueError(f"unknown source {kind!r}")
         if self._source is not None:
@@ -869,8 +906,11 @@ class MonitorEngine:
         self._add_log(f"Connection failed: {detail}", "error")
 
     def _start_source(self, src: Source, session: ParsedSession | None, use_file_calibration: bool, auto: bool) -> bool:
-        self.set_paused(False)
         kind = src.kind
+        self.clock.release()
+        if isinstance(src, ReplaySource):
+            # the recording's time runs on from the engine's present moment
+            self._replay_base = float(self.clock()) - (float(src.session.time_s[0]) * 1000 if src.session.n else 0.0)
         self._file_channels = session.channels if kind == "replay" and use_file_calibration and session is not None and session.channels else None
         self._replay_hardware = None
         if kind == "replay":
@@ -1024,7 +1064,6 @@ class MonitorEngine:
         src = self._source
         if src is None:
             return
-        self.set_paused(False)
         now = self.clock()
         for pr in self.pipeline.flush():  # the last 30 ms the spike filter still held
             self._use(pr, now)
@@ -1062,6 +1101,7 @@ class MonitorEngine:
         for job in list(self._jobs):
             job.cancel()
         keep_awake.release()
+        self.clock.release()  # a replay's time hands back to the computer's clock, running on
 
     def send(self, cmd: str) -> None:
         if self._source is not None:
@@ -1070,59 +1110,96 @@ class MonitorEngine:
 
     # ---------- pause, replay speed, resuming a recording ----------
 
-    def _virtual_clock(self) -> float:
-        if self._paused_at is not None:
-            return self._paused_at - self._paused_total
-        return self._real_clock() - self._paused_total
+    @property
+    def replay(self) -> ReplaySource | None:
+        """The recording being replayed, if one is."""
+        src = self._source
+        return src if isinstance(src, ReplaySource) else None
 
     @property
     def paused(self) -> bool:
-        return self._paused_at is not None
+        r = self.replay
+        return r is not None and r.paused
 
     @property
     def can_pause(self) -> bool:
-        """A replay or the simulator can be paused. A live device cannot: its data keeps
-        coming, and stopping the clock would stop the alarms watching it."""
-        src = self._source
-        return src is not None and src.kind in ("replay", "simulator")
+        """Only a replayed recording can be paused. A live device or the simulator runs a
+        real (or simulated) test, which nothing should stop watching."""
+        return self.replay is not None
 
     def set_paused(self, on: bool) -> bool:
-        """Pause or resume a replay or the simulator. While paused no data arrives and the
-        engine's clock stands still, so the trends, the test's timers, the alarm delays
-        and a recording simply carry on from where they were when it resumes. Returns
-        whether it is paused now."""
-        if on and not self.can_pause:
-            on = False
-        if on == self.paused:
-            return self.paused
-        if on:
-            self.clock = self._virtual_clock
-            self._paused_at = self._real_clock()
-            self.recorder.flush()  # nothing waits in memory while time stands still
-            self._add_log("Paused")
-            self.recorder.event(self.clock(), "PAUSED")
-        else:
-            assert self._paused_at is not None
-            self._paused_total += self._real_clock() - self._paused_at
-            self._paused_at = None
-            self._add_log("Unpaused")
-            self.recorder.event(self.clock(), "UNPAUSED")
-        return self.paused
+        """Pause or play a replay. While it is paused no data arrives and the engine's clock
+        (the recording's own time) stands still, so the trends, the test's timers and
+        the alarm delays carry on from the same moment. Returns whether it is paused."""
+        r = self.replay
+        if r is None:
+            return False
+        on = bool(on) and not r.at_end
+        if on != r.paused:
+            r.set_paused(on)
+            self._add_log("Replay paused" if on else "Replay playing")
+        return r.paused
 
     def toggle_pause(self) -> bool:
+        r = self.replay
+        if r is not None and r.at_end and r.paused is False:
+            # at the end: play means play it again from the start
+            self.replay_seek(0)
+            return False
         return self.set_paused(not self.paused)
 
     def set_replay_speed(self, speed: float) -> None:
         """Change a running replay's speed without starting it again."""
-        src = self._source
-        if not isinstance(src, ReplaySource):
+        r = self.replay
+        if r is None:
             return
         speed = max(0.1, min(50.0, float(speed)))
-        src.set_speed(speed)
-        self._wave_every = max(1, round(speed))
-        self._wave_count = 0
+        r.set_speed(speed)
         self._sync_wave_speed()
         self._add_log(f"Replay speed {speed:g}x")
+
+    def replay_seek(self, position_s: float) -> None:
+        """Go to ``position_s`` into the recording being replayed (0 = the start,
+        ``replay_len_s`` = the end: the whole recording on the monitor). Going forward
+        plays everything in between as fast as the computer can, so every breath, marker
+        and alarm on the way is shown. Going back starts the replay again from the
+        beginning and plays up to there."""
+        r = self.replay
+        if r is None:
+            return
+        pos = max(0.0, min(float(position_s), r.length_s))
+        if pos < r.position_s - 1e-6 or (pos == 0 and r.position_s > 0):
+            speed, paused = r.speed, r.paused
+            fresh = ReplaySource(r.session, r.file_name, speed, clock=self._real_seconds)
+            use_file = self._file_channels is not None
+            self._clear_display()
+            self._stop_source("Replay restarted")
+            self._start_source(fresh, r.session, use_file, False)
+            r = fresh
+            if paused and pos > 0:
+                r.set_paused(True)
+        r.seek(pos)
+        self._add_log(f"Replay at {_mss(pos)}")
+
+    def show_whole_replay(self) -> None:
+        """Play the rest of the recording at once: the whole of it ends up on the monitor."""
+        r = self.replay
+        if r is not None:
+            self.replay_seek(r.length_s)
+
+    def _real_seconds(self) -> float:
+        return self._real_clock() / 1000
+
+    def _clear_display(self) -> None:
+        """Forget what the monitor shows: breaths, trends, markers, the CO2 trace."""
+        self.trend.clear()
+        self.markers.clear()
+        self.trace_t.clear()
+        self.trace_v.clear()
+        self.trace_ok.clear()
+        self.alarm_starts.clear()
+        self.trend_version += 1
+        self._sync_phase()
 
     def resume_session(self, session: ParsedSession, file_name: str) -> SessionRecord | None:
         """Continue a saved recording: its breaths, markers and CO2 trend go back on the
@@ -1209,6 +1286,8 @@ class MonitorEngine:
                     break
                 if isinstance(item, str):
                     self._on_line(item)
+                elif isinstance(item, ClockEvent):
+                    self.clock.follow(self._replay_base + float(item.t_s) * 1000)
                 elif isinstance(item, MarkerEvent):
                     self.add_marker(item.label)  # a replayed session's own markers
                 else:
@@ -1438,7 +1517,8 @@ class MonitorEngine:
         return self._wave_every
 
     def _sync_wave_speed(self) -> None:
-        k = max(1, round(self.time_scale()))
+        r = self.replay
+        k = max(1, round(r.speed if r is not None else self.time_scale()))
         if k != self._wave_every:
             self._wave_every = k
             self._clear_waves()
@@ -1516,12 +1596,14 @@ class MonitorEngine:
         # audio: highest active priority, unless silenced
         pri = a.active_priority()
         if pri and not a.is_silenced(now) and self.audio.armed:
-            if pri == "high" and now - self._last_high_tone >= 5000:
+            # repeated on the computer's clock, so a fast replay does not sound a burst of tones
+            real = self._real_clock()
+            if pri == "high" and real - self._last_high_tone >= 5000:
                 self.audio.high()
-                self._last_high_tone = now
-            elif pri == "medium" and now - self._last_med_tone >= 15000:
+                self._last_high_tone = real
+            elif pri == "medium" and real - self._last_med_tone >= 15000:
                 self.audio.medium()
-                self._last_med_tone = now
+                self._last_med_tone = real
 
         # serial: if the board reset when the port opened, the first commands were lost
         if connected and src.kind in ("serial", "bridge") and self._info is None and not self._handshake_retried and now - self._connected_at > 2500:
@@ -1647,9 +1729,7 @@ class MonitorEngine:
         src = self._source
         if isinstance(src, SimulatorSource):
             return src.run_speed
-        if isinstance(src, ReplaySource):
-            return max(1e-6, float(src.speed))
-        return 1.0
+        return 1.0  # a replay runs the engine on the recording's own time
 
     def test_state(self, now: float | None = None) -> TestState:
         now = self.clock() if now is None else now
@@ -2161,6 +2241,7 @@ class MonitorEngine:
             replay_speed=float(src.speed) if isinstance(src, ReplaySource) else None,
             replay_pos_s=src.position_s if isinstance(src, ReplaySource) else None,
             replay_len_s=src.length_s if isinstance(src, ReplaySource) else None,
+            replay_at_end=src.at_end if isinstance(src, ReplaySource) else False,
             resumed_from=self.resumed_from if rec.active else None,
         )
 

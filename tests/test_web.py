@@ -513,18 +513,32 @@ def labchart_export_of_the_sample() -> str:
 
 def test_replay_pause_speed_stop_analysis_and_continuing_a_recording(page, site_url, tmp_path):
     boot(page, site_url)
-    # replay the sample session: the bar under the waveforms, pause and play, speed, stop
-    page.locator('[data-act="replay-sample"]').first.click()
+    # no replay controls during a simulated test
+    page.locator('[data-act="start-sim"]').first.click()
+    numbers_ok(page)
+    assert page.locator(".softkeys .replaybar").count() == 0 and page.locator('.softkeys [data-act="pause"]').count() == 0
+    page.keyboard.press("p")  # does nothing outside a replay
+    page.locator('[data-act="open-settings"]').last.click()
+    page.locator('[data-act="disconnect"]').first.click()
+    page.locator('[data-act="show-monitor"]').first.click()
+
+    # a recorded CSV uploaded from the start screen: the whole file, with the controls
+    page.set_input_files('.connect-card input[data-change="replay-file"]', str(ROOT / "sample-data" / "synthetic_session.csv"))
     bar = page.locator(".softkeys .replaybar")
     sync_api.expect(bar).to_contain_text("REPLAY", timeout=60_000)
     sync_api.expect(bar).to_contain_text("/ 3:00")
     page.keyboard.press("p")
     sync_api.expect(bar).to_contain_text("PAUSED")
-    sync_api.expect(page.locator('.softkeys .key[data-act="pause"]')).to_contain_text("Play")
+    sync_api.expect(bar.locator('[data-act="pause"]')).to_contain_text("Play")
     bar.locator('[data-act="pause"]').click()
     sync_api.expect(bar).not_to_contain_text("PAUSED")
     bar.locator('[data-act="replay-speed-live"][data-arg="10"]').click()
     sync_api.expect(bar.locator('[data-arg="10"]')).to_have_attribute("aria-pressed", "true")
+    # show all: the whole recording ends up on the monitor and stays there
+    bar.locator('[data-act="replay-whole"]').click()
+    sync_api.expect(bar).to_contain_text("END OF RECORDING", timeout=60_000)
+    sync_api.expect(page.locator("#replay-timeline")).to_have_value("1000")
+    assert page.locator(".connect-overlay").count() == 0
     bar.locator('[data-act="replay-stop"]').click()
     sync_api.expect(bar).to_have_count(0)
 
