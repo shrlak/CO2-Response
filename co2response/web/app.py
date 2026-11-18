@@ -265,6 +265,10 @@ def _install_actions(app: WebApp) -> None:
 
             ev.preventDefault()
             toggle_fullscreen()
+        if ev.key in ("p", "P") and app.screen == "monitor" and app.engine.can_pause:
+            ev.preventDefault()
+            app.engine.toggle_pause()
+            app.refresh()
         if ev.key in ("m", "M") and app.screen == "monitor" and app.hotkey_mark:
             ev.preventDefault()
             app.hotkey_mark()

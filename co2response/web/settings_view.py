@@ -119,6 +119,12 @@ class SettingsView:
                     num("rate", self.rate, "rate", 1, cf.RATE_MIN, cf.RATE_MAX) + '<span class="u">Hz</span>' + btn("Send", "rate-send", "btn small") + btn("Ask INFO", "ask-info", "btn small"),
                     cf.RATE_HINT,
                 )
+                if (s.info or {}).get("BOARD") == "UNO_R4":
+                    rate += field(
+                        "CO2 sensor zero",
+                        btn("Zero in room air", "co2zero", "btn small", arg="AIR") + btn("Zero in nitrogen", "co2zero", "btn small", arg="N2"),
+                        "SprintIR-R: with the pump running, put the sample line in fresh air (or nitrogen) for a minute, then press. The sensor takes the gas as 400 ppm (or 0).",
+                    )
             out += f'<section class="card" style="margin-bottom:12px"><div class="card-head"><h3>Connected device</h3>{btn("Disconnect", "disconnect", "btn danger")}</div><div class="stats">{stats}</div>{rate}</section>'
         ws = web_serial_supported()
         known = self.app.known_label
@@ -163,6 +169,7 @@ class SettingsView:
         rep += (
             f'<div class="row-actions">{btn("Start replay", "replay-start", "btn primary", disabled=not sessions)}'
             '<label class="btn" style="display:inline-flex;align-items:center">Replay a file…<input type="file" accept=".csv,text/csv" hidden data-change="replay-file"></label>'
+            '<label class="btn" style="display:inline-flex;align-items:center" title="Put a saved session back on the monitor and keep recording it">Continue recording a file…<input type="file" accept=".csv,text/csv" hidden data-change="resume-file"></label>'
             f'{btn("Replay the sample session", "replay-sample")}</div></section>'
         )
         bridge = (
@@ -549,6 +556,20 @@ def install_settings_actions(app: "WebApp") -> None:
             e.connect("replay", session=s, file_name=name, speed=sv.replay["speed"], use_file_calibration=sv.replay["use_cal"])
             app.show("monitor")
 
+    async def resume_file(el):
+        for name, text in await read_files(el):
+            if e.recorder.active:
+                toast("Stop the current recording first.", 6000)
+                return
+            try:
+                e.resume_session(parse_session_text(text), name)
+            except ValueError as ex:
+                toast(f"Could not continue {name}: {ex}", 6000)
+                return
+            app.show("monitor")
+            toast(f"Recording continues in {e.recorder.file_name}. Connect the Arduino or start the simulator to carry on.", 8000)
+            return
+
     # --- calibration (what each key does is in ``calibration_draft.CalDraft``)
     def cal_method(el):
         cid, m = parts(el)
@@ -754,6 +775,7 @@ def install_settings_actions(app: "WebApp") -> None:
             "settings-tab": lambda el: (setattr(sv, "tab", data(el, "arg")), sv.bump()),
             "rate-send": lambda el: [e.send(cmd) for cmd in cf.rate_commands(sv.rate)],
             "ask-info": lambda el: e.send("INFO"),
+            "co2zero": lambda el: (e.send(f"CO2ZERO {data(el, 'arg')}"), toast("Sent: zero the CO2 sensor. It takes a few seconds.")),
             "disconnect": lambda el: (e.disconnect(), sv.bump()),
             "baud": lambda el: (e.update_settings(baud_rate=int(el.value)), sv.bump()),
             "autoreconnect": lambda el: (e.update_settings(auto_reconnect=bool(el.checked)), sv.bump()),
@@ -764,6 +786,7 @@ def install_settings_actions(app: "WebApp") -> None:
             "replay-cal": lambda el: sv.replay.__setitem__("use_cal", bool(el.checked)),
             "replay-start": replay_start,
             "replay-file": replay_file,
+            "resume-file": resume_file,
             "bridge-url": lambda el: e.update_settings(bridge_url=el.value.strip()),
             "cal-method": cal_method,
             "cal-type": cal_type,

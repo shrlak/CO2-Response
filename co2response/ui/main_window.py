@@ -62,6 +62,7 @@ class MainWindow(QMainWindow):
         self.toaster = Toast(root)
 
         QShortcut(QKeySequence("M"), self, activated=self._hotkey_mark)
+        QShortcut(QKeySequence("P"), self, activated=self._hotkey_pause)
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self._escape)
         engine.high_alarm_listeners.append(lambda msg: QApplication.alert(self, 0))
 
@@ -144,6 +145,10 @@ class MainWindow(QMainWindow):
     def _hotkey_mark(self) -> None:
         if self.stack.currentWidget() is self.monitor and not self.monitor.drawer.isVisible():
             self.monitor.mark()
+
+    def _hotkey_pause(self) -> None:
+        if self.stack.currentWidget() is self.monitor and self.engine.can_pause:
+            self.engine.toggle_pause()
 
     def _escape(self) -> None:
         self.monitor.drawer.hide()

@@ -248,6 +248,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   font-weight: 600; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 6px; line-height: 1.1;
 }
 .key:hover:not(:disabled) { border-color: var(--muted); }
+.softkeys > .replaybar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid var(--line, var(--muted)); border-radius: 6px; }
+.softkeys > .replaybar .note { flex: 1 1 200px; }
 .key .sub { display: block; font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: 0.03em; text-transform: none; margin-top: 2px; }
 .key.armed { border-color: var(--ok); color: var(--ok); }
 .key.need { border-color: var(--advisory); color: var(--advisory); }
@@ -326,6 +328,7 @@ table.pts td { padding: 3px 4px; border-bottom: 1px solid var(--grid); }
 table.pts input[type='number'] { width: 100px; min-height: 30px; }
 .steps { margin: 0; padding-left: 20px; color: var(--muted); line-height: 1.5; font-size: 14px; }
 .mono { font-family: var(--font-mono); font-size: 12.5px; }
+.review .analysis { max-height: 360px; overflow: auto; margin: 6px 0 0; white-space: pre; border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; background: var(--input-bg); font-size: 12px; }
 .loglist { max-height: 340px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; background: var(--input-bg); }
 .loglist div { padding: 2px 0; border-bottom: 1px solid var(--grid); }
 .loglist .alarm { color: var(--alarm-med); }

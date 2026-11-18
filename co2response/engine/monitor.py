@@ -18,6 +18,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
+
 from .. import __version__, keep_awake
 from ..alarms.audio import AlarmAudio
 from ..alarms.engine import AlarmEngine, AlarmLogEntry, AlarmRecord
@@ -83,7 +85,7 @@ from ..sources.serial_source import PortInfo, SerialSource, list_ports
 from ..sources.simulator import SimulatorSource
 from ..storage.library import SessionLibrary, SessionRecord
 from ..storage.recorder import SessionRecorder
-from ..storage.session_file import ParsedSession, SessionMeta, session_file_name
+from ..storage.session_file import ParsedSession, SessionMeta, session_file_name, session_markers
 from .link_test import CheckResult, LinkStats, LinkTestCollector, analyze_link_test
 
 NAN = float("nan")
@@ -305,7 +307,7 @@ class Snapshot:
     test: TestState = field(default_factory=lambda: TestState("idle", TestWindow(None, None, None)))
     #: where the board's valve output stands: 'bag', 'air', or None if the device has none
     valve: str | None = None
-    #: the board in use: 'digital' (Uno R4, SFM3304-D + SprintIR, units on the line) or
+    #: the board in use: 'digital' (Uno R4, SFM3300-250-D + SprintIR-R, units on the line) or
     #: 'analog' (ADS1115, volts on the line)
     hardware: str = "analog"
     #: one flow sensor does everything, so there is one flow waveform, not two
@@ -315,6 +317,16 @@ class Snapshot:
     capno: dict | None = None
     #: when the program started (same clock as ``now``)
     started_at: float = 0.0
+    #: time stands still (a replay or the simulator paused); see ``MonitorEngine.set_paused``
+    paused: bool = False
+    #: the source can be paused (a replay or the simulator; never a live device)
+    can_pause: bool = False
+    #: a replay's speed, and how far into the recording it has played (s) and how long it is
+    replay_speed: float | None = None
+    replay_pos_s: float | None = None
+    replay_len_s: float | None = None
+    #: the recording continues an earlier session file (its name), if it was resumed
+    resumed_from: str | None = None
 
 
 @dataclass
@@ -395,7 +407,14 @@ class MonitorEngine:
         prevent_sleep: bool = True,
         library_factory: Callable[..., SessionLibrary] = SessionLibrary,
     ) -> None:
-        self.clock = clock
+        #: the computer's clock. ``clock`` (what everything in the engine uses) is this
+        #: minus the time spent paused, so pausing a replay or the simulator freezes the
+        #: data, the trends, the test timers and the alarm timers together
+        self._real_clock = clock
+        self._paused_at: float | None = None
+        self._paused_total = 0.0
+        #: (the computer's clock itself until the first pause)
+        self.clock: Callable[[], float] = clock
         #: when the program started (the engine's clock, ms): the header shows how long it has run
         self.started_at = clock()
         self.store = store or SettingsStore()
@@ -415,7 +434,9 @@ class MonitorEngine:
         self._sessions_override = Path(sessions_dir) if sessions_dir else None
         self._library_factory = library_factory
         self.library = library_factory(self.sessions_dir, clock)
-        self.recorder = SessionRecorder(self.library, clock)
+        self.recorder = SessionRecorder(self.library, self._virtual_clock)
+        #: the file a resumed recording continues (see ``resume_session``)
+        self.resumed_from: str | None = None
         self.port_lister = port_lister
         self.prevent_sleep = prevent_sleep
         #: bumps whenever the session library changes, so lists can refresh
@@ -848,6 +869,7 @@ class MonitorEngine:
         self._add_log(f"Connection failed: {detail}", "error")
 
     def _start_source(self, src: Source, session: ParsedSession | None, use_file_calibration: bool, auto: bool) -> bool:
+        self.set_paused(False)
         kind = src.kind
         self._file_channels = session.channels if kind == "replay" and use_file_calibration and session is not None and session.channels else None
         self._replay_hardware = None
@@ -1002,6 +1024,7 @@ class MonitorEngine:
         src = self._source
         if src is None:
             return
+        self.set_paused(False)
         now = self.clock()
         for pr in self.pipeline.flush():  # the last 30 ms the spike filter still held
             self._use(pr, now)
@@ -1044,6 +1067,133 @@ class MonitorEngine:
         if self._source is not None:
             self._source.send(cmd)
         self._add_log(f"Sent {cmd}")
+
+    # ---------- pause, replay speed, resuming a recording ----------
+
+    def _virtual_clock(self) -> float:
+        if self._paused_at is not None:
+            return self._paused_at - self._paused_total
+        return self._real_clock() - self._paused_total
+
+    @property
+    def paused(self) -> bool:
+        return self._paused_at is not None
+
+    @property
+    def can_pause(self) -> bool:
+        """A replay or the simulator can be paused. A live device cannot: its data keeps
+        coming, and stopping the clock would stop the alarms watching it."""
+        src = self._source
+        return src is not None and src.kind in ("replay", "simulator")
+
+    def set_paused(self, on: bool) -> bool:
+        """Pause or resume a replay or the simulator. While paused no data arrives and the
+        engine's clock stands still, so the trends, the test's timers, the alarm delays
+        and a recording simply carry on from where they were when it resumes. Returns
+        whether it is paused now."""
+        if on and not self.can_pause:
+            on = False
+        if on == self.paused:
+            return self.paused
+        if on:
+            self.clock = self._virtual_clock
+            self._paused_at = self._real_clock()
+            self.recorder.flush()  # nothing waits in memory while time stands still
+            self._add_log("Paused")
+            self.recorder.event(self.clock(), "PAUSED")
+        else:
+            assert self._paused_at is not None
+            self._paused_total += self._real_clock() - self._paused_at
+            self._paused_at = None
+            self._add_log("Unpaused")
+            self.recorder.event(self.clock(), "UNPAUSED")
+        return self.paused
+
+    def toggle_pause(self) -> bool:
+        return self.set_paused(not self.paused)
+
+    def set_replay_speed(self, speed: float) -> None:
+        """Change a running replay's speed without starting it again."""
+        src = self._source
+        if not isinstance(src, ReplaySource):
+            return
+        speed = max(0.1, min(50.0, float(speed)))
+        src.set_speed(speed)
+        self._wave_every = max(1, round(speed))
+        self._wave_count = 0
+        self._sync_wave_speed()
+        self._add_log(f"Replay speed {speed:g}x")
+
+    def resume_session(self, session: ParsedSession, file_name: str) -> SessionRecord | None:
+        """Continue a saved recording: its breaths, markers and CO2 trend go back on the
+        monitor (so the trends, the response graph and the test phase carry on), and a
+        new recording starts that holds the whole earlier file followed by everything
+        from now on. The earlier file is not changed.
+
+        The new file is ``<name>_resumed.csv``. Its ``time_s`` carries on 1 s after the
+        end of the earlier part; ``wall_time_iso`` is the real time of day, and the
+        ``RECORDING_RESUMED`` event says how long the real gap was. Connect the board (or
+        the simulator) before or after: the recording waits for data either way."""
+        if self.recorder.active:
+            raise ValueError("Stop the current recording first.")
+        if isinstance(self._source, ReplaySource):
+            self._stop_source("Resuming a recording")
+        now = self.clock()
+        last = max(session.duration_s, session.events[-1].time_s if session.events else 0.0, session.breaths[-1].time_s if session.breaths else 0.0)
+        gap_s = 1.0
+        # the moment the earlier recording "started" on this engine's clock, so its times
+        # land just before now and the new rows carry on from them
+        t0 = now - (last + gap_s) * 1000
+        real_gap = (self._real_clock() - (session.started_ms + last * 1000)) / 1000
+
+        # ---- the monitor: the earlier breaths, markers and continuous CO2
+        self.trend.clear()
+        self.markers.clear()
+        self.trace_t.clear()
+        self.trace_v.clear()
+        self.trace_ok.clear()
+        self.alarm_starts.clear()
+        for b in session.breaths:
+            q = b.quality or "ok"
+            excluded = q == "excluded"
+            self._trend_key += 1
+            n = int(b.n) if math.isfinite(b.n) else None
+            mv_b = b.mv_breath
+            rr = 60 / b.period_s if math.isfinite(b.period_s) and b.period_s > 0 else b.rr
+            self.trend.append(TrendPoint((t0 + b.time_s * 1000) / 1000, b.etco2, b.mv, b.vt, rr, "ok" if excluded else q, mv_b, self._trend_key, n, excluded))
+        del self.trend[: max(0, len(self.trend) - MAX_TREND)]
+        for ts, label in session_markers(session.events):
+            self.markers.append(Marker(self._marker_id, t0 + ts * 1000, label))
+            self._marker_id += 1
+        if session.n:
+            tt = np.asarray(session.time_s, float)
+            cc = np.asarray(session.co2_mmhg, float)
+            bins = np.floor(tt / 0.5).astype(np.int64)
+            ok = np.isfinite(cc)
+            if ok.any():
+                b_ok, c_ok = bins[ok], cc[ok]
+                edges = np.flatnonzero(np.diff(b_ok)) + 1
+                starts = np.concatenate(([0], edges))
+                peaks = np.maximum.reduceat(c_ok, starts)
+                times = (b_ok[starts] + 1) * 0.5
+                keep = slice(max(0, len(times) - MAX_TRACE), None)
+                self.trace_t.extend(((t0 / 1000) + times[keep]).tolist())
+                self.trace_v.extend(peaks[keep].tolist())
+                self.trace_ok.extend([True] * len(peaks[keep]))
+        self._sync_phase()
+        self.trend_version += 1
+
+        # ---- the recording
+        rec = self.recorder.resume(session, file_name, t0, __version__)
+        self.resumed_from = file_name
+        if session.channels and session.channels != self.effective_channels:
+            self.recorder.event(now, "CALIBRATION_CHANGED (the resumed part uses the calibration in use now, not the one in this file's header)")
+        src = self._source
+        self.recorder.event(now, f"RECORDING_RESUMED from={file_name} gap_s={real_gap:.0f} source={src.label if src else 'none'}")
+        where = "" if rec else f" (in memory: cannot write to {self.library.folder})"
+        self._add_log(f"Resumed {file_name} into {self.recorder.file_name}{where}: {len(session.breaths)} breaths and {len(self.markers)} markers back on the monitor")
+        self.library_changed()
+        return rec
 
     # ---------- data path ----------
 
@@ -2006,6 +2156,12 @@ class MonitorEngine:
             single_flow=self.single_flow,
             capno=self._merge.fresh_numbers if self._merge is not None else None,
             started_at=self.started_at,
+            paused=self.paused,
+            can_pause=self.can_pause,
+            replay_speed=float(src.speed) if isinstance(src, ReplaySource) else None,
+            replay_pos_s=src.position_s if isinstance(src, ReplaySource) else None,
+            replay_len_s=src.length_s if isinstance(src, ReplaySource) else None,
+            resumed_from=self.resumed_from if rec.active else None,
         )
 
     def settings_json(self) -> dict:

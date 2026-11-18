@@ -53,6 +53,12 @@ class ConnectionPage(Page):
             hbox(self.rate, label("Hz", "muted"), button("Send", self._send_rate, small=True), button("Ask INFO", lambda: engine.send("INFO"), small=True)),
             hint=cf.RATE_HINT,
         )
+        self.rate_form.add(
+            "co2zero",
+            "CO2 sensor zero",
+            hbox(button("Zero in room air", lambda: engine.send("CO2ZERO AIR"), small=True), button("Zero in nitrogen", lambda: engine.send("CO2ZERO N2"), small=True), stretch_end=True),
+            hint="Uno R4 board (SprintIR-R): with the pump running, put the sample line in fresh outdoor-like air (or nitrogen) for a minute, then press. The sensor takes the gas as 400 ppm (or 0).",
+        )
         self.dev.add(self.rate_form)
         lay.addWidget(self.dev)
 
@@ -104,6 +110,8 @@ class ConnectionPage(Page):
         rep.add(self.no_sessions)
         self.replay_btn = button("Start replay", self._replay, kind="primary")
         rep.add(hbox(self.replay_btn, button("Replay a file…", self._replay_file), stretch_end=True))
+        rep.add(label("While it replays: pause and play (P), change the speed or stop it from the bar under the waveforms.", "note", wrap=True))
+        rep.add(hbox(button("Continue recording a file…", self._resume_file, tooltip="Put a saved session back on the monitor and keep recording it"), stretch_end=True))
         cards.add(rep)
 
         # ---- Python acquisition server (python/co2r: co2r-daq serve)
@@ -216,6 +224,20 @@ class ConnectionPage(Page):
             self.window.toast(f"Could not replay {Path(path).name}: {e}", 6000)
             return
         self.engine.connect("replay", session=s, file_name=Path(path).name, speed=self.speed.value() or 1, use_file_calibration=self.use_file_cal.isChecked())
+
+    def _resume_file(self) -> None:
+        if self.engine.recorder.active:
+            self.window.toast("Stop the current recording first.", 6000)
+            return
+        path, _ = QFileDialog.getOpenFileName(self, "Continue recording a session file", str(downloads_dir()), "Session files (*.csv);;All files (*)")
+        if not path:
+            return
+        try:
+            self.engine.resume_session(read_session(path), Path(path).name)
+        except (OSError, ValueError, UnicodeDecodeError) as e:
+            self.window.toast(f"Could not continue {Path(path).name}: {e}", 6000)
+            return
+        self.window.toast(f"Recording continues in {self.engine.recorder.file_name}. Connect the Arduino or start the simulator to carry on.", 8000)
 
     def _capno_port_value(self) -> str:
         data = self.capno_port.currentData()

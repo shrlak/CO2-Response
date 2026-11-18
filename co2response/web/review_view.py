@@ -9,6 +9,7 @@ import numpy as np
 
 from .. import __version__
 from ..processing.metrics import co2_response_summary
+from ..storage.analysis import analysis_csv, analysis_text, analyze_session, breath_detail_csv
 from ..storage.report import response_stats, session_response, spo2_stats
 from ..storage.session_file import ParsedSession, Range, breaths_csv, clean_breaths, event_type, events_csv, exclude_breath, export_session_parts, summarize
 from .charts import ResponseChart, ReviewChart, elapsed
@@ -67,6 +68,12 @@ class ReviewView:
         set_html("screen", self.html(), force=True)
         self.mount()
 
+    def _analysis(self):
+        if getattr(self, "_an_for", None) is not self.parsed:
+            self._an = analyze_session(self.parsed, self.rec.file_name)
+            self._an_for = self.parsed
+        return self._an
+
     @property
     def full(self) -> Range:
         return Range(0, max(1.0, self.parsed.duration_s))
@@ -117,7 +124,10 @@ class ReviewView:
             '<h3 style="margin-top:14px">Export</h3><div class="row-actions" style="margin:6px 0 14px">'
             f'{btn("Whole session (one .csv)", "export", "btn primary", arg=f"{rec.id}|session")}{btn("Breaths (.csv)", "export", arg=f"{rec.id}|breaths")}{btn("Alarms & events (.csv)", "export", arg=f"{rec.id}|events")}{btn("CO2 response report (.pdf)", "export", arg=f"{rec.id}|report")}'
             f'{btn("Zoomed range, all data (.csv)", "review-range", arg="all", id="rr-all")}{btn("Zoomed range, breaths (.csv)", "review-range", arg="breaths", id="rr-breaths")}'
-            f'{btn("Zoomed range, events (.csv)", "review-range", arg="events", id="rr-events")}{btn("Replay on the monitor", "review-replay", disabled=not s.n)}</div>'
+            f'{btn("Zoomed range, events (.csv)", "review-range", arg="events", id="rr-events")}{btn("Replay on the monitor", "review-replay", disabled=not s.n)}'
+            f'{btn("In-depth analysis (.csv)", "review-analysis")}'
+            f'{btn("Continue recording", "review-resume", disabled=rec.status == "recording" or self.app.engine.recorder.active, title="Put this session back on the monitor and keep recording it: a new file holds this one followed by the new data")}</div>'
+            f'<h3>In-depth analysis</h3><pre class="analysis mono">{esc(analysis_text(self._analysis()))}</pre>'
             f'<h3>Alarms and events ({len(s.events)})</h3><div class="loglist" style="max-height:280px;margin-top:6px">{events}</div></div>'
         )
 
@@ -238,6 +248,23 @@ def install_review_actions(app: "WebApp") -> None:
         app.engine.connect("replay", session=rv.parsed, file_name=rv.rec.file_name, speed=1, use_file_calibration=True)
         app.show("monitor")
 
+    def analysis(el):
+        a = rv._analysis()
+        base = rv.rec.file_name[:-4] if rv.rec.file_name.lower().endswith(".csv") else rv.rec.file_name
+        download(f"{base}_analysis.csv", analysis_csv(a))
+        download(f"{base}_breath_detail.csv", breath_detail_csv(a))
+
+    def resume(el):
+        from . import dom
+
+        try:
+            app.engine.resume_session(rv.parsed, rv.rec.file_name)
+        except (OSError, ValueError) as ex:
+            dom.toast(f"Could not continue {rv.rec.file_name}: {ex}", 6000)
+            return
+        app.show("monitor")
+        dom.toast(f"Recording continues in {app.engine.recorder.file_name}." + ("" if app.engine.source is not None else " Connect the Arduino or start the simulator to carry on."), 8000)
+
     actions(
         **{
             "open-review": lambda el: app.show("review", data(el, "arg")),
@@ -246,6 +273,8 @@ def install_review_actions(app: "WebApp") -> None:
             "review-range": range_export,
             "review-event": event,
             "review-replay": replay,
+            "review-analysis": analysis,
+            "review-resume": resume,
             "review-resp-click": resp_click,
         }
     )

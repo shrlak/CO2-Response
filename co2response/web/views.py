@@ -15,7 +15,7 @@ from ..processing.co2 import mmhg_to_pct
 from ..processing.metrics import co2_response_summary
 from ..settings import AlarmSettings
 from .charts import ResponseChart, Sweep, TrendChart
-from .dom import btn, byid, data, esc, field, set_html, toast
+from .dom import btn, byid, data, esc, field, seg, set_html, toast
 from .sim_view import SimPanel
 from .spec_form import install_spec_actions, spec_form_html
 
@@ -372,7 +372,7 @@ class MonitorView:
                 + (f" · Capnostream {fmt(disp(s.capno['etco2']), digits)}" if s.capno and "etco2" in s.capno else ""),
                 raw=raw("co2"),
             ),
-            "rr": tile_html("rr", "RR", "/min", fmt(n.rr), alarm="high" if apnea else None, flash=bool(apnea and not apnea.acknowledged), qualifier="no breath detected" if n.rr != n.rr and s.status == "connected" else ""),
+            "rr": tile_html("rr", "RR", "/min", fmt(n.rr, 1), alarm="high" if apnea else None, flash=bool(apnea and not apnea.acknowledged), qualifier="no breath detected" if n.rr != n.rr and s.status == "connected" else ""),
             "flow": tile_html("flow", "Flow", "L/min", sv(sc["flow"], n.flow), stale=sc["flow"], raw=raw("flow")),
             "vt": tile_html(
                 "vt", "VT", "mL", sv(sc["pneumo"], n.vt), stale=sc["pneumo"], raw=raw("pneumo"),
@@ -453,7 +453,12 @@ class MonitorView:
             + key("Audio armed" if s.audio_armed else "Arm audio", "tones will sound" if s.audio_armed else "click once per session", "arm-audio", "armed" if s.audio_armed else "need")
             + f'<div style="position:relative;display:grid">{key("Mark event", "hotkey M", "mark")}{mark}</div>'
             + key("■ Stop rec" if s.recording.active else "● Record", "saves one CSV on stop" if s.recording.active else "one CSV per session", "record", "rec-on" if s.recording.active else "")
-            + key("Unfreeze" if s.frozen else "Freeze", "waveforms only", "freeze", "active" if s.frozen else "")
+            + (
+                # a replay or the simulator can be paused (time stands still); a live device cannot
+                key("▶ Play" if s.paused else "❚❚ Pause", f"{'the replay' if s.source_kind == 'replay' else 'the simulator'} · hotkey P", "pause", "active" if s.paused else "")
+                if s.can_pause
+                else key("Unfreeze" if s.frozen else "Freeze", "waveforms only", "freeze", "active" if s.frozen else "")
+            )
             + key("Alarm limits", f"{'warn' if stop else 'high'} {fmt(disp(a.high_mm_hg), digits)}{stop}{low}", "drawer-open")
             + key(
                 "Simulation",
@@ -463,6 +468,15 @@ class MonitorView:
             )
             + key("Settings", "calibration, connection", "open-settings")
         )
+        if s.source_kind == "replay":
+            pos, length = s.replay_pos_s or 0.0, s.replay_len_s or 0.0
+            speeds = [(0.5, "½×"), (1, "1×"), (2, "2×"), (5, "5×"), (10, "10×"), (20, "20×")]
+            cur = min((v for v, _ in speeds), key=lambda v: abs(v - (s.replay_speed or 1)))
+            html = (
+                f'<div class="replaybar"><span class="note">{"PAUSED" if s.paused else "REPLAY"} · {mss(pos * 1000)} / {mss(length * 1000)} · {esc(s.source_label)}</span>'
+                f'<span class="flabel">Speed</span>{seg("replay-speed-live", cur, speeds)}'
+                f'{btn("▶ Play" if s.paused else "❚❚ Pause", "pause", "btn small")}{btn("Stop replay", "replay-stop", "btn small")}</div>'
+            ) + html
         if set_html("softkeys", html) and self.mark:
             el = byid("mark-label")
             if el is not None:
@@ -614,6 +628,7 @@ def install_monitor_actions(app: "WebApp") -> None:
     actions(
         silence=lambda el: (e.toggle_silence(), app.refresh()),
         freeze=lambda el: (e.set_frozen(not e.frozen), app.refresh()),
+        pause=lambda el: (e.toggle_pause(), app.refresh()),
         mark=mark,
         test_alarm=test_alarm,
         **{
@@ -633,6 +648,8 @@ def install_monitor_actions(app: "WebApp") -> None:
             "test-emergency": lambda el: (e.emergency_stop(), toast("Emergency stop: the test is ended." + ("" if e.valve_available() else " Turn the valve to room air."), 6000), app.refresh()),
             "focus": lambda el: (mv.set_focus(None if mv.focus == data(el, "arg") else data(el, "arg")), app.refresh()),
             "fullscreen": lambda el: toggle_fullscreen(),
+            "replay-speed-live": lambda el: (e.set_replay_speed(float(data(el, "arg"))), app.refresh()),
+            "replay-stop": lambda el: (e.disconnect(), app.refresh()),
         },
     )
     app.hotkey_mark = mark

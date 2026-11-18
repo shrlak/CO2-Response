@@ -3,7 +3,7 @@
 The lab's EtCO2 monitor is a [Medtronic Capnostream™ 35](https://www.medtronic.com/en-us/healthcare-professionals/products/patient-monitoring/capnography-monitoring/portable-respiratory-monitors/capnostream-35-portable-respiratory-monitor.html). CO2-Response can take its CO2 from it instead of from the board's own CO2 sensor (the SprintIR-6S):
 
 - The **Capnostream** samples gas from the airway through its Microstream FilterLine (50 mL/min) and measures CO2 20 times a second. It sends what it measures to the computer over its data port.
-- The **Arduino** still measures the flow (SFM3304-D) 100 times a second.
+- The **Arduino** still measures the flow (SFM3300-250-D) 100 times a second.
 - The app puts the two on one timeline. Breaths, EtCO2, VT, MV, the MV-vs-EtCO2 graph, the alarms and the recording then work exactly as with the board's own sensor. The monitor's own numbers (EtCO2, RR, SpO2, pulse) are shown beside the app's, as a cross-check.
 
 > **Research use only.** The Capnostream stays the certified, primary monitor and its own alarms stay on. CO2-Response only reads its data output.

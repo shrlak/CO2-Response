@@ -1,9 +1,11 @@
 // CO2-Response firmware for the Arduino Uno R4 Minima board with digital sensors:
 //
-//   Sensirion SFM3304-D flow sensor   I2C 0x2E (SDA/SCL through a BSS138 level shifter, 3.3 V)
-//   GSS SprintIR-6S-20 CO2 sensor      Serial1 (D0/D1) at 9600 baud, 3.3 V, sample pump on Q2
-//   stop / marker button D2, valve reed switch D3, alarm LED D7, active buzzer D8,
-//   flow-sensor heater MOSFET D9, sample-pump MOSFET D10, optional valve servo D6
+//   Sensirion SFM3300-250-D flow sensor  I2C 0x40, 5 V, wired straight to SDA/SCL
+//   GSS SprintIR-R-20 CO2 sensor         Serial1 (D0/D1) at 9600 baud, 3.3 V logic through
+//                                        the BSS138 level shifter, powered from 5V_EXT
+//   ZR370-02PM sample pump               IRLZ44N Q1 on D10 (PWM), powered from 5V_EXT
+//   valve reed switch D3, alarm LED D13 (built in), optional button D2, optional buzzer D8,
+//   optional valve servo D6. USB to the computer through the ADuM4160 isolator.
 //
 // It streams one checksummed line per sample over USB (protocol: docs/protocol.md):
 //
@@ -11,7 +13,8 @@
 //
 // The values are already in engineering units (the info line says UNITS,1), so the app
 // does no volts-to-units conversion. A sensor that is not answering is sent as 9999.
-// The CO2 value changes 20 times a second (the SprintIR's rate) and is repeated between.
+// The CO2 value changes 50 times a second (the SprintIR-R's rate) and is repeated between;
+// the flow is the mean of the SFM3300 reads (every SFM_READ_US) since the previous line.
 //
 // The board also reports its button ("A,BUTTON") and the valve handle's reed switch
 // ("A,REED,1" at the bag, "A,REED,0" at room air), lights its LED and sounds its
@@ -33,7 +36,7 @@
 static Servo valveServo;
 #endif
 
-static Sfm3304 flowSensor;
+static Sfm3300 flowSensor;
 static SprintIR co2Sensor(Serial1);
 
 static bool streaming = AUTOSTART;
@@ -43,6 +46,9 @@ static uint32_t nextUs = 0;
 static uint16_t seq = 0;
 static uint32_t lastOverrunMs = 0;
 static uint32_t lastSfmRetryMs = 0;
+static uint32_t nextSfmReadUs = 0;
+static uint8_t pumpDuty = PUMP_DUTY;
+static bool pumpOn = false;
 
 static char cmd[32];
 static uint8_t cmdLen = 0;
@@ -61,7 +67,10 @@ static int8_t reedAtBag = -1;
 static uint32_t reedChangedMs = 0;
 static bool valveToBag = false;
 
-static void setPump(bool on) { analogWrite(PUMP_PIN, on ? PUMP_DUTY : 0); }
+static void setPump(bool on) {
+  pumpOn = on;
+  analogWrite(PUMP_PIN, on ? pumpDuty : 0);
+}
 
 static void setValve(bool toBag) {
   valveToBag = toBag;
@@ -71,11 +80,19 @@ static void setValve(bool toBag) {
 }
 
 static void sendInfo() {
-  Serial.print(F("I,FW," FW_VERSION ",BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR,FLOW,SFM3304,CH,2,RATE,"));
+  Serial.print(F("I,FW," FW_VERSION ",BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,SFM3300,CH,2,RATE,"));
   Serial.print(rateHz);
   Serial.print(F(",BAUD,"));
   Serial.print(BAUD_RATE);
-  Serial.print(F(",ADDR,0x2E"));
+  Serial.print(F(",ADDR,0x40"));
+  if (flowSensor.serial) {
+    Serial.print(F(",SFM_SN,"));
+    Serial.print(flowSensor.serial);
+  }
+  Serial.print(F(",CO2_MULT,"));
+  Serial.print(co2Sensor.multiplier());
+  Serial.print(F(",PUMP_DUTY,"));
+  Serial.print(pumpDuty);
 #if WATCHDOG_TIMEOUT_MS > 0
   Serial.print(F(",WD,"));
   Serial.print(WATCHDOG_TIMEOUT_MS);
@@ -86,7 +103,11 @@ static void sendInfo() {
 #if REED_PIN >= 0
   Serial.print(F(",REED,1"));
 #endif
+#if HEATER_PIN >= 0
   Serial.println(F(",ALARM,1,PUMP,1,HEAT,1"));
+#else
+  Serial.println(F(",ALARM,1,PUMP,1"));
+#endif
 }
 
 // LED and buzzer: the host lost (worst), then the app's alarm level
@@ -118,7 +139,11 @@ static void serviceOutputs() {
     led = buzz = false;
   }
   digitalWrite(ALARM_LED_PIN, led ? HIGH : LOW);
+#if BUZZER_PIN >= 0
   digitalWrite(BUZZER_PIN, buzz ? HIGH : LOW);
+#else
+  (void)buzz;
+#endif
 }
 
 static void serviceInputs() {
@@ -162,11 +187,25 @@ static void handleCommand(char* c) {
     Serial.print(F("A,ALARM,"));
     Serial.println(alarmLevel);
   } else if (strncmp(c, "PUMP ", 5) == 0) {
-    setPump(c[5] != '0');
-    Serial.println(c[5] != '0' ? F("A,PUMP,1") : F("A,PUMP,0"));
+    // PUMP 0 = off, PUMP 1 = on, PUMP 2..255 = on at that PWM duty
+    long v = atol(c + 5);
+    if (v > 1) pumpDuty = (uint8_t)constrain(v, 0, 255);
+    setPump(v != 0);
+    Serial.print(F("A,PUMP,"));
+    Serial.print(pumpOn ? 1 : 0);
+    Serial.print(F(","));
+    Serial.println(pumpDuty);
+  } else if (strcmp(c, "CO2ZERO AIR") == 0) {
+    co2Sensor.zeroInAir();  // the sample line must be in fresh air (taken as 400 ppm)
+    Serial.println(F("A,CO2ZERO,AIR"));
+  } else if (strcmp(c, "CO2ZERO N2") == 0) {
+    co2Sensor.zeroInNitrogen();  // the sample line must be in pure nitrogen
+    Serial.println(F("A,CO2ZERO,N2"));
+#if HEATER_PIN >= 0
   } else if (strncmp(c, "HEAT ", 5) == 0) {
     analogWrite(HEATER_PIN, c[5] != '0' ? HEATER_DUTY : 0);
     Serial.println(c[5] != '0' ? F("A,HEAT,1") : F("A,HEAT,0"));
+#endif
   } else if (strcmp(c, "VALVE 1") == 0 || strcmp(c, "VALVE 0") == 0) {
 #if SERVO_PIN >= 0
     bool toBag = c[6] == '1' && !hostLost;  // to the bag only while the host is alive
@@ -222,14 +261,18 @@ void setup() {
   pinMode(REED_PIN, INPUT_PULLUP);
 #endif
   pinMode(ALARM_LED_PIN, OUTPUT);
+#if BUZZER_PIN >= 0
   pinMode(BUZZER_PIN, OUTPUT);
+#endif
+#if HEATER_PIN >= 0
   pinMode(HEATER_PIN, OUTPUT);
+  analogWrite(HEATER_PIN, HEATER_DUTY);
+#endif
   pinMode(PUMP_PIN, OUTPUT);
 #if SERVO_PIN >= 0
   valveServo.attach(SERVO_PIN);
 #endif
   setValve(false);  // room air until the host says otherwise
-  analogWrite(HEATER_PIN, HEATER_DUTY);
   setPump(streaming);
   Serial.begin(BAUD_RATE);
   co2Sensor.begin();
@@ -245,6 +288,12 @@ void loop() {
   serviceOutputs();
 
   uint32_t now = micros();
+#if SFM_AVERAGE
+  if ((int32_t)(now - nextSfmReadUs) >= 0) {
+    nextSfmReadUs = now + SFM_READ_US;
+    flowSensor.sample();
+  }
+#endif
   if ((int32_t)(now - nextUs) < 0) return;
   uint32_t missed = (now - nextUs) / periodUs;
   if (missed) {  // fell behind: skip the slots but count them, so the app sees the gap
@@ -259,7 +308,7 @@ void loop() {
 
   float v[2];
   float co2 = co2Sensor.percent();
-  float flow = flowSensor.readFlow();
+  float flow = flowSensor.take();
   if (isnan(flow) && millis() - lastSfmRetryMs > 1000) {
     lastSfmRetryMs = millis();
     flowSensor.begin();  // a loose cable or a reset sensor: start it again

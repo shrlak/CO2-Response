@@ -63,7 +63,7 @@ def test_simulator_drives_waveforms_and_numbers(win):
     win.engine.connect("simulator")
     advance(win, 30)
     t = win.monitor.tiles
-    assert 14 <= int(t["rr"].value) <= 16
+    assert 14 <= float(t["rr"].value) <= 16 and "." in t["rr"].value  # RR with one decimal
     assert 36 <= int(t["etco2"].value) <= 39
     assert 460 <= int(t["vt"].value) <= 540
     assert "Simulator" in win.header.status.text()
@@ -249,7 +249,7 @@ def test_simulation_panel_sets_the_monitor_and_graphs_enlarge(win):
     m.sim.sit_buttons["hypoventilation"].click()  # starts it with the situation's values
     advance(win, 45)
     assert e.snapshot().source_kind == "simulator"
-    assert m.tiles["rr"].value == "6"
+    assert m.tiles["rr"].value == "6.0"
     assert 60 <= int(m.tiles["etco2"].value) <= 66
     assert e.alarms.is_active("co2High")
     assert m.sim.set_labels["rr"].text() == "6" and m.sim.mon_labels["rr"].text() == "6"
@@ -267,7 +267,7 @@ def test_simulation_panel_sets_the_monitor_and_graphs_enlarge(win):
     win._tick()
     assert "(adjusted)" in m.sim.current.text()
     advance(win, 6)
-    assert m.tiles["rr"].value == "20"
+    assert m.tiles["rr"].value == "20.0"
     m.sim.switches["apnea"].setChecked(True)
     advance(win, 25)
     assert e.alarms.is_active("apnea")
@@ -577,3 +577,44 @@ def test_header_shows_how_long_the_program_has_run_and_the_test_time(win):
     text = win.header.runtime.text()
     assert "Running 00:02:" in text or "Running 00:01:" in text  # the program's time keeps counting
     assert "REBREATHING TEST 1:" in text  # and the test's own time, from when the valve was turned
+
+
+def test_replay_bar_pause_key_and_continuing_a_recording_from_the_review(win, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog, QPlainTextEdit
+
+    e, m = win.engine, win.monitor
+    rec, _ = e.library.import_file(ROOT / "sample-data" / "synthetic_session.csv")
+    e.library_changed()
+    win.open_review(rec.id)
+    rv = win.review
+    # the in-depth analysis is on the review screen, and exports as two CSV files
+    box = rv.findChild(QPlainTextEdit)
+    assert box is not None and "RESPONSE" in box.toPlainText() and "Ti/Ttot" in box.toPlainText()
+    out = tmp_path / "x_analysis.csv"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(out), ""))
+    rv._export_analysis()
+    assert out.read_text().startswith("section,metric,value,unit,note") and (tmp_path / "x_breath_detail.csv").exists()
+
+    # replay: the bar under the waveforms, pause and play, the speed, stop
+    rv._replay()
+    advance(win, 5)
+    win._tick()
+    assert m.replay_bar.isVisible() and m.k_pause.isVisible()
+    assert "REPLAY" in m.replay_bar.text.text() and "3:00" in m.replay_bar.text.text()
+    m.k_pause.click()
+    win._tick()
+    assert e.paused and "PAUSED" in m.replay_bar.text.text() and "PLAY" in m.k_pause.main.text()
+    m.replay_bar.play.click()
+    assert not e.paused
+    m.replay_bar.speed.group.button(4).click()  # 10x
+    assert e.snapshot().replay_speed == 10
+    m.replay_bar.stop.click()
+    win._tick()
+    assert not m.replay_bar.isVisible() and not m.k_pause.isVisible()
+
+    # continue recording the session: a new file, the old breaths back on the monitor
+    win.open_review(rec.id)
+    win.review._resume()
+    assert e.recorder.active and e.recorder.file_name.endswith("_resumed.csv") and len(e.trend) >= 40
+    assert win.stack.currentWidget() is m
+    assert e.stop_recording().path.name.endswith("_resumed.csv")

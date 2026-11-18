@@ -35,8 +35,46 @@ This importer was written from LabChart's documented export layout and tested on
 - the alarms and events list; click a time to zoom to 30 s either side
 - the **CO2 response**: slope, r, x-intercept and the baseline averages, worked out the way the live monitor does ([Ventilatory response](#ventilatory-response))
 - **Replay on the monitor**, which plays the raw volts back through the live processing and alarms. The recording's own markers are replayed too, so a rebreathing test is split and fitted as it was live
+- the **in-depth analysis** ([below](#in-depth-analysis)), and **In-depth analysis (.csv)** to save it
+- **Continue recording** ([below](#continuing-a-recording-resume))
 
 A long recording (over about 4 MB, a few minutes) is opened in small steps, so the monitor keeps polling the device and checking alarms while the file is read. An hour of recording is about 39 MB and takes about a second to read on a laptop.
+
+## Replaying: pause, play, speed, stop
+
+A replay (from **Open > Replay on the monitor**, **Settings > Connection > Replay a saved session / Replay a file…**, or `--replay file.csv`) shows a bar under the waveforms with where it is (e.g. `REPLAY · 1:12 / 3:00`), its speed (½×, 1×, 2×, 5×, 10×, 20×), **Pause / Play** and **Stop replay**. **P** pauses and plays from the keyboard, in the desktop app, the browser and the terminal monitor (where `+` and `-` change the replay's speed).
+
+Pausing stops the monitor's clock as well as the data: the trends, the test timer, the seconds left out of the fit, the apnea and no-data alarm delays and a recording all simply carry on from the same moment when it plays again, so a pause leaves no gap and no false alarm. The simulator pauses the same way. A live Arduino cannot be paused (its data keeps coming and must be watched); the **Freeze** key still freezes its waveforms. A recording made while paused gets a `PAUSED` and an `UNPAUSED` event.
+
+## Continuing a recording (resume)
+
+A saved session can be picked up again and recorded on: **Open > Continue recording** in Data & recordings, **Settings > Connection > Continue recording a file…** (any session CSV, e.g. from another computer), or `co2response --resume file.csv` (with `--port`, `--sim` or `--tui`).
+
+- The earlier session goes back on the monitor: its breaths in the trends and on the response graph (with breaths excluded by hand still excluded), its markers, so the test carries on in the phase it was in (a baseline continues as baseline; after **Start rebreathing** the response is fitted across both parts), and its continuous CO2 trace.
+- A new file `<name>_resumed.csv` is recorded: the whole earlier session (converted to v4 if it is older), a `# resumed_from,<file>` header line, then the new rows. **The earlier file is never changed.** Resuming a resumed file makes `<name>_resumed-2.csv`, and so on.
+- `time_s` carries on 1 s after the end of the earlier part, so plots and fits run straight on. `wall_time_iso` stays the real time of day; the `RECORDING_RESUMED from=<file> gap_s=<seconds> source=<source>` event says how long the real gap was. Breath numbers carry on from the earlier part's.
+- The new rows use the calibration in use now. If it differs from the one in the file's header, a `CALIBRATION_CHANGED` event says so.
+- Connect the board (or the simulator) before or after pressing it; the recording waits for data.
+
+## In-depth analysis
+
+Worked out again from the samples of any session file (recorded, imported, LabChart, resumed), so it does not depend on what the monitor showed live. It is on the review screen, saved with **In-depth analysis (.csv)**, and on the command line:
+
+```bash
+co2response --analyze co2r_STUDY-01_20261105-010203.csv
+```
+
+which prints it and writes `<name>_analysis.csv` (one row per number: `section, metric, value, unit, note`) and `<name>_breath_detail.csv` (one row per breath) next to the file (`--out DIR` for elsewhere).
+
+| Section | What is in it |
+| --- | --- |
+| recording | file, study, source, firmware, length, samples, measured sample rate, gaps over 0.5 s (pauses, reconnects, a resume) and their total time, dropped samples, times resumed, alarms, markers with their times |
+| quality | breaths, and how many were `ok`, `noisy`, `artifact`, `outlier` or `excluded`; % of samples with no CO2 or flow; the flow's range and the % of samples at the SFM3300's ±250 L/min limit; the CO2 range; the lowest SpO2 |
+| set-up | **CO2 delay after expiration starts** (median of clean breaths: the sample line's delay plus ~0.1–0.3 s of dead space; set **Settings > Processing > CO2 delay** to (this − 0.2 s)), the delay already removed, the **flow bias** (net flow over a breath: a sidestream pump drawing through the flow sensor shows up here as its sample flow), inspired − expired volume % |
+| phase: before the test / baseline / rebreathing / after the test | breaths, span, and the mean and SD of EtCO2, RR, VT, MV (each breath's own), Ti, Te, Ti/Ttot, mean inspiratory flow (VT/Ti) and the capnogram's phase III slope; the CVs of VT and RR |
+| response | the slope (each breath's own MV against its EtCO2, the breaths the report fits), its standard error and 95 % confidence interval (Student t), r, r², breaths fitted, x-intercept, baseline EtCO2 and MV, breaths excluded and left out, the EtCO2 rise during rebreathing (mmHg/min) and the EtCO2 range fitted, the rebreathing length |
+
+`<name>_breath_detail.csv` columns: `breath, time_s, time_mmss, phase, quality, etco2_mmHg, fico2_mmHg, rr_bpm, vt_ml, vte_ml, mv_breath_lpm, period_s, ti_s, te_s, ti_ttot, mean_insp_flow_lpm, phase3_slope_mmHg_s, co2_delay_s, net_flow_lpm`. Ti and Te are the time the flow is above +0.5 and below −0.5 L/min within the breath; the CO2 delay is from the first expiratory sample to where the CO2 crosses half-way from its inspired level to the breath's EtCO2; phase III is the slope over the second half of the time the CO2 is above 80 % of its rise.
 
 ## Exporting
 
@@ -80,7 +118,7 @@ time_s,wall_time_iso,t_ms,seq,v0,v1,v2,v3,co2_mmHg,co2_pct,flow_lpm,pneumo_pa,pn
 - **`period_s`** is the breath's own length (from the start of its inspiration to the start of the next). **`vte_ml`** is its expired volume, which should match `vt_ml` (the inspired volume); a difference means a leak or a drifted pneumotach zero.
 - **Two minute ventilations.** `mv_lpm` is the 60 s average (the monitor used to show it; it now shows each breath's own MV, `mv_breath_lpm` below). The breath's own minute ventilation is `vt_ml / 1000 × 60 / period_s`; the response slope is fitted to that, because an average over the last minute lags the EtCO2 it is paired with. The loaders and the breath export give it as `mv_breath_lpm`.
 - **`# test`** holds how the response is analysed (`responseSkipSec`: the seconds of rebreathing left out of the fit; `calibrationBreaths` and `calibrationSec`: the calibration at the start of rebreathing, see [Ventilatory response](#ventilatory-response)) and the subject's height, weight and age if they were entered (never a name, MRN or date of birth).
-- **`event`** holds alarms (`ALARM_START`, `ALARM_ACKNOWLEDGED`, `ALARM_SILENCED`, `ALARM_RESOLVED`, `ALARM_CLEARED`, `ALARM_REARMED`), markers (`MARK <label>`, and `MARK_RENAMED <id> <label>` when a marker placed with the M key is labelled), breaths found to be isolated jumps one breath later (`BREATH_REJECTED <n> outlier: <reason>`, which overrides that breath's `breath_quality`), breaths taken out of the response fit by hand or put back (`BREATH_EXCLUDED <n> manual`, `BREATH_INCLUDED <n>`), a stale calibration at the start (`CALIBRATION_STALE …`), the valve output (`VALVE BAG`, `VALVE AIR (automatic stop: stop limit)`, `EMERGENCY_STOP`), connections, device errors and calibration changes and simulation speed changes (`SIM_SPEED 5`) on the row where they happened. Several on one row are joined with ` | `. An event while no data was flowing gets a row with only `time_s`, `wall_time_iso` and `event`.
+- **`event`** holds alarms (`ALARM_START`, `ALARM_ACKNOWLEDGED`, `ALARM_SILENCED`, `ALARM_RESOLVED`, `ALARM_CLEARED`, `ALARM_REARMED`), markers (`MARK <label>`, and `MARK_RENAMED <id> <label>` when a marker placed with the M key is labelled), breaths found to be isolated jumps one breath later (`BREATH_REJECTED <n> outlier: <reason>`, which overrides that breath's `breath_quality`), breaths taken out of the response fit by hand or put back (`BREATH_EXCLUDED <n> manual`, `BREATH_INCLUDED <n>`), a replay or the simulator paused and played again (`PAUSED`, `UNPAUSED`), a recording continued from a saved file (`RECORDING_RESUMED from=<file> gap_s=<s> source=<source>`, see [Continuing a recording](#continuing-a-recording-resume)), a stale calibration at the start (`CALIBRATION_STALE …`), the valve output (`VALVE BAG`, `VALVE AIR (automatic stop: stop limit)`, `EMERGENCY_STOP`), connections, device errors and calibration changes and simulation speed changes (`SIM_SPEED 5`) on the row where they happened. Several on one row are joined with ` | `. An event while no data was flowing gets a row with only `time_s`, `wall_time_iso` and `event`.
 - **`time_s`** is seconds since the recording started, from the Arduino's clock, so samples are exactly 1/rate apart. `wall_time_iso` is the same instant on the computer's clock. `t_ms` and `seq` are the raw device clock and 16-bit sequence number (gaps in `seq` are dropped samples). A simulator recording made at a faster simulation speed (2×–10×) says so on its `source` line, e.g. `Simulator (5× speed)`; its `time_s` and `wall_time_iso` follow the simulated clock, so they run that much faster than the real time of day.
 - `v0`–`v2` are the raw ADC volts (CO2, flow, pneumotach), untouched by any noise removal, so the session can be re-processed later with a different calibration or different cleaning. `v3` is the fourth input's volts and `spo2_pct` the oxygen saturation from it; both are empty unless an oximeter is connected (**SpO2 channel connected** in Settings > Display & units), and the header then has a `# spo2,{…}` line with its scaling and alarm limit.
 - The calibrated columns (`co2_mmHg` … `pneumo_lpm`) are the cleaned signal: spikes removed and low-pass filtered, as shown on the monitor. Because the spike filter looks 3 samples ahead, they lag the raw volts by 30 ms at 100 Hz; `time_s` is the time of the raw sample.

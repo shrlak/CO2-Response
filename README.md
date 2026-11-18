@@ -7,13 +7,13 @@ CMU BME 26-27 Capstone Project
 
 CO2-Response is a research capnography and airflow monitor for CO2 rebreathing tests. An Arduino streams the sensors over USB 100 times a second. Two boards are supported, and the app recognises which one is connected:
 
-- **The Uno R4 board (current build, [wiring](docs/wiring.md#uno-r4-board-digital-sensors)):** an Arduino Uno R4 Minima reading a Sensirion **SFM3304-D** flow sensor (I2C) and a GSS **SprintIR-6S-20** CO2 sensor (UART, sidestream with a sample pump), with a stop/marker button, a reed switch on the valve handle, an alarm LED and a buzzer. It sends % CO2 and L/min. One flow sensor gives the flow waveform, the breaths, tidal volume and minute ventilation.
+- **The Uno R4 board (current build, [wiring](docs/wiring.md#uno-r4-board-digital-sensors)):** an Arduino Uno R4 Minima reading a Sensirion **SFM3300-250-D** flow sensor (I2C, ±250 L/min) and a GSS **SprintIR-R-20** CO2 sensor (UART, 50 readings a second, sidestream with a sample pump), behind a USB isolator, with a reed switch on the valve handle, the board's LED as the alarm light, and an optional button and buzzer. These are the parts on the team's purchase list; [the wiring diagram](docs/images/wiring-r4.svg) shows how they all connect. It sends % CO2 and L/min. One flow sensor gives the flow waveform, the breaths, tidal volume and minute ventilation.
 - **The ADC board (earlier build):** an Arduino Uno with an ADS1115 16-bit ADC reading a capnograph, a flow sensor and a pneumotachograph as voltages.
 - **A Medtronic Capnostream 35 as the CO2 source** (with the Uno R4 board): the app reads the monitor's CO2 waveform from its RS-232 or LAN data output and lines it up with the board's flow, in place of the SprintIR. See [docs/capnostream.md](docs/capnostream.md).
 
 The monitor app turns that stream into a bedside-style display:
 
-- sweeping waveforms and large numbers (EtCO2, respiratory rate, live flow, tidal volume, minute ventilation)
+- sweeping waveforms and large numbers (EtCO2, respiratory rate to one decimal, live flow, tidal volume, minute ventilation)
 - trends of EtCO2, MV and RR, and a ventilatory-response plot (each breath's minute ventilation against its EtCO2)
 - keys that run a rebreathing test (baseline, rebreathing, end) and a PDF report of the result
 - visual and audible CO2 alarms, with a warning limit and a stop limit
@@ -111,6 +111,7 @@ The whole monitor is drawn in the terminal, so it works in the terminal panel of
 | `v` | The graph: ventilatory response (the default), EtCO2 trend, MV trend |
 | `k` | Capnostream 35 as the CO2 source: a serial port, simulated, or off |
 | `l` | In text mode: waveforms as a thin smooth line (the default) or a solid filled shape |
+| `p` | Pause or play a replay or the simulator (time stands still: no data, no alarms timing out, the recording carries on afterwards). While replaying, `+` / `-` change the replay's speed (½× to 20×) |
 | `f`, `a`, `h`, `q` | Freeze the waveforms, arm the alarm sound, switch the expected board, quit |
 
 `co2response-tui --situation test_normal --speed 10` starts a whole simulated test straight away, and `co2response-tui --port COM3` (or `/dev/ttyACM0`, `/dev/cu.usbmodem…`) connects to the Arduino.
@@ -173,6 +174,8 @@ python -m co2response --sim
 | `python -m co2response --replay sample-data/synthetic_session.csv` | Replays a recorded session through the monitor. |
 | `python -m co2response --list-ports` | Lists serial ports and exits. |
 | `python -m co2response --report session.csv` | Writes the CO2 response report (`session.pdf`) and exits. `--out` names the file; `--skip 20` changes the seconds of rebreathing left out. |
+| `python -m co2response --analyze session.csv` | The in-depth analysis: prints it and writes `session_analysis.csv` (every number, one per row) and `session_breath_detail.csv` (one row per breath with Ti, Te, Ti/Ttot, the capnogram's phase III slope, the CO2 delay). `--out DIR` picks the folder. |
+| `python -m co2response --resume session.csv --port COM3` | Continues a saved recording: its breaths, markers and test phase go back on the monitor and recording carries on into `session_resumed.csv` (the earlier file is left as it was). Works with `--sim` and `--tui` too. |
 | `python -m co2response --sim --exit-after 12` | Runs for 12 s, prints what the monitor measured and closes: a check that an installation works. |
 | `python -m co2response --tui --sim` | The monitor full-screen in the terminal (the same as `co2response-tui --sim`). Without PySide6 installed, `python -m co2response` opens this by itself. |
 | `python -m co2response --situation test_normal --speed 10` | Starts the simulator in a situation (`--list-situations` lists them) at a speed from 1 to 50. |
@@ -226,14 +229,17 @@ Press **Simulation** (the soft key next to Settings) to open the simulation pane
 
 | Part | Notes |
 | --- | --- |
-| Arduino Uno R4 Minima | USB-C to the computer, through a USB isolator for tests on people |
-| Sensirion SFM3304-D flow sensor | I2C 0x2E at 3.3 V through a BSS138 level shifter; its heater switched by an IRLZ44N (D9) from the 5 V adapter |
-| GSS SprintIR-6S-20 CO2 sensor | UART 9600 baud on D0/D1 at 3.3 V (through the level shifter), 0–20 % CO2, 20 readings a second |
-| 5 V diaphragm sample pump | About 0.2 L/min of sample gas through the SprintIR; IRLZ44N on D10, 1N5819 across the motor |
-| AMS1117-3.3 module, BSS138 4-channel level shifter | The 3V3 rail and the 5 V ↔ 3.3 V logic |
-| Stop/marker button (D2), reed switch + magnet on the valve handle (D3), LED + 330 Ω (D7), active buzzer (D8) | The board reports the button and the valve position, and lights/sounds the app's alarms |
-| 5 V / 2 A wall adapter | The 5V_EXT rail: heater, pump and an optional valve servo (D6) |
-| Mouthpiece, filter with gas port, 3-way valve, rebreathing bag | The breathing circuit |
+| Arduino Uno R4 Minima (ABX00080) | USB-C to the computer, through the USB isolator |
+| Adafruit 2107 USB isolator (ADuM4160 + ADuM5000) | Between the laptop and the Uno, set to Full Speed; its isolated 5 V powers the Uno and the flow sensor only |
+| Sensirion SFM3300-250-D flow sensor | I2C at 5 V straight to SDA/SCL (address 0x40, no level shifter), ±250 L/min, read every 1 ms and averaged per line |
+| GSS SprintIR-R-20 CO2 sensor (CO2meter) | UART 9600 baud on D0/D1 through the BSS138 level shifter (its logic is 3.3 V), 0–20 % CO2, 50 readings a second; powered from 5V_EXT |
+| Adafruit 757 BSS138 4-channel level shifter | 5 V ↔ 3.3 V for the SprintIR-R's UART |
+| ZR370-02PM 4.5 V air pump (Adafruit 4699) + IRLZ44N (×3, Q1 used) | The CO2 sample pump on D10 (PWM duty 140/255 to start, aim for 0.15–0.25 L/min); a flyback diode across it |
+| 0.2 µm PTFE syringe filters (13 mm), P-859 luer-to-barb adapter, silicone tubing | The sample line: port → filter → adapter → SprintIR-R → pump → back to the bag side |
+| Magnetic contact switch (Adafruit 375) on the valve handle (D3) | The board reports the valve position; the board's own LED (D13) shows the alarms. A button (D2) and buzzer (D8) are optional |
+| 5 V / 2 A wall adapter (SparkFun TOL-15312) + 2.1 mm barrel jack (Adafruit 373) | The 5V_EXT rail: the pump and the SprintIR-R. Never to the Uno's 5V or VIN |
+| ½" Sch 40 PVC pipe, ¾×½" reducer bushing, ¾" S×FPT adapters, PTFE tape | The breathing circuit from the flow sensor to the valve |
+| Mouthpiece, 3-way valve, rebreathing bag | From the mentors / the budget increase request |
 | A computer | Any terminal (Windows, macOS, Linux) with Python 3.10+, or the standalone programs |
 
 Firmware: `firmware/CO2ResponseR4/` (Arduino IDE, board "Arduino UNO R4 Minima", no extra libraries; or `pio run -d firmware/r4 -t upload`).
@@ -615,6 +621,9 @@ Every row has the same columns, so it opens directly in Excel, pandas, MATLAB or
 - the response plot, as on the monitor. Click a breath to take it out of the fit (or put it back): the slope, the summary and the report follow, and the choice is written into the file as an event, so it is still there next time and in every export.
 - zoomable EtCO2/RR, VT/MV and waveform charts (drag to zoom all three)
 - the event list; click an event to jump to it
+- the **in-depth analysis**: every number worked out again from the samples. The recording (sample rate, gaps, dropped samples, times resumed), data quality (breaths left out and why, flow at the sensor's limit, CO2 missing), the set-up (the sample line's CO2 delay, the flow bias a sample pump adds, inspired − expired volume), each phase of the test (EtCO2, RR, VT, MV, Ti, Te, Ti/Ttot, mean inspiratory flow, phase III slope, with SDs and CVs), and the response with its 95 % confidence interval, r², x-intercept and how fast EtCO2 rose. **In-depth analysis (.csv)** saves it, with a per-breath table
+- **Replay on the monitor**, with a bar under the waveforms to pause and play (or press P), change the speed (½× to 20×) and stop
+- **Continue recording**: the session goes back on the monitor (breaths, markers, the test phase, the response graph) and recording carries on into `<name>_resumed.csv`, which holds the whole earlier session followed by the new data. The earlier file is not changed. **Settings > Connection > Continue recording a file…** does the same for a CSV from anywhere (another computer, a USB stick), in the desktop app and the browser
 
 **Import.** Besides its own files, the app imports a **LabChart (PowerLab) text export** (`.txt`) that has a flow channel and a CO2 channel, such as CHOP's current recordings. It finds the channels by name and unit, converts the units (mL/s, L/s or L/min; mmHg, % or kPa), turns the flow the right way up, and keeps LabChart comments as markers. The breaths, the response and the report are then worked out by this app, so an old test can be compared with a new one. No real CHOP export was available to test against ([open question 34](docs/open-questions.md)): check the first imported file against LabChart's own numbers.
 

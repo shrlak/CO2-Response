@@ -254,7 +254,7 @@ class SimSettings:
 
 
 def default_hardware() -> str:
-    """The board a new installation expects: 'digital' (the Uno R4 board with the SFM3304-D
+    """The board a new installation expects: 'digital' (the Uno R4 board with the SFM3300-250-D
     and SprintIR sensors) unless the CO2R_HARDWARE environment variable says 'analog'."""
     h = os.environ.get("CO2R_HARDWARE", "").strip().lower()
     return h if h in HARDWARE else "digital"
@@ -264,7 +264,7 @@ def default_hardware() -> str:
 class Settings:
     theme: str = "dark"  # 'dark' | 'light' | 'system'
     #: the board the simulator emulates and a new connection expects until the device
-    #: says what it is: 'digital' (Uno R4, SFM3304-D flow + SprintIR CO2, one flow
+    #: says what it is: 'digital' (Uno R4, SFM3300-250-D flow + SprintIR-R CO2, one flow
     #: waveform) or 'analog' (ADS1115 with a capnograph, a flow sensor and a pneumotach)
     hardware: str = field(default_factory=default_hardware)
     co2_unit: str = "mmHg"  # 'mmHg' | '%'

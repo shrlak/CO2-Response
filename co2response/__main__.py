@@ -6,6 +6,8 @@
     python -m co2response --replay file.csv   # ...and replay a recorded session
     python -m co2response --list-ports        # show serial ports and exit
     python -m co2response --report file.csv   # write the test report (file.pdf) and exit
+    python -m co2response --analyze file.csv  # in-depth analysis: file_analysis.csv + file_breath_detail.csv
+    python -m co2response --resume file.csv --port COM3   # continue recording a saved session
     python -m co2response --tui --sim         # the monitor full-screen in a terminal (also: co2response-tui)
     python -m co2response --fast-test normal  # a whole simulated test in about a second: CSV, PDF and the graph
     python -m co2response --capnostream COM4  # take the CO2 from a Capnostream 35 on COM4 (saved; "off" to stop)
@@ -28,6 +30,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--replay", metavar="CSV", help="replay a recorded session file")
     ap.add_argument("--list-ports", action="store_true", help="list serial ports and exit")
     ap.add_argument("--report", metavar="CSV", help="write the CO2 response report of a recorded session as a PDF and exit")
+    ap.add_argument(
+        "--analyze",
+        metavar="CSV",
+        help="in-depth analysis of a recorded session: print it, write <name>_analysis.csv (every number) and <name>_breath_detail.csv (one row per breath, with Ti, Te, the CO2 delay...) and exit; --out names the folder",
+    )
+    ap.add_argument(
+        "--resume",
+        metavar="CSV",
+        help="put a saved session back on the monitor and keep recording it (a new file <name>_resumed.csv holds it followed by the new data); combine with --port or --sim",
+    )
     ap.add_argument("--out", metavar="FILE", help="where --report (a PDF) or --merge-capno (a session CSV) writes (default: next to the input file)")
     ap.add_argument("--skip", type=float, default=None, metavar="SEC", help="with --report: seconds of rebreathing left out of the fit (default: what the file's header says)")
     ap.add_argument("--tui", action="store_true", help="run the monitor full-screen in this terminal (works in the VS Code terminal and over SSH)")
@@ -35,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--situation", metavar="ID", help="start the simulator in a situation, e.g. test_normal (a whole rebreathing test); --list-situations shows them")
     ap.add_argument("--list-situations", action="store_true", help="list the simulation situations and exit")
     ap.add_argument("--speed", type=float, default=None, metavar="X", help="simulation speed, 1 to 50 times real time")
-    ap.add_argument("--board", choices=("digital", "analog"), help="the board to expect and to simulate: digital = Uno R4 with the SprintIR CO2 and SFM3304-D flow sensors (default); analog = ADS1115 with three analog sensors")
+    ap.add_argument("--board", choices=("digital", "analog"), help="the board to expect and to simulate: digital = Uno R4 with the SprintIR-R CO2 and SFM3300-250-D flow sensors (default); analog = ADS1115 with three analog sensors")
     ap.add_argument("--fast-test", choices=("normal", "blunted", "brisk"), metavar="KIND", help="run a whole simulated rebreathing test (normal, blunted or brisk) with no window as fast as the computer can, save it with its PDF report, print the MV-vs-EtCO2 graph and exit")
     ap.add_argument("--variability", type=float, default=None, metavar="PCT", help="with --fast-test: breath-to-breath variability of VT, %% (default 15)")
     ap.add_argument("--sessions", metavar="DIR", help="with --fast-test: the folder to save the session in (default: the sessions folder)")
@@ -89,6 +101,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.report:
         return report(args.report, args.out, args.skip)
 
+    if args.analyze:
+        return analyze(args.analyze, args.out)
+
     if args.fast_test:
         from .headless import main as fast
 
@@ -127,11 +142,13 @@ def main(argv: list[str] | None = None) -> int:
     if tui:
         from .tui.app import run as run_tui
 
-        return run_tui(sim=args.sim, port=args.port, replay=args.replay, situation=args.situation, speed=args.speed, exit_after=args.exit_after, graphics=args.graphics)
+        return run_tui(
+            sim=args.sim, port=args.port, replay=args.replay, situation=args.situation, speed=args.speed, exit_after=args.exit_after, graphics=args.graphics, resume=args.resume
+        )
 
     from .ui.app import run
 
-    return run(sim=args.sim or bool(args.situation), port=args.port, replay=args.replay, exit_after=args.exit_after, situation=args.situation, speed=args.speed)
+    return run(sim=args.sim or bool(args.situation), port=args.port, replay=args.replay, exit_after=args.exit_after, situation=args.situation, speed=args.speed, resume=args.resume)
 
 
 REPO_URL = "https://github.com/shrlak/CO2-Response"
@@ -321,6 +338,29 @@ def report(csv_path: str, out: str | None = None, skip_sec: float | None = None)
     dest.write_bytes(report_pdf(r))
     print(report_text(r), end="")
     print(f"wrote {dest}")
+    return 0
+
+
+def analyze(csv_path: str, out: str | None = None) -> int:
+    """Print the in-depth analysis of a session file and write it as two CSV files."""
+    from pathlib import Path
+
+    from .storage.analysis import analysis_csv, analysis_text, analyze_session, breath_detail_csv
+    from .storage.session_file import read_session
+
+    src = Path(csv_path)
+    try:
+        a = analyze_session(read_session(src), src.name)
+    except (OSError, ValueError, UnicodeDecodeError) as e:
+        print(f"Could not read {src}: {e}", file=sys.stderr)
+        return 1
+    folder = Path(out) if out else src.parent
+    folder.mkdir(parents=True, exist_ok=True)
+    summary, detail = folder / f"{src.stem}_analysis.csv", folder / f"{src.stem}_breath_detail.csv"
+    summary.write_text(analysis_csv(a), encoding="utf-8", newline="")
+    detail.write_text(breath_detail_csv(a), encoding="utf-8", newline="")
+    print(analysis_text(a), end="")
+    print(f"wrote {summary}\nwrote {detail}")
     return 0
 
 

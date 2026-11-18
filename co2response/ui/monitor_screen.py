@@ -22,7 +22,10 @@ from .alarm_form import AlarmForm
 from .monitor_widgets import NumericTile, SweepWidget
 from .sim_panel import SimPanel
 from .trend import TrendPanel
-from .widgets import button, fmt, hbox, label, mss, scroll_page, set_prop
+from .widgets import Seg, button, fmt, hbox, label, mss, scroll_page, set_prop
+
+#: replay speeds offered on the monitor's replay bar
+REPLAY_BAR_SPEEDS = [(0.5, "½×"), (1, "1×"), (2, "2×"), (5, "5×"), (10, "10×"), (20, "20×")]
 
 
 def capno_note(s: Snapshot, key: str, disp=None, digits: int = 0) -> str:
@@ -37,6 +40,36 @@ def capno_note(s: Snapshot, key: str, disp=None, digits: int = 0) -> str:
 ROW_STRETCH = (130, 100, 100)
 #: with one flow sensor (the Uno R4 board) there is no pneumotach row: EtCO2 and MV on top, taller
 ROW_STRETCH_SINGLE = (155, 100, 0)
+
+
+class ReplayBar(QFrame):
+    """Under the waveforms while a recording is replayed: where it is, pause and play,
+    its speed, and stop."""
+
+    def __init__(self, engine: MonitorEngine) -> None:
+        super().__init__()
+        self.setObjectName("replaybar")
+        self.engine = engine
+        self.text = label("", "muted")
+        self.play = button("Pause", engine.toggle_pause, small=True, tooltip="Pause or play the replay (P)")
+        self.speed = Seg(REPLAY_BAR_SPEEDS, 1)
+        self.speed.changed.connect(lambda v: engine.set_replay_speed(float(v)))
+        self.stop = button("Stop replay", engine.disconnect, small=True)
+        lay = hbox(self.text, 1, label("Speed", "muted"), self.speed, self.play, self.stop, margins=(6, 2, 6, 2))
+        self.setLayout(lay)
+        self._key = None
+
+    def update_from(self, s: Snapshot) -> None:
+        key = (s.paused, s.replay_speed, int(s.replay_pos_s or 0), s.replay_len_s, s.source_label)
+        if key == self._key:
+            return
+        self._key = key
+        pos, length = s.replay_pos_s or 0.0, s.replay_len_s or 0.0
+        state = "PAUSED" if s.paused else "REPLAY"
+        self.text.setText(f"{state} · {mss(pos * 1000)} / {mss(length * 1000)} · {s.source_label}")
+        self.play.setText("▶ Play" if s.paused else "❚❚ Pause")
+        if s.replay_speed is not None:
+            self.speed.set_value(min((v for v, _ in REPLAY_BAR_SPEEDS), key=lambda v: abs(v - s.replay_speed)))
 
 
 class SoftKey(QPushButton):
@@ -277,6 +310,10 @@ class MonitorScreen(QWidget):
         self._single: bool | None = None
         self._layout_flow(engine.single_flow)
 
+        self.replay_bar = ReplayBar(engine)
+        self.replay_bar.hide()
+        outer.addWidget(self.replay_bar)
+
         keys = QHBoxLayout()
         keys.setSpacing(6)
         self.k_silence = SoftKey(engine.toggle_silence)
@@ -284,10 +321,11 @@ class MonitorScreen(QWidget):
         self.k_mark = SoftKey(self.mark)
         self.k_rec = SoftKey(self.toggle_recording.emit)
         self.k_freeze = SoftKey(lambda: engine.set_frozen(not engine.frozen))
+        self.k_pause = SoftKey(engine.toggle_pause)
         self.k_limits = SoftKey(self.show_drawer)
         self.k_sim = SoftKey(self.toggle_sim)
         self.k_settings = SoftKey(lambda: self.open_settings.emit(""))
-        for k in (self.k_silence, self.k_audio, self.k_mark, self.k_rec, self.k_freeze, self.k_limits, self.k_sim, self.k_settings):
+        for k in (self.k_silence, self.k_audio, self.k_mark, self.k_rec, self.k_freeze, self.k_pause, self.k_limits, self.k_sim, self.k_settings):
             keys.addWidget(k, 1)
         outer.addLayout(keys)
 
@@ -431,7 +469,7 @@ class MonitorScreen(QWidget):
             raw=raw("co2"),
         )
         t["rr"].set(
-            fmt(n.rr),
+            fmt(n.rr, 1),
             alarm="high" if apnea else None,
             flash=bool(apnea and not apnea.acknowledged and blink_fast),
             qualifier=(("no breath detected" if n.rr != n.rr and s.status == "connected" else "") + capno_note(s, "rr")).lstrip(" ·"),
@@ -472,6 +510,14 @@ class MonitorScreen(QWidget):
         self.k_mark.set("Mark event", "hotkey M", None, p)
         self.k_rec.set("■ Stop rec" if s.recording.active else "● Record", "finishes the CSV file" if s.recording.active else "one CSV per session", "rec" if s.recording.active else None, p)
         self.k_freeze.set("Unfreeze" if s.frozen else "Freeze", "waveforms only", "active" if s.frozen else None, p)
+        # a replay or the simulator can be paused (time stands still); a live device cannot
+        self.k_pause.setVisible(s.can_pause)
+        if s.can_pause:
+            what = "the replay" if s.source_kind == "replay" else "the simulator"
+            self.k_pause.set("▶ Play" if s.paused else "❚❚ Pause", f"{what} · hotkey P", "active" if s.paused else None, p)
+        self.replay_bar.setVisible(s.source_kind == "replay")
+        if s.source_kind == "replay":
+            self.replay_bar.update_from(s)
         low = f" · low {fmt(disp(a.low_mm_hg), digits)}" if a.low_mm_hg is not None else ""
         stop = f" · stop {fmt(disp(a.stop_mm_hg), digits)}" if a.stop_mm_hg is not None else ""
         self.k_limits.set("Alarm limits", f"{'warn' if stop else 'high'} {fmt(disp(a.high_mm_hg), digits)}{stop}{low}", None, p)

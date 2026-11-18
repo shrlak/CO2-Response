@@ -42,6 +42,24 @@ class ReplaySource(Source):
         return self._i / n if n else 1.0
 
     @property
+    def position_s(self) -> float:
+        """How far into the recording the replay has played, s."""
+        if not self._time_s:
+            return 0.0
+        return float(self._time_s[min(self._i, len(self._time_s) - 1)] - self._time_s[0]) if self._i else 0.0
+
+    @property
+    def length_s(self) -> float:
+        return float(self._time_s[-1] - self._time_s[0]) if self._time_s else 0.0
+
+    def set_speed(self, speed: float) -> None:
+        """Change the speed from here on: the replay carries on from where it is."""
+        now = self._clock()
+        self._t0_device = self._t0_device + (now - self._t0_wall) * 1000 * self.speed
+        self._t0_wall = now
+        self.speed = speed
+
+    @property
     def rate_hz(self) -> int:
         n = self.session.n
         if n < 2:
