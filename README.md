@@ -240,7 +240,7 @@ Press **Simulation** (the soft key next to Settings) to open the simulation pane
 | Magnetic contact switch (Adafruit 375) on the valve handle (D3) | The board reports the valve position; the board's own LED (D13) shows the alarms |
 | 5 V / 2 A wall adapter (SparkFun TOL-15312) + 2.1 mm barrel jack (Adafruit 373) | The 5V_EXT rail: the pump and the SprintIR-R. Never to the Uno's 5V or VIN |
 | ½" Sch 40 PVC pipe, ¾×½" reducer bushing, ¾" S×FPT adapters, PTFE tape | The breathing circuit from the flow sensor to the valve |
-| 3-way valve (¾" PVC), male luer adapters, stopcocks | Purchased: the valve switches between the bag and room air; the luer adapter is the sample port |
+| 3-way valve (¾" PVC) + reducer bushings, luer-to-barb adapters, 3-way luer stopcocks | The valve switches between the bag and room air; a luer adapter is the sample port; the stopcock switches the sample line to room air for zeroing |
 | Mouthpiece, rebreathing bag | From the mentors |
 | A computer | Any terminal (Windows, macOS, Linux) with Python 3.10+, or the standalone programs |
 
@@ -278,12 +278,18 @@ Firmware: `firmware/CO2ResponseR4/` (Arduino IDE, board "Arduino UNO R4 Minima",
 | IRLZ44N MOSFET ×3 | Q1 switches the pump from D10 (PWM). Q2 and Q3 are spare | Q1: gate from D10 through R1 (W16), source to GND (W17), drain to the pump (W18) |
 | 5 V / 2 A wall adapter (SparkFun TOL-15312) + 2.1 mm barrel jack (Adafruit 373) | The **+5V_EXT** supply: the pump (about 0.5 A) and the SprintIR-R | P1 into the jack; jack end pin → +5V_EXT rail (W22), middle pin → GND rail (W23) |
 | Magnetic contact switch (Adafruit 375) | Tells the app where the valve handle is: at the bag the rebreathing phase starts, back at room air the test ends | One lead to D3 (W20), the other to GND (W21); the magnet on the valve handle |
-| 0.2 µm PTFE syringe filters, 13 mm (ChromTech F13-PT020, pack of 100) | Keep moisture and droplets out of the CO2 sensor | T1, in the sample line close to the sample port; change it when it gets wet |
-| P-859 barbed adapter, female luer lock × ⅛" barb | Joins the filter's male luer to the silicone tube | T2 |
-| Silicone tubing, 3 mm ID / 5 mm OD, 1 m (Adafruit 4661) | The sample line | T3–T5 |
+| 3-way luer stopcock | Switches the sample line between the breath and room air (or calibration gas) | T1, right at the sample port |
+| 0.2 µm PTFE syringe filters, 13 mm (ChromTech F13-PT020, pack of 100) | Keep moisture and droplets out of the CO2 sensor | T2, on the stopcock's outlet; change it when it gets wet |
+| P-859 barbed adapter, female luer lock × ⅛" barb | Joins the filter's male luer to the silicone tube | T3 |
+| Silicone tubing, 3 mm ID / 5 mm OD, 1 m (Adafruit 4661) ×2 | The sample line | T4–T6 |
 | ½" Sch 40 PVC pipe, ¾×½" reducer bushings, ¾" S×FPT adapters, PTFE tape | The main breathing circuit from the flow sensor to the valve | The SFM3300's 22 mm socket, the valve's ports |
 
-Everything above is purchased, including the 3-way valve, the male luer adapters and the stopcocks. The mouthpiece and the rebreathing bag come from the mentors; the breadboard, jumper wires, R1 220 Ω, R2 100 kΩ and the D1 flyback diode (1N5819 or 1N4001) from the lab's parts kit. Not being bought: a pulse oximeter and the pediatric items. Not in this build: the stop button, the buzzer and the SFM3300's heater (the firmware runs without them).
+**What is purchased.** Everything above, and everything in the budget increase request except four items that will not be bought: the SparkFun pulse oximeter and heart rate sensor (MAX30101 & MAX32664), the assorted pediatric and infant masks, the pediatric EtCO2 nasal cannulas and the SFM3400-33-D infant flow sensor. From that request:
+
+- In this build: the electronics component kit (R1 220 Ω, R2 100 kΩ, the D1 flyback diode, jumpers, and 4.7 kΩ pull-ups if the flow sensor needs them), the ¾" three-way PVC ball valve, two more ¾×½" reducer bushings (one per valve port), the male and female luer-to-barb adapters (the sample port), the 3-way luer stopcocks (T1: switch the sample line between the breath and room air or calibration gas), a second 1 m of silicone tubing, and the ABS project enclosure for the electronics.
+- Spares and supports: a spare SFM3300-250-D, the Sensirion Gen. 2 evaluation cable (reads a flow sensor straight from the laptop over USB, with Sensirion's software, for bench checks), the tubing stands and holders. The second level shifter and the Qwiic-to-breadboard cable were for the oximeter and are spare.
+
+The mouthpieces, rebreathing bag and main tubing come from the mentors; the calibration syringe, CO2 calibration gas and test lung are borrowed from the PFT lab.
 
 #### Facts from the datasheets
 
@@ -377,11 +383,12 @@ Arduino headers and breadboard holes are both sockets, so use **male-to-male** j
 | — | ½" Sch 40 PVC pipe | Into the SFM3300's 22 mm socket | The pipe is 21.3 mm across: wrap tape until it seals |
 | — | ¾×½" reducer bushing + ¾" S×FPT adapter | Pipe → valve | PTFE tape on every thread |
 | — | 3-way valve | Bag or room air | Requested; the magnet for the reed switch goes on its handle |
-| T1 | 0.2 µm PTFE syringe filter | Sample port → filter (female luer in, male luer out) | Keeps moisture out of the CO2 sensor |
-| T2 | P-859 adapter | Filter's male luer → ⅛" barb | |
-| T3 | Silicone tube | Barb → SprintIR-R flow adaptor, in | Short: every centimetre adds CO2 delay |
-| T4 | Silicone tube | SprintIR-R flow adaptor, out → pump **side** port (inlet) | |
-| T5 | Silicone tube | Pump **end** port (outlet) → the valve's **bag side** | So the closed rebreathing circuit keeps its gas |
+| T1 | 3-way luer stopcock | Sample port → stopcock; its third port is open to room air (or calibration gas) | Handle towards the breath for a test, towards room air to zero the CO2 sensor |
+| T2 | 0.2 µm PTFE syringe filter | Stopcock → filter (female luer in, male luer out) | Keeps moisture out of the CO2 sensor |
+| T3 | P-859 adapter | Filter's male luer → ⅛" barb | |
+| T4 | Silicone tube | Barb → SprintIR-R flow adaptor, in | Short: every centimetre adds CO2 delay |
+| T5 | Silicone tube | SprintIR-R flow adaptor, out → pump **side** port (inlet) | |
+| T6 | Silicone tube | Pump **end** port (outlet) → the valve's **bag side** | So the closed rebreathing circuit keeps its gas |
 
 The pump draws its sample on the subject's side of the flow sensor, so the SFM3300 reads the subject's flow plus the sample flow during inspiration and minus it during expiration. Zeroing the flow with the mouthpiece capped and the pump running removes that (step 6 below).
 
@@ -393,7 +400,7 @@ The pump draws its sample on the subject's side of the flow sensor, so the SFM33
 4. Wire the CO2 sensor through the shifter: W3, W8–W15.
 5. Wire the pump: W16–W19, with D1 across the pump, band to +.
 6. Wire the reed switch: W20, W21. Fix the magnet on the valve handle so it is within 13 mm of the switch at the **bag** position.
-7. Connect the gas path and the sample line (T1–T5).
+7. Connect the gas path and the sample line (T1–T6).
 8. Do **not** plug in P1 or C2 yet.
 
 #### First power-up and checks
@@ -404,7 +411,7 @@ The pump draws its sample on the subject's side of the flow sensor, so the SFM33
 4. **Connect the app:** `python -m co2response` (or the website in Chrome/Edge) → **Connect Arduino (USB)**. The header shows about 100 Hz. **Settings > Connection > Connected device** lists what the board said: `FW 2.1.0`, `BOARD UNO_R4`, `CO2 SPRINTIR-R`, `FLOW SFM3300`, `CO2_MULT 10`, `PUMP_DUTY 140`, and `SFM_SN` (the flow sensor's serial number) when the flow sensor answered at start-up.
 5. **Hardware check:** **Settings > Diagnostics > Hardware check**. A "FLOW SENSOR NOT ANSWERING" alarm means power, the pin order or the pull-ups; "CO2 SENSOR NOT ANSWERING" means TX/RX swapped (W12/W13), the shifter's LV/HV, or VDD.
 6. **Sample flow and flow zero:** cap the mouthpiece. All the pump's flow now goes through the SFM3300, so the flow shown is the sample flow. Aim for about 0.2 L/min: change `PUMP_DUTY` in `config.h`, or send `PUMP 120` (any duty 2–255) from **Settings > Connection**. Still capped, zero the flow in **Settings > Calibration**.
-7. **CO2 zero:** with the pump running, put the sample line in fresh air for a minute, then **Settings > Connection > CO2 sensor zero > Zero in room air** (sends `CO2ZERO AIR`; the SprintIR-R takes it as 400 ppm). With nitrogen from the lab, **Zero in nitrogen**.
+7. **CO2 zero:** with the pump running, turn the stopcock (T1) to room air (fresh air: outside, or a well-ventilated room) for a minute, then **Settings > Connection > CO2 sensor zero > Zero in room air** (sends `CO2ZERO AIR`; the SprintIR-R takes it as 400 ppm). With nitrogen from the lab, **Zero in nitrogen**.
 8. **Valve switch (before recording):** turn the valve to the bag and back. The log says "Valve handle turned to the bag" and "... to room air". Turning it to the bag starts the rebreathing phase and back ends the test, so try it before pressing Record.
 9. **CO2 delay:** record a minute of quiet breathing, open it in **Data & recordings** (or run `co2response --analyze file.csv`), and set **Settings > Processing > CO2 delay** to (the analysis's "CO2 delay after expiration starts" − 0.2 s) × 1000 ms.
 10. **Alarm light:** **Settings > Alarms > Test alarm**. The Arduino's LED lights; close the app and within 3 s the LED flashes (the board's watchdog).
@@ -441,8 +448,8 @@ Commands the app (or **Settings > Connection**) can send: `INFO`, `START`, `STOP
 | "CO2 SENSOR NOT ANSWERING" | W12/W13 swapped; shifter HV and LV swapped; no +5V_EXT (P1 not plugged in); `CO2_BAUD` not 38400 |
 | Flow reads negative when breathing in | The SFM3300 is mounted backwards: turn it round or set `SFM_FLOW_SIGN -1` |
 | Inspired and expired volumes differ, flow not 0 at rest | The pump's draw: zero the flow with the mouthpiece capped and the pump on (step 6) |
-| CO2 rises late against the flow | The sample line's delay: shorten T3, then set the CO2 delay (step 9) |
-| CO2 falls slowly or is noisy | A wet filter (change T1), a kink in the tube, too little sample flow |
+| CO2 rises late against the flow | The sample line's delay: shorten T4, then set the CO2 delay (step 9) |
+| CO2 falls slowly or is noisy | A wet filter (change T2), a kink in the tube, too little sample flow |
 | The pump does not run | Q1 legs in the wrong order; D1 the wrong way round (shorts the pump); no +5V_EXT |
 | The valve phase is never detected | The magnet is too far from the switch (more than 13 mm) at the bag position |
 | The Arduino resets when the pump starts | The pump is on the Arduino's 5 V instead of +5V_EXT |

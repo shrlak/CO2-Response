@@ -91,7 +91,7 @@ text(
     24,
     56,
     "W = wire (numbers match the wire list in docs/wiring.md) · C = USB cable · P = power plug · T = tube or fitting. "
-    "Every part shown is purchased (R1, R2 and D1 from the lab's parts kit). A dot joins a wire to a rail; wires that only cross are not joined.",
+    "Every part shown is purchased (R1, R2 and D1 from the electronics component kit). A dot joins a wire to a rail; wires that only cross are not joined.",
     12,
     fill="#444",
 )
@@ -374,12 +374,13 @@ wire([(1450, my), (1450, my + 47), (1480, my + 47)], "#888", 8)
 
 sy = GY + 190
 samp = [
-    (220, "T1 · 0.2 µm PTFE filter", "13 mm syringe filter: female", "luer in, male luer out"),
-    (470, "T2 · P-859 adapter", "female luer lock → ⅛\" barb", "(onto the filter's male luer)"),
-    (720, "T3 · silicone tube", "3 mm ID / 5 mm OD", "(Adafruit 4661)"),
-    (970, "SprintIR-R flow adaptor", "tube on one barb, out the other", "(check the barb fits 3 mm ID)"),
-    (1220, "T4 · tube → pump SIDE port", "the inlet: 2 mm ID, 4.3 mm OD", "(the pump pulls the sample)"),
-    (1470, "T5 · pump END port → tube", "the outlet: 1 mm ID, 4.3 mm OD", "→ back into the bag side"),
+    (20, "T1 · 3-way luer stopcock", "on the sample port; 3rd port:", "room air / cal gas for the zero"),
+    (260, "T2 · 0.2 µm PTFE filter", "13 mm syringe filter: female", "luer in, male luer out"),
+    (500, "T3 · P-859 adapter", "female luer lock → ⅛\" barb", "(onto the filter's male luer)"),
+    (740, "T4 · silicone tube", "3 mm ID / 5 mm OD", "(Adafruit 4661)"),
+    (980, "SprintIR-R flow adaptor", "tube on one barb, out the other", "(check the barb fits 3 mm ID)"),
+    (1220, "T5 · tube → pump SIDE port", "the inlet: 2 mm ID, 4.3 mm OD", "(the pump pulls the sample)"),
+    (1460, "T6 · pump END port → tube", "the outlet: 1 mm ID, 4.3 mm OD", "→ back into the bag side"),
 ]
 for x, a, b, c in samp:
     box(x, sy - 32, 220, 66, fill="#eef7f2", stroke="#0a7d55")
@@ -401,7 +402,7 @@ def garrow(points):
 
 for i in range(len(samp) - 1):
     garrow([(samp[i][0] + 220, sy), (samp[i + 1][0], sy)])
-garrow([(305, my + 34), (305, sy - 32)])
+garrow([(300, my + 34), (300, sy - 58), (130, sy - 58), (130, sy - 32)])
 garrow([(1580, sy - 32), (1580, sy - 60), (1700, sy - 60), (1700, my - 47), (1650, my - 47)])
 text(1572, sy - 42, "exhaust back into the bag side", 10, "end", fill="#0a7d55")
 
@@ -413,7 +414,7 @@ items = [
     ("5v", "+5V from the Arduino (W1, W7, W8)"),
     ("ext", "+5V_EXT, wall adapter (W15, W19, W22)"),
     ("3v3", "3V3 reference (W3)"),
-    ("gnd", "ground (W2, W6, W9, W14, W17, W23)"),
+    ("gnd", "ground (W2, W6, W9, W14, W17, W23; W24 joins the two GND rails)"),
     ("sda", "I2C SDA (W5)"),
     ("scl", "I2C SCL (W4)"),
     ("tx", "Arduino TX → sensor Rx_In (W10, W12)"),

@@ -111,17 +111,18 @@ Adafruit's page lists a Micro USB and a USB-A connector on the isolator without 
 | W23 | Barrel jack **middle pin** (−) | GND rail | black | The **side pin** (switch) stays unconnected |
 | W24 | − rail, a side | − rail, j side | black | Joins the two GND rails; the pump's current returns through it |
 
-If the SFM3300 does not answer, the fix is two 4.7 kΩ pull-ups from the lab's parts kit: SDA → +5V rail and SCL → +5V rail (the Uno R4 Minima has none of its own). The Uno R4 Minima allows at most 8 mA per pin, which every signal here stays under; the pump's 0.5 A goes through Q1, never through a pin.
+If the SFM3300 does not answer, the fix is two 4.7 kΩ pull-ups from the electronics component kit: SDA → +5V rail and SCL → +5V rail (the Uno R4 Minima has none of its own). The Uno R4 Minima allows at most 8 mA per pin, which every signal here stays under; the pump's 0.5 A goes through Q1, never through a pin.
 
 **Tubes and fittings**
 
 | # | Part | Fits |
 | --- | --- | --- |
-| T1 | 0.2 µm PTFE syringe filter (13 mm) | Female luer in from the sample port, male luer out |
-| T2 | P-859 adapter, female luer lock × ⅛" barb | Onto the filter's male luer; the barb takes the 3 mm silicone tube |
-| T3 | Silicone tube, 3 mm ID / 5 mm OD (Adafruit 4661) | Adapter → SprintIR-R flow adaptor |
-| T4 | Silicone tube | SprintIR-R flow adaptor → the pump's **side** port (its inlet: 2 mm ID, 4.3 mm OD) |
-| T5 | Silicone tube | The pump's **end** port (its outlet: 1 mm ID, 4.3 mm OD) → back into the valve's bag side |
+| T1 | 3-way luer stopcock | On the sample port; its third port open to room air (or calibration gas). Handle to the breath for a test, to room air to zero |
+| T2 | 0.2 µm PTFE syringe filter (13 mm) | Female luer in from the stopcock, male luer out |
+| T3 | P-859 adapter, female luer lock × ⅛" barb | Onto the filter's male luer; the barb takes the 3 mm silicone tube |
+| T4 | Silicone tube, 3 mm ID / 5 mm OD (Adafruit 4661) | Adapter → SprintIR-R flow adaptor |
+| T5 | Silicone tube | SprintIR-R flow adaptor → the pump's **side** port (its inlet: 2 mm ID, 4.3 mm OD) |
+| T6 | Silicone tube | The pump's **end** port (its outlet: 1 mm ID, 4.3 mm OD) → back into the valve's bag side |
 
 ### The parts, and what each one does
 
@@ -141,7 +142,12 @@ If the SFM3300 does not answer, the fix is two 4.7 kΩ pull-ups from the lab's p
 | P-859 barbed adapter, female luer lock × ⅛" barb | Joins the filter's male luer to the silicone tubing | |
 | ½" Sch 40 PVC pipe, ¾×½" reducer bushing, ¾" S×FPT adapters, PTFE tape | The main breathing circuit from the flow sensor to the valve | PTFE tape on every thread |
 
-Everything above is purchased, including the 3-way valve, the male luer adapters and the stopcocks. The mouthpiece and the rebreathing bag come from the mentors; the breadboard, jumper wires, R1 220 Ω, R2 100 kΩ and the D1 flyback diode (1N5819 or 1N4001) from the lab's parts kit. Not being bought: a pulse oximeter and the pediatric items. Not in this build: the stop button, the buzzer and the SFM3300's heater (the firmware runs without them).
+**What is purchased.** Everything above, and everything in the budget increase request except four items that will not be bought: the SparkFun pulse oximeter and heart rate sensor (MAX30101 & MAX32664), the assorted pediatric and infant masks, the pediatric EtCO2 nasal cannulas and the SFM3400-33-D infant flow sensor. From that request:
+
+- In this build: the electronics component kit (R1 220 Ω, R2 100 kΩ, the D1 flyback diode, jumpers, and 4.7 kΩ pull-ups if the flow sensor needs them), the ¾" three-way PVC ball valve, two more ¾×½" reducer bushings (one per valve port), the male and female luer-to-barb adapters (the sample port), the 3-way luer stopcocks (T1: switch the sample line between the breath and room air or calibration gas), a second 1 m of silicone tubing, and the ABS project enclosure for the electronics.
+- Spares and supports: a spare SFM3300-250-D, the Sensirion Gen. 2 evaluation cable (reads a flow sensor straight from the laptop over USB, with Sensirion's software, for bench checks), the tubing stands and holders. The second level shifter and the Qwiic-to-breadboard cable were for the oximeter and are spare.
+
+The mouthpieces, rebreathing bag and main tubing come from the mentors; the calibration syringe, CO2 calibration gas and test lung are borrowed from the PFT lab.
 
 ### Pin by pin
 
@@ -166,7 +172,7 @@ flowchart LR
     S[Subject + mouthpiece] --- P[Sample port, luer on ½ in. PVC] --- SFM[SFM3300-250-D] --- PIPE[½ in. pipe, ¾×½ bushing, ¾ in. adapter] --- V[3-way valve + magnet / reed switch]
     V --- BAG[Rebreathing bag]
     V --- AIR[Room air]
-    P -. sample line .-> FIL[0.2 µm PTFE filter] -.-> AD[P-859 luer-barb] -.-> CO2[SprintIR-R flow cell] -.-> PUMP[ZR370 pump] -. exhaust .-> V
+    P -. sample line .-> SC[3-way luer stopcock; 3rd port: room air / cal gas] -.-> FIL[0.2 µm PTFE filter] -.-> AD[P-859 luer-barb] -.-> CO2[SprintIR-R flow cell] -.-> PUMP[ZR370 pump] -. exhaust .-> V
 ```
 
 - **Sample port between the mouthpiece and the flow sensor**, as close to the mouth as possible, so the CO2 is the subject's breath and not the circuit's.
@@ -188,7 +194,7 @@ The sample line makes the CO2 arrive later than the flow: roughly the tubing's v
 
 ### Zeroing the CO2 sensor
 
-With the pump running, put the sample line in fresh air (outside air, or a well-ventilated room) for a minute, then press **Settings > Connection > CO2 sensor zero > Zero in room air** (it sends `CO2ZERO AIR`; the SprintIR-R takes that gas as 400 ppm). With nitrogen from the lab, use **Zero in nitrogen**. A calibration gas from the PFT lab can then check the gain (**Settings > Calibration**).
+With the pump running, turn the stopcock (T1) to room air (fresh air: outside, or a well-ventilated room) for a minute, then press **Settings > Connection > CO2 sensor zero > Zero in room air** (it sends `CO2ZERO AIR`; the SprintIR-R takes that gas as 400 ppm). With nitrogen from the lab, use **Zero in nitrogen**. A calibration gas from the PFT lab can then check the gain (**Settings > Calibration**).
 
 Software settings for this board are in `firmware/CO2ResponseR4/config.h` (pins, the flow sensor's sign, the flow averaging, the pump duty, the CO2 sensor's filter choice). Build and upload with the Arduino IDE (board "Arduino UNO R4 Minima", no extra libraries) or `pio run -d firmware/r4 -t upload`. The protocol differences are in [protocol.md](protocol.md#the-uno-r4-board-digital-sensors).
 

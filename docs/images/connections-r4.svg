@@ -2,7 +2,7 @@
 <title>CO2-Response: every connection of the Uno R4 board</title>
 <rect x="0" y="0" width="1720" height="1230" fill="#ffffff"/>
 <text x="24" y="34" font-size="20" text-anchor="start" font-weight="bold" fill="#111">CO2-Response · every connection, pin by pin (Uno R4 board, parts as ordered)</text>
-<text x="24" y="56" font-size="12" text-anchor="start" font-weight="normal" fill="#444">W = wire (numbers match the wire list in docs/wiring.md) · C = USB cable · P = power plug · T = tube or fitting. Every part shown is purchased (R1, R2 and D1 from the lab's parts kit). A dot joins a wire to a rail; wires that only cross are not joined.</text>
+<text x="24" y="56" font-size="12" text-anchor="start" font-weight="normal" fill="#444">W = wire (numbers match the wire list in docs/wiring.md) · C = USB cable · P = power plug · T = tube or fitting. Every part shown is purchased (R1, R2 and D1 from the electronics component kit). A dot joins a wire to a rail; wires that only cross are not joined.</text>
 <rect x="320" y="288" width="1388" height="56" rx="4" fill="#f6f2e8" stroke="#c8bfa6" stroke-width="1.2"/>
 <path d="M330 300 L1700 300" fill="none" stroke="#ff7f0e" stroke-width="3.4" stroke-linejoin="round"/>
 <path d="M330 316 L1700 316" fill="none" stroke="#d62728" stroke-width="3.4" stroke-linejoin="round"/>
@@ -329,42 +329,48 @@
 <text x="1492" y="924" font-size="11" text-anchor="start" font-weight="bold" fill="#111">Room air</text>
 <path d="M1420 872 L1450 872 L1450 825 L1480 825" fill="none" stroke="#888" stroke-width="8" stroke-linejoin="round"/>
 <path d="M1450 872 L1450 919 L1480 919" fill="none" stroke="#888" stroke-width="8" stroke-linejoin="round"/>
-<rect x="220" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
-<text x="228" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T1 · 0.2 µm PTFE filter</text>
-<text x="228" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">13 mm syringe filter: female</text>
-<text x="228" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">luer in, male luer out</text>
-<rect x="470" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
-<text x="478" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T2 · P-859 adapter</text>
-<text x="478" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">female luer lock → ⅛" barb</text>
-<text x="478" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">(onto the filter's male luer)</text>
-<rect x="720" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
-<text x="728" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T3 · silicone tube</text>
-<text x="728" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">3 mm ID / 5 mm OD</text>
-<text x="728" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">(Adafruit 4661)</text>
-<rect x="970" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
-<text x="978" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">SprintIR-R flow adaptor</text>
-<text x="978" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">tube on one barb, out the other</text>
-<text x="978" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">(check the barb fits 3 mm ID)</text>
+<rect x="20" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="28" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T1 · 3-way luer stopcock</text>
+<text x="28" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">on the sample port; 3rd port:</text>
+<text x="28" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">room air / cal gas for the zero</text>
+<rect x="260" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="268" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T2 · 0.2 µm PTFE filter</text>
+<text x="268" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">13 mm syringe filter: female</text>
+<text x="268" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">luer in, male luer out</text>
+<rect x="500" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="508" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T3 · P-859 adapter</text>
+<text x="508" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">female luer lock → ⅛" barb</text>
+<text x="508" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">(onto the filter's male luer)</text>
+<rect x="740" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="748" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T4 · silicone tube</text>
+<text x="748" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">3 mm ID / 5 mm OD</text>
+<text x="748" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">(Adafruit 4661)</text>
+<rect x="980" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="988" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">SprintIR-R flow adaptor</text>
+<text x="988" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">tube on one barb, out the other</text>
+<text x="988" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">(check the barb fits 3 mm ID)</text>
 <rect x="1220" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
-<text x="1228" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T4 · tube → pump SIDE port</text>
+<text x="1228" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T5 · tube → pump SIDE port</text>
 <text x="1228" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">the inlet: 2 mm ID, 4.3 mm OD</text>
 <text x="1228" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">(the pump pulls the sample)</text>
-<rect x="1470" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
-<text x="1478" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T5 · pump END port → tube</text>
-<text x="1478" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">the outlet: 1 mm ID, 4.3 mm OD</text>
-<text x="1478" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">→ back into the bag side</text>
-<path d="M440 1010 L470 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
-<path d="M460 1004 L470 1010 L460 1016 Z" fill="#0a7d55"/>
-<path d="M690 1010 L720 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
-<path d="M710 1004 L720 1010 L710 1016 Z" fill="#0a7d55"/>
-<path d="M940 1010 L970 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
-<path d="M960 1004 L970 1010 L960 1016 Z" fill="#0a7d55"/>
-<path d="M1190 1010 L1220 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<rect x="1460" y="978" width="220" height="66" rx="6" fill="#eef7f2" stroke="#0a7d55" stroke-width="1.6"/>
+<text x="1468" y="998" font-size="11" text-anchor="start" font-weight="bold" fill="#111">T6 · pump END port → tube</text>
+<text x="1468" y="1014" font-size="10" text-anchor="start" font-weight="normal" fill="#444">the outlet: 1 mm ID, 4.3 mm OD</text>
+<text x="1468" y="1028" font-size="10" text-anchor="start" font-weight="normal" fill="#444">→ back into the bag side</text>
+<path d="M240 1010 L260 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M250 1004 L260 1010 L250 1016 Z" fill="#0a7d55"/>
+<path d="M480 1010 L500 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M490 1004 L500 1010 L490 1016 Z" fill="#0a7d55"/>
+<path d="M720 1010 L740 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M730 1004 L740 1010 L730 1016 Z" fill="#0a7d55"/>
+<path d="M960 1010 L980 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M970 1004 L980 1010 L970 1016 Z" fill="#0a7d55"/>
+<path d="M1200 1010 L1220 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
 <path d="M1210 1004 L1220 1010 L1210 1016 Z" fill="#0a7d55"/>
-<path d="M1440 1010 L1470 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
-<path d="M1460 1004 L1470 1010 L1460 1016 Z" fill="#0a7d55"/>
-<path d="M305 906 L305 978" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
-<path d="M299 968 L305 978 L311 968 Z" fill="#0a7d55"/>
+<path d="M1440 1010 L1460 1010" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M1450 1004 L1460 1010 L1450 1016 Z" fill="#0a7d55"/>
+<path d="M300 906 L300 952 L130 952 L130 978" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
+<path d="M124 968 L130 978 L136 968 Z" fill="#0a7d55"/>
 <path d="M1580 978 L1580 950 L1700 950 L1700 825 L1650 825" fill="none" stroke="#0a7d55" stroke-width="3" stroke-linejoin="round"/>
 <path d="M1660 819 L1650 825 L1660 831 Z" fill="#0a7d55"/>
 <text x="1572" y="968" font-size="10" text-anchor="end" font-weight="normal" fill="#0a7d55">exhaust back into the bag side</text>
@@ -377,7 +383,7 @@
 <path d="M874 1132 L908 1132" fill="none" stroke="#9467bd" stroke-width="3.4" stroke-linejoin="round"/>
 <text x="916" y="1136" font-size="11" text-anchor="start" font-weight="normal" fill="#111">3V3 reference (W3)</text>
 <path d="M1294 1132 L1328 1132" fill="none" stroke="#111111" stroke-width="3.4" stroke-linejoin="round"/>
-<text x="1336" y="1136" font-size="11" text-anchor="start" font-weight="normal" fill="#111">ground (W2, W6, W9, W14, W17, W23)</text>
+<text x="1336" y="1136" font-size="11" text-anchor="start" font-weight="normal" fill="#111">ground (W2, W6, W9, W14, W17, W23; W24 joins the two GND rails)</text>
 <path d="M34 1156 L68 1156" fill="none" stroke="#1f77b4" stroke-width="3.4" stroke-linejoin="round"/>
 <text x="76" y="1160" font-size="11" text-anchor="start" font-weight="normal" fill="#111">I2C SDA (W5)</text>
 <path d="M454 1156 L488 1156" fill="none" stroke="#bcbd22" stroke-width="3.4" stroke-linejoin="round"/>

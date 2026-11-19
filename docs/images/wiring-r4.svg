@@ -197,7 +197,7 @@
 
   <rect x="160" y="736" width="110" height="48" class="box"/>
   <text x="215" y="756" text-anchor="middle" class="t b">Sample port</text>
-  <text x="215" y="772" text-anchor="middle" class="s">male luer adapter</text>
+  <text x="215" y="772" text-anchor="middle" class="s">luer + stopcock</text>
 
   <rect x="320" y="728" width="190" height="64" class="sens" rx="8"/>
   <text x="415" y="752" text-anchor="middle" class="t b">SFM3300-250-D</text>
