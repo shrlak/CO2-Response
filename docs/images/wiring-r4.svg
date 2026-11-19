@@ -31,7 +31,8 @@
   </style>
   <rect x="0" y="0" width="1280" height="1060" fill="#ffffff"/>
   <text x="24" y="34" class="h">CO2-Response · Uno R4 board, wired with the parts the team ordered</text>
-  <text x="24" y="54" class="s">Solid boxes: on the purchase list. Dashed boxes: not ordered yet (requested, or from the lab). Net flags (5V, 5V_EXT, ⏚) join wherever they appear.</text>
+  <text x="24" y="54" class="s">Solid boxes: purchased. Dashed boxes: from the mentors (mouthpiece, bag), or room air. Net flags (5V, 5V_EXT, ⏚) join wherever they appear.</text>
+  <text x="24" y="69" class="s" fill="#c0392b">Not in the purchase documents: the USB cables C1 and C2, the breadboard and jumpers; R1, R2 and the diode only as the electronics component kit.</text>
 
   <!-- ===================== A. ELECTRICAL ===================== -->
   <text x="24" y="86" class="h" style="font-size:15px">A · Electrical</text>
@@ -56,7 +57,7 @@
   <text x="119" y="366" text-anchor="middle" class="s" fill="#c0392b">isolation barrier</text>
   <text x="119" y="380" text-anchor="middle" class="s">Micro-B: computer · USB-A: Uno</text>
   <text x="119" y="394" text-anchor="middle" class="s">≤100 mA isolated power:</text>
-  <text x="119" y="408" text-anchor="middle" class="s">the Uno + SFM3300 only</text>
+  <text x="119" y="408" text-anchor="middle" class="s">the Uno only</text>
   <path d="M204 318 H300" class="usb"/>
   <text x="252" y="308" text-anchor="middle" class="s">USB-C</text>
 
@@ -66,8 +67,6 @@
   <text x="430" y="139" text-anchor="middle" class="s">5 V logic · firmware/CO2ResponseR4</text>
   <text x="312" y="322" class="pin">USB-C</text>
   <g text-anchor="end">
-    <text x="552" y="164" class="pin">SDA</text>
-    <text x="552" y="189" class="pin">SCL</text>
     <text x="552" y="214" class="pin">5V</text>
     <text x="552" y="239" class="pin">GND</text>
     <text x="552" y="274" class="pin">3V3</text>
@@ -75,24 +74,21 @@
     <text x="552" y="354" class="pin">D0 (RX1)</text>
     <text x="552" y="454" class="pin">D10 (PWM)</text>
     <text x="552" y="534" class="pin">D3</text>
-    <text x="552" y="564" class="pin">D2 · D8</text>
     <text x="552" y="594" class="pin">D13 LED</text>
   </g>
   <text x="314" y="594" class="s">built-in LED = alarm LED</text>
 
-  <!-- SFM3300 (I2C, 5 V, direct) -->
-  <rect x="770" y="140" width="210" height="112" class="sens" rx="8"/>
+  <!-- SFM3300: clipped into Sensirion's evaluation cable, straight to the laptop (not through the isolator) -->
+  <rect x="770" y="140" width="210" height="96" class="sens" rx="8"/>
   <text x="875" y="122" text-anchor="middle" class="t b">Sensirion SFM3300-250-D</text>
-  <text x="875" y="134" text-anchor="middle" class="s">flow ±250 L/min · I2C 0x40 · 5 V</text>
-  <g class="pin"><text x="778" y="164">SDA</text><text x="778" y="189">SCL</text><text x="778" y="214">VDD</text><text x="778" y="239">GND</text></g>
-  <text x="900" y="200" text-anchor="middle" class="s">4-wire lead</text><text x="900" y="214" text-anchor="middle" class="s">(pin order: Sensirion's</text><text x="900" y="228" text-anchor="middle" class="s">connector note)</text>
-  <path d="M560 160 H770" class="wi"/><path d="M560 185 H770" class="wi"/>
-  <path d="M560 210 H770" class="w5"/><path d="M560 235 H770" class="wg"/>
-  <text x="665" y="155" text-anchor="middle" class="lbl" fill="#1f77b4">SDA</text>
-  <text x="665" y="180" text-anchor="middle" class="lbl" fill="#1f77b4">SCL (no shifter: both 5 V)</text>
-  <text x="700" y="205" text-anchor="middle" class="lbl" fill="#d62728">5V</text>
-  <text x="700" y="230" text-anchor="middle" class="lbl">GND</text>
-  <text x="620" y="128" class="s">4.7 kΩ pull-ups SDA, SCL → 5V</text>
+  <text x="875" y="134" text-anchor="middle" class="s">flow ±250 L/min · in the breathing circuit</text>
+  <text x="875" y="166" text-anchor="middle" class="s">clipped into Sensirion's</text>
+  <text x="875" y="180" text-anchor="middle" class="s">evaluation cable (Gen. 2):</text>
+  <text x="875" y="194" text-anchor="middle" class="s">flow over USB to the laptop;</text>
+  <text x="875" y="208" text-anchor="middle" class="s">no wires to the Arduino</text>
+  <path d="M770 188 H590 V92 H222 V132 H204" class="usb"/>
+  <text x="232" y="87" class="s" fill="#c0392b">C3 evaluation cable → laptop USB, not through the isolator: laptop on battery with a subject</text>
+  <path d="M560 235 H585 V246" class="wg"/><use href="#gnd" x="585" y="246"/>
 
   <!-- level shifter -->
   <rect x="660" y="282" width="190" height="104" class="box"/>
@@ -101,7 +97,7 @@
   <g class="pin" text-anchor="end"><text x="842" y="304">LV</text><text x="842" y="324">A1</text><text x="842" y="354">A2</text><text x="842" y="378">GND</text></g>
   <text x="755" y="340" text-anchor="middle" class="s">5 V ↔ 3.3 V</text>
   <!-- 5V to HV -->
-  <path d="M600 210 V300 H660" class="w5"/><circle cx="600" cy="210" r="4" fill="#d62728"/>
+  <path d="M560 210 H600 V300 H660" class="w5"/>
   <!-- 3V3 to LV -->
   <path d="M560 270 H620 V258 H884 V300 H850" class="w33"/>
   <text x="630" y="253" class="lbl" fill="#9467bd">3V3 → LV</text>
@@ -167,12 +163,6 @@
   <path d="M900 532 H930 V546" class="wg"/><use href="#gnd" x="930" y="546"/>
   <text x="610" y="524" class="s">INPUT_PULLUP</text>
 
-  <!-- optional -->
-  <path d="M560 560 H700" class="ws" stroke-dasharray="6 4"/>
-  <rect x="700" y="562" width="270" height="40" class="pend" rx="8"/>
-  <text x="835" y="580" text-anchor="middle" class="t">optional: stop/marker button D2 · buzzer D8</text>
-  <text x="835" y="595" text-anchor="middle" class="s">each to ⏚ (from the electronics kit)</text>
-
   <!-- legend -->
   <g transform="translate(34,424)">
     <rect x="0" y="0" width="230" height="196" fill="#fafafa" stroke="#ccc" rx="6"/>
@@ -181,7 +171,7 @@
     <path d="M10 54 H40" class="wx"/><text x="48" y="58" class="s">5V_EXT (wall adapter)</text>
     <path d="M10 74 H40" class="w33"/><text x="48" y="78" class="s">3V3 from the Uno</text>
     <path d="M10 94 H40" class="wg"/><text x="48" y="98" class="s">GND (one common ground)</text>
-    <path d="M10 114 H40" class="wi"/><text x="48" y="118" class="s">I2C (flow)</text>
+    <path d="M10 114 H40" class="usb"/><text x="48" y="118" class="s">USB cables (C1–C3)</text>
     <path d="M10 134 H40" class="wu"/><text x="48" y="138" class="s">UART (CO2)</text>
     <path d="M10 154 H40" class="wp"/><text x="48" y="158" class="s">PWM gate (pump)</text>
     <path d="M10 174 H40" class="ws"/><text x="48" y="178" class="s">switch input</text>
@@ -204,7 +194,7 @@
 
   <rect x="160" y="736" width="110" height="48" class="box"/>
   <text x="215" y="756" text-anchor="middle" class="t b">Sample port</text>
-  <text x="215" y="772" text-anchor="middle" class="s">luer (requested)</text>
+  <text x="215" y="772" text-anchor="middle" class="s">luer + stopcock</text>
 
   <rect x="320" y="728" width="190" height="64" class="sens" rx="8"/>
   <text x="415" y="752" text-anchor="middle" class="t b">SFM3300-250-D</text>
@@ -220,9 +210,9 @@
   <text x="815" y="764" text-anchor="middle" class="s">+ ¾" S×FPT adapter</text>
   <text x="815" y="779" text-anchor="middle" class="s">PTFE tape on the threads</text>
 
-  <rect x="930" y="728" width="130" height="64" class="pend" rx="8"/>
+  <rect x="930" y="728" width="130" height="64" class="box"/>
   <text x="995" y="748" text-anchor="middle" class="t b">3-way valve</text>
-  <text x="995" y="764" text-anchor="middle" class="s">¾" PVC (requested)</text>
+  <text x="995" y="764" text-anchor="middle" class="s">¾" PVC</text>
   <text x="995" y="779" text-anchor="middle" class="s">magnet → reed D3</text>
 
   <rect x="1110" y="700" width="140" height="40" class="pend" rx="8"/>
@@ -263,5 +253,5 @@
   <text x="36" y="992" class="s">1. Sample flow and flow zero: cap the mouthpiece with the pump on. All the pump's flow then goes through the SFM3300, so the flow it shows is the sample flow (aim for 0.15–0.25 L/min:</text>
   <text x="50" y="1006" class="s">change PUMP_DUTY or send "PUMP 120"). Zero the flow there: the pump's draw is removed from every breath. The in-depth analysis reports any flow bias left.</text>
   <text x="36" y="1024" class="s">2. CO2 delay: the sample line makes the CO2 lag the flow. The in-depth analysis measures it from a recording; put (that − 0.2 s) into Settings › Processing › CO2 delay.</text>
-  <text x="36" y="1040" class="s">3. CO2 zero: sample line in fresh air for a minute, pump on, then Settings › Connection › Zero in room air (sends CO2ZERO AIR to the SprintIR-R).</text>
+  <text x="36" y="1040" class="s">3. CO2 zero: turn the sample-line stopcock to room air for a minute, pump on, then Settings › Connection › Zero in room air (sends CO2ZERO AIR to the SprintIR-R).</text>
 </svg>

@@ -91,7 +91,7 @@ text(
     24,
     56,
     "W = wire (numbers match the wire list in docs/wiring.md) · C = USB cable · P = power plug · T = tube or fitting. "
-    "Dashed = optional or not bought yet. A dot joins a wire to a rail; wires that only cross are not joined.",
+    "Not in the purchase documents: the breadboard, jumper wires, USB cables C1 and C2; R1, R2, D1 only as the component kit. A dot joins a wire to a rail.",
     12,
     fill="#444",
 )
@@ -141,7 +141,6 @@ for name, x in BX.items():
 text(AX + 270, AY + 160, "Arduino UNO R4 Minima", 18, "middle", "bold")
 text(AX + 270, AY + 180, "top view · 5 V logic · max 8 mA per pin", 12, "middle", fill="#444")
 text(AX + 270, AY + 198, "built-in LED on D13 = the alarm light (nothing to wire)", 11, "middle", fill="#444")
-text(AX + 270, AY + 216, "D2, D8, D9: optional (box on the right)", 11, "middle", fill="#888")
 box(AX - 14, AY + 30, 30, 34, fill="#bbb", stroke="#555", r=3)
 text(AX + 22, AY + 52, "USB-C", 11, weight="bold", fill="#00585e")
 text(BX["BOOT"] - 10, BOT_Y + 26, "power header", 10, fill="#555")
@@ -165,7 +164,7 @@ text(68, 472, "computer side", 9, "middle", fill="#444")
 text(172, 458, "USB-A socket", 11, "middle", "bold", "#00585e")
 text(172, 472, "device side", 9, "middle", fill="#444")
 text(120, 514, "isolation barrier", 10, "middle", fill="#c0392b")
-text(120, 530, "≤100 mA: Uno + SFM3300 only", 10, "middle", fill="#444")
+text(120, 530, "≤100 mA: the Uno only", 10, "middle", fill="#444")
 wire([(220, AY + 47), (AX - 14, AY + 47)], "#555", 7)
 text(228, AY + 22, "C2", 12, weight="bold")
 text(228, AY + 36, "USB-A → USB-C", 10, weight="bold")
@@ -174,28 +173,20 @@ text(20, 560, "Check the board's markings for the", 10, fill="#666")
 text(20, 573, "computer side before plugging in.", 10, fill="#666")
 text(20, 586, "Use data cables, not charge-only ones.", 10, fill="#666")
 
-# ------------------------------------------------------------------ SFM3300 (top left)
+# ------------------------------------------------------------------ SFM3300 (top left): through Sensirion's evaluation cable, to the laptop
 SFX = 360
 box(SFX, 96, 250, 92, fill="#fff6e6", stroke="#b36b00")
 text(SFX + 125, 118, "Sensirion SFM3300-250-D", 13, "middle", "bold")
-text(SFX + 125, 134, "I2C 0x40 · VDD 5 V ±5% · <50 mW", 11, "middle", fill="#444")
-text(SFX + 125, 149, "4-wire lead: pin order from Sensirion's", 10, "middle", fill="#444")
-text(SFX + 125, 162, "connector note or your cable's label", 10, "middle", fill="#444")
-S_Y = 188
-SFM = {"SCL": TX["SCL"], "SDA": TX["SDA"], "GND": TX["GND"], "VDD": 560}
-for k, x in SFM.items():
-    pin(x, S_Y)
-    text(x, S_Y - 9, k, 9, "middle", "bold", "#00585e")
-wire([(SFM["SCL"], S_Y), (TX["SCL"], TOP_Y)], COL["scl"])
-tag(SFM["SCL"], 236, 4, COL["scl"])
-wire([(SFM["SDA"], S_Y), (TX["SDA"], TOP_Y)], COL["sda"])
-tag(SFM["SDA"], 376, 5, COL["sda"])
-wire([(SFM["GND"], S_Y), (TX["GND"], TOP_Y)], COL["gnd"])
-tag(SFM["GND"], 236, 6, COL["gnd"])
-wire([(SFM["VDD"], S_Y), (SFM["VDD"], RAIL["5v"])], COL["5v"])
-dot(SFM["VDD"], RAIL["5v"], COL["5v"])
-tag(SFM["VDD"], 236, 7, COL["5v"])
-text(SFX, 84, "optional 4.7 kΩ pull-ups R3, R4: SDA → +5V, SCL → +5V", 10, fill="#666")
+text(SFX + 125, 134, "in the breathing circuit · no wires to the board", 11, "middle", fill="#444")
+text(SFX + 125, 149, "clipped into Sensirion's evaluation cable", 10, "middle", fill="#444")
+text(SFX + 125, 162, "(SEK-SFM3xxx-AW/D Gen. 2): flow over USB", 10, "middle", fill="#444")
+wire([(SFX, 142), (120, 142), (120, 250)], "#555", 7)
+text(130, 166, "C3", 12, weight="bold")
+text(130, 180, "evaluation cable → laptop USB", 10, weight="bold")
+text(130, 194, "NOT through the isolator:", 10, weight="bold", fill="#c0392b")
+text(130, 207, "laptop on battery with a subject", 10, fill="#c0392b")
+text(130, 222, "its cap's pressure port: short tube to a stopcock", 10, fill="#444")
+text(130, 235, "at the sample port (airway pressure, recorded as v2)", 10, fill="#444")
 
 # ------------------------------------------------------------------ SprintIR-R and the level shifter (top middle)
 A1, A2, LG, LV = TX["D1/TX"], TX["D0/RX"], TX["D0/RX"] + 22, TX["D0/RX"] + 66
@@ -222,23 +213,23 @@ text(A1 - 30, LS_Y0 + 45, "top: 3 V side · bottom: 5 V side", 10, "end", fill="
 wire([(A1, LS_Y0), (A1, SP_Y1)], COL["tx"])
 wire([(A2, LS_Y0), (A2, SP_Y1)], COL["rx"])
 wire([(LG, LS_Y0), (LG, SP_Y1)], COL["gnd"])
-tag(A1 - 18, 176, 12, COL["tx"])
-tag(A2 + 2, 176, 13, COL["rx"])
-tag(LG + 22, 176, 14, COL["gnd"])
+tag(A1 - 18, 176, 8, COL["tx"])
+tag(A2 + 2, 176, 9, COL["rx"])
+tag(LG + 22, 176, 10, COL["gnd"])
 VX = 1010
 wire([(sp["4"], SP_Y1), (sp["4"], 166), (VX, 166), (VX, RAIL["ext"])], COL["ext"])
 dot(VX, RAIL["ext"], COL["ext"])
-tag(VX, 236, 15, COL["ext"])
+tag(VX, 236, 11, COL["ext"])
 wire([(A1, LS_Y1), (TX["D1/TX"], TOP_Y)], COL["tx"])
 wire([(A2, LS_Y1), (TX["D0/RX"], TOP_Y)], COL["rx"])
-tag(A1 - 18, 272, 10, COL["tx"])
-tag(A2 + 2, 372, 11, COL["rx"])
+tag(A1 - 18, 272, 6, COL["tx"])
+tag(A2 + 2, 372, 7, COL["rx"])
 wire([(LG, LS_Y1), (LG, RAIL["gnd"])], COL["gnd"])
 dot(LG, RAIL["gnd"])
-tag(LG + 6, 276, 9, COL["gnd"])
+tag(LG + 6, 276, 5, COL["gnd"])
 wire([(LV, LS_Y1), (LV, RAIL["5v"])], COL["5v"])
 dot(LV, RAIL["5v"], COL["5v"])
-tag(LV, 276, 8, COL["5v"])
+tag(LV, 276, 4, COL["5v"])
 
 # ------------------------------------------------------------------ Arduino power header to the rails, 3V3 to LV
 x5, xg, x3 = BX["5V"], BX["GND"], BX["3V3"]
@@ -263,12 +254,12 @@ for k, x in (("G", gx), ("D", dxl), ("S", sx)):
     text(x, QY + 50, k, 9, "middle", "bold", "#00585e")
 box(QX + 45, QY - 12, 40, 12, fill="#bbb", stroke="#555", r=2)
 text(QX + 92, QY - 3, "tab = D", 9, fill="#444")
-# W16 D10 -> R1 220 -> gate
+# W12 D10 -> R1 220 -> gate
 GY_ = 392
 wire([(TX["D10"], TOP_Y), (TX["D10"], GY_), (gx - 70, GY_)], COL["pwm"])
 resistor(gx - 70, GY_, gx - 10, COL["pwm"], "R1 220 Ω")
 wire([(gx - 10, GY_), (gx, GY_), (gx, QY + 56)], COL["pwm"])
-tag(900, GY_, 16, COL["pwm"])
+tag(900, GY_, 12, COL["pwm"])
 # R2 100k: gate -> GND rail
 wire([(gx, 272), (gx - 26, 272)], COL["pwm"], 2)
 add(f'<rect x="{gx - 33}" y="272" width="14" height="10" fill="#fff" stroke="{COL["pwm"]}" stroke-width="2"/>')
@@ -276,10 +267,10 @@ wire([(gx - 26, 282), (gx - 26, RAIL["gnd"])], COL["pwm"], 2)
 dot(gx - 26, RAIL["gnd"])
 text(gx - 36, 270, "R2 100 kΩ", 9, "end", "bold", "#444")
 dot(gx, 272, COL["pwm"])
-# W17 source -> GND
+# W13 source -> GND
 wire([(sx, QY + 56), (sx, RAIL["gnd"])], COL["gnd"])
 dot(sx, RAIL["gnd"])
-tag(sx + 18, 278, 17, COL["gnd"])
+tag(sx + 18, 278, 13, COL["gnd"])
 # pump
 PX0, PY0 = 1230, 96
 box(PX0, PY0, 190, 60, fill="#fff")
@@ -292,7 +283,7 @@ pin(pp, PY0 + 60)
 text(pm - 10, PY0 + 74, "−", 14, "middle", "bold")
 text(pp + 10, PY0 + 74, "+", 14, "middle", "bold")
 wire([(dxl, QY - 12), (dxl, 176), (pm, 176), (pm, PY0 + 60)], COL["drain"])
-tag(1180, 176, 18, COL["drain"])
+tag(1180, 176, 14, COL["drain"])
 DY = 214
 wire([(pm, 176), (pm, DY), (pm + 50, DY)], "#333", 2)
 add(f'<path d="M{pm + 50} {DY - 8} L{pm + 50} {DY + 8} L{pm + 70} {DY} Z" fill="#333"/>')
@@ -303,7 +294,7 @@ dot(pp, DY, "#333")
 text(pm + 62, DY + 22, "D1 1N5819: band to +", 10, "middle", "bold", "#444")
 wire([(pp, PY0 + 60), (pp, RAIL["ext"])], COL["ext"])
 dot(pp, RAIL["ext"], COL["ext"])
-tag(pp + 20, 262, 19, COL["ext"])
+tag(pp + 20, 262, 15, COL["ext"])
 
 # ------------------------------------------------------------------ power input (top right)
 JX0 = 1470
@@ -324,10 +315,10 @@ text(jm, 214, "middle pin −", 9, "middle", "bold", "#00585e")
 text(js, 214, "side pin: none", 9, "middle", "bold", "#999")
 wire([(je, 226), (je, RAIL["ext"])], COL["ext"])
 dot(je, RAIL["ext"], COL["ext"])
-tag(je, 264, 22, COL["ext"])
+tag(je, 264, 18, COL["ext"])
 wire([(jm, 226), (jm, RAIL["gnd"])], COL["gnd"])
 dot(jm, RAIL["gnd"])
-tag(jm, 264, 23, COL["gnd"])
+tag(jm, 264, 19, COL["gnd"])
 
 # ------------------------------------------------------------------ reed switch (right of the Arduino)
 RX0, RY0 = 1330, 400
@@ -338,25 +329,10 @@ text(RX0 + 115, RY0 + 47, "two leads, either way round", 9, "middle", fill="#444
 SWY = 406
 wire([(TX["D3"], TOP_Y), (TX["D3"], SWY - 2), (TX["D3"], 404)], COL["sw"])
 wire([(TX["D3"], 404), (RX0 - 30, 404), (RX0 - 30, RY0 + 26), (RX0, RY0 + 26)], COL["sw"])
-tag(1250, 404, 20, COL["sw"])
+tag(1250, 404, 16, COL["sw"])
 wire([(RX0 + 230, RY0 + 26), (RX0 + 260, RY0 + 26), (RX0 + 260, RAIL["gnd"])], COL["sw"])
 dot(RX0 + 260, RAIL["gnd"])
-tag(RX0 + 260, 372, 21, COL["sw"])
-
-# ------------------------------------------------------------------ optional parts (dashed)
-OX0, OY0 = 1000, 470
-box(OX0, OY0, 380, 130, dash=True, fill="#fafafa", stroke="#999")
-text(OX0 + 12, OY0 + 20, "Optional (from the electronics kit)", 12, weight="bold")
-for i, line in enumerate(
-    (
-        "W24  D8 → active buzzer +; buzzer − → GND rail",
-        "W25  D2 → push button → GND rail (stop / marker)",
-        "W26  D9 → Q2 gate (220 Ω, 100 kΩ to GND); Q2 drain → one",
-        "         SFM3300 heater pad, other pad → +5V_EXT (51 Ω heater)",
-        "R3, R4  4.7 kΩ: SDA → +5V rail, SCL → +5V rail",
-    )
-):
-    text(OX0 + 12, OY0 + 42 + i * 17, line, 10, fill="#444")
+tag(RX0 + 260, 372, 17, COL["sw"])
 
 # ------------------------------------------------------------------ gas path and tubing
 GY = 820
@@ -366,11 +342,11 @@ text(190, GY - 4, "(main circuit in grey; the CO2 sample line in green)", 11, fi
 my = GY + 52
 main = [
     (20, 170, "Subject +", "mouthpiece (from mentors)", None, True),
-    (220, 170, "Sample port", "luer fitting between mouth-", "piece and sensor (requested)", True),
+    (220, 170, "Sample port", "male luer adapter between", "mouthpiece and sensor", False),
     (420, 330, "SFM3300-250-D", "22 mm MALE end → subject  |  22 mm", "FEMALE end → circuit (+ = inspiration)", False),
     (780, 190, "½\" Sch 40 PVC pipe", "21.3 mm OD into the sensor's", "22 mm socket: tape if loose", False),
     (1000, 200, "¾×½\" reducer bushing", "+ ¾\" S×FPT adapter;", "PTFE tape on the threads", False),
-    (1230, 190, "3-way valve", "¾\" PVC (requested); magnet", "on its handle for the reed switch", True),
+    (1230, 190, "3-way valve", "¾\" PVC; magnet on its", "handle for the reed switch", False),
 ]
 for x, w, a, b, c, dash in main:
     box(x, my - 30, w, 64, fill="#f4f4f4" if dash else "#fff", stroke="#888" if dash else "#333", dash=dash)
@@ -391,12 +367,13 @@ wire([(1450, my), (1450, my + 47), (1480, my + 47)], "#888", 8)
 
 sy = GY + 190
 samp = [
-    (220, "T1 · 0.2 µm PTFE filter", "13 mm syringe filter: female", "luer in, male luer out"),
-    (470, "T2 · P-859 adapter", "female luer lock → ⅛\" barb", "(onto the filter's male luer)"),
-    (720, "T3 · silicone tube", "3 mm ID / 5 mm OD", "(Adafruit 4661)"),
-    (970, "SprintIR-R flow adaptor", "tube on one barb, out the other", "(check the barb fits 3 mm ID)"),
-    (1220, "T4 · tube → pump SIDE port", "the inlet: 2 mm ID, 4.3 mm OD", "(the pump pulls the sample)"),
-    (1470, "T5 · pump END port → tube", "the outlet: 1 mm ID, 4.3 mm OD", "→ back into the bag side"),
+    (20, "T1 · 3-way luer stopcock", "on the sample port; 3rd port:", "room air / cal gas for the zero"),
+    (260, "T2 · 0.2 µm PTFE filter", "13 mm syringe filter: female", "luer in, male luer out"),
+    (500, "T3 · P-859 adapter", "female luer lock → ⅛\" barb", "(onto the filter's male luer)"),
+    (740, "T4 · silicone tube", "3 mm ID / 5 mm OD", "(Adafruit 4661)"),
+    (980, "SprintIR-R flow adaptor", "tube on one barb, out the other", "(check the barb fits 3 mm ID)"),
+    (1220, "T5 · tube → pump SIDE port", "the inlet: 2 mm ID, 4.3 mm OD", "(the pump pulls the sample)"),
+    (1460, "T6 · pump END port → tube", "the outlet: 1 mm ID, 4.3 mm OD", "→ back into the bag side"),
 ]
 for x, a, b, c in samp:
     box(x, sy - 32, 220, 66, fill="#eef7f2", stroke="#0a7d55")
@@ -418,7 +395,7 @@ def garrow(points):
 
 for i in range(len(samp) - 1):
     garrow([(samp[i][0] + 220, sy), (samp[i + 1][0], sy)])
-garrow([(305, my + 34), (305, sy - 32)])
+garrow([(300, my + 34), (300, sy - 58), (130, sy - 58), (130, sy - 32)])
 garrow([(1580, sy - 32), (1580, sy - 60), (1700, sy - 60), (1700, my - 47), (1650, my - 47)])
 text(1572, sy - 42, "exhaust back into the bag side", 10, "end", fill="#0a7d55")
 
@@ -427,17 +404,15 @@ LY = H - 140
 box(20, LY, W - 40, 124, fill="#fafafa", stroke="#ccc")
 text(34, LY + 22, "Wire colours (suggested; keep red, orange and black for power)", 12, weight="bold")
 items = [
-    ("5v", "+5V from the Arduino (W1, W7, W8)"),
-    ("ext", "+5V_EXT, wall adapter (W15, W19, W22)"),
+    ("5v", "+5V from the Arduino (W1, W4)"),
+    ("ext", "+5V_EXT, wall adapter (W11, W15, W18)"),
     ("3v3", "3V3 reference (W3)"),
-    ("gnd", "ground (W2, W6, W9, W14, W17, W23)"),
-    ("sda", "I2C SDA (W5)"),
-    ("scl", "I2C SCL (W4)"),
-    ("tx", "Arduino TX → sensor Rx_In (W10, W12)"),
-    ("rx", "sensor Tx_Out → Arduino RX (W11, W13)"),
-    ("pwm", "pump gate, PWM (W16)"),
-    ("drain", "Q1 drain → pump − (W18)"),
-    ("sw", "reed switch leads (W20, W21)"),
+    ("gnd", "ground (W2, W5, W10, W13, W19; W20 joins the two GND rails)"),
+    ("tx", "Arduino TX → sensor Rx_In (W6, W8)"),
+    ("rx", "sensor Tx_Out → Arduino RX (W7, W9)"),
+    ("pwm", "pump gate, PWM (W12)"),
+    ("drain", "Q1 drain → pump − (W14)"),
+    ("sw", "reed switch leads (W16, W17)"),
 ]
 for i, (k, label) in enumerate(items):
     cx = 34 + (i % 4) * 420
@@ -447,7 +422,7 @@ for i, (k, label) in enumerate(items):
 text(
     34,
     LY + 114,
-    "Jumpers: male-to-male from the Arduino's headers to the breadboard; female-to-male onto a sensor's header pins; solder the pump's contacts and the SFM3300's lead. "
+    "Jumpers: male-to-male from the Arduino's headers to the breadboard; female-to-male onto a sensor's header pins; solder the pump's contacts. "
     "The Arduino's GND pins are joined inside the board.",
     10,
     fill="#444",

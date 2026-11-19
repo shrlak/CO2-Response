@@ -46,6 +46,69 @@ def watch_for_updates(app, engine, win) -> None:
     app._update_timer = timer  # keep it alive
 
 
+def update_on_close(app, engine) -> str:
+    """Standalone app, once the window has closed: check for a newer release, download it
+    and install it, so the next start runs it. A small window shows what it is doing; Skip
+    stops the check or the download (never a half-done install). Returns what happened."""
+    import threading
+    import time
+
+    from PySide6.QtWidgets import QProgressDialog
+
+    from .. import updater
+
+    if not updater.is_frozen() or not updater.enabled_by_environment() or not engine.settings.auto_update:
+        return ""
+    state: dict = {"done": 0, "total": 0, "skip": False, "installing": False, "msg": None}
+
+    def progress(done: int, total: int) -> None:
+        state["done"], state["total"] = done, total
+        if state["skip"]:
+            raise updater.UpdateError("skipped when closing")
+
+    def installing() -> None:
+        state["installing"] = True
+
+    def work() -> None:
+        state["msg"] = updater.update_now(progress=progress, installing=installing)
+
+    dlg = QProgressDialog("Checking for updates …", "Skip", 0, 0)
+    dlg.setWindowTitle(APP_NAME)
+    dlg.setMinimumDuration(0)
+    dlg.setAutoClose(False)
+    dlg.setAutoReset(False)
+    dlg.show()
+    t = threading.Thread(target=work, name="update at close", daemon=True)
+    t.start()
+    while t.is_alive():
+        app.processEvents()
+        if dlg.wasCanceled() and not state["installing"]:
+            state["skip"] = True
+            if not state["total"]:
+                break  # still asking GitHub: leave it (nothing is downloaded or installed yet)
+        if state["installing"]:
+            dlg.setLabelText("Installing the update …")
+            dlg.setCancelButton(None)
+        elif state["total"]:
+            dlg.setLabelText(f"Downloading the update … {100 * state['done'] // max(1, state['total'])} %")
+            dlg.setRange(0, 100)
+            dlg.setValue(100 * state["done"] // max(1, state["total"]))
+        time.sleep(0.03)
+    msg = state["msg"] or ""
+    if msg.startswith("Updated to"):
+        dlg.setRange(0, 1)
+        dlg.setValue(1)
+        dlg.setLabelText(msg)
+        end = time.monotonic() + 2.5
+        while time.monotonic() < end:
+            app.processEvents()
+            time.sleep(0.03)
+    dlg.close()
+    if msg:
+        print(msg, flush=True)
+    return msg
+
+
 def run(
     sim: bool = False,
     port: str | None = None,
@@ -103,4 +166,7 @@ def run(
             app.quit()
 
         QTimer.singleShot(int(exit_after * 1000), finish)
-    return app.exec()
+    code = app.exec()
+    if exit_after is None:
+        update_on_close(app, engine)
+    return code

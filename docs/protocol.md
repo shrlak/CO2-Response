@@ -99,11 +99,14 @@ The app sends `INFO` then `START` after opening the port. Opening the port reset
 The board in the wiring diagram (`firmware/CO2ResponseR4/`, [wiring.md](wiring.md#uno-r4-board-digital-sensors))
 uses the same lines, checksums, sequence numbers, heartbeat and commands, with these differences:
 
-- **Info line:** `I,FW,2.1.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,SFM3300,CH,2,RATE,100,BAUD,115200,ADDR,0x40,SFM_SN,<serial>,CO2_MULT,10,PUMP_DUTY,140,WD,3000,REED,1,ALARM,1,PUMP,1`
-  (`VALVE,1` too when a valve servo is fitted; `SFM_SN` only when the flow sensor gave its serial number; `HEAT,1` only for a flow sensor with a heater). `UNITS,1` tells the app the values are engineering
+- **Info line:** `I,FW,2.2.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,CABLE,CH,2,RATE,100,BAUD,115200,CO2_MULT,10,PUMP_DUTY,140,WD,3000,REED,1,ALARM,1,PUMP,1`
+  (`FLOW,CABLE`: the flow sensor is read by the app through Sensirion's evaluation cable, `FLOW_ON_ARDUINO 0`, this build. With `FLOW_ON_ARDUINO 1` it is `FLOW,SFM3300,...,ADDR,0x40,SFM_SN,<serial>` instead; `VALVE,1` too when a valve servo is fitted; `SFM_SN` only when the flow sensor gave its serial number; `HEAT,1` only for a flow sensor with a heater). `UNITS,1` tells the app the values are engineering
   units, so it uses the bundled `co2response/config/channels-digital.json` (1:1 trims) and keeps
   that board's calibration in its own file.
-- **Data line:** two values, `D,<seq>,<t_ms>,<CO2 %>,<flow L/min>*<checksum>`. Flow is the
+- **Data line:** two values, `D,<seq>,<t_ms>,<CO2 %>,<flow L/min>*<checksum>`. With `FLOW,CABLE` the
+  board sends the flow as `9999` and the app replaces it with the evaluation cable's flow (the mean of
+  the cable's readings since the previous line; `co2response/sources/flow_cable.py`) before anything
+  else sees the line, and changes the info line's `FLOW` to `SFM_CABLE`. With `FLOW_ON_ARDUINO 1` flow is the
   SFM3300-250-D's reading in standard L/min, inspiration positive: the mean of the reads taken every
   1 ms since the previous line (`SFM_AVERAGE`), which lowers its noise. CO2 is the SprintIR-R's latest
   reading (it reports 50 times a second, so at 100 Hz each value is sent twice). One flow sensor does both

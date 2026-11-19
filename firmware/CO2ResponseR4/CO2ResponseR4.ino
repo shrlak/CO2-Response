@@ -1,6 +1,8 @@
 // CO2-Response firmware for the Arduino Uno R4 Minima board with digital sensors:
 //
-//   Sensirion SFM3300-250-D flow sensor  I2C 0x40, 5 V, wired straight to SDA/SCL
+//   Sensirion SFM3300-250-D flow sensor  read by the app through Sensirion's evaluation cable
+//                                        (FLOW_ON_ARDUINO 0, sent as 9999 here), or on I2C
+//                                        0x40 at 5 V on SDA/SCL (FLOW_ON_ARDUINO 1)
 //   GSS SprintIR-R-20 CO2 sensor         Serial1 (D0/D1) at 38400 baud, 3 V logic through
 //                                        the BSS138 level shifter, powered from 5V_EXT
 //   ZR370-02PM sample pump               IRLZ44N Q1 on D10 (PWM), powered from 5V_EXT
@@ -14,7 +16,8 @@
 // The values are already in engineering units (the info line says UNITS,1), so the app
 // does no volts-to-units conversion. A sensor that is not answering is sent as 9999.
 // The CO2 value changes 50 times a second (the SprintIR-R's rate) and is repeated between;
-// the flow is the mean of the SFM3300 reads (every SFM_READ_US) since the previous line.
+// with FLOW_ON_ARDUINO 1 the flow is the mean of the SFM3300 reads (every SFM_READ_US) since
+// the previous line; with 0 it is 9999 and the app puts in the cable's flow.
 //
 // The board also reports its button ("A,BUTTON") and the valve handle's reed switch
 // ("A,REED,1" at the bag, "A,REED,0" at room air), lights its LED and sounds its
@@ -36,7 +39,9 @@
 static Servo valveServo;
 #endif
 
+#if FLOW_ON_ARDUINO
 static Sfm3300 flowSensor;
+#endif
 static SprintIR co2Sensor(Serial1);
 
 static bool streaming = AUTOSTART;
@@ -45,8 +50,10 @@ static uint32_t periodUs = 1000000UL / DEFAULT_RATE_HZ;
 static uint32_t nextUs = 0;
 static uint16_t seq = 0;
 static uint32_t lastOverrunMs = 0;
+#if FLOW_ON_ARDUINO
 static uint32_t lastSfmRetryMs = 0;
 static uint32_t nextSfmReadUs = 0;
+#endif
 static uint8_t pumpDuty = PUMP_DUTY;
 static bool pumpOn = false;
 
@@ -80,15 +87,21 @@ static void setValve(bool toBag) {
 }
 
 static void sendInfo() {
+#if FLOW_ON_ARDUINO
   Serial.print(F("I,FW," FW_VERSION ",BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,SFM3300,CH,2,RATE,"));
+#else
+  Serial.print(F("I,FW," FW_VERSION ",BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,CABLE,CH,2,RATE,"));
+#endif
   Serial.print(rateHz);
   Serial.print(F(",BAUD,"));
   Serial.print(BAUD_RATE);
+#if FLOW_ON_ARDUINO
   Serial.print(F(",ADDR,0x40"));
   if (flowSensor.serial) {
     Serial.print(F(",SFM_SN,"));
     Serial.print(flowSensor.serial);
   }
+#endif
   Serial.print(F(",CO2_MULT,"));
   Serial.print(co2Sensor.multiplier());
   Serial.print(F(",PUMP_DUTY,"));
@@ -276,7 +289,9 @@ void setup() {
   setPump(streaming);
   Serial.begin(BAUD_RATE);
   co2Sensor.begin();
+#if FLOW_ON_ARDUINO
   if (!flowSensor.begin()) Serial.println(F("E,FLOW_NOT_FOUND"));
+#endif
   sendInfo();
   setRate(rateHz);
 }
@@ -288,7 +303,7 @@ void loop() {
   serviceOutputs();
 
   uint32_t now = micros();
-#if SFM_AVERAGE
+#if FLOW_ON_ARDUINO && SFM_AVERAGE
   if ((int32_t)(now - nextSfmReadUs) >= 0) {
     nextSfmReadUs = now + SFM_READ_US;
     flowSensor.sample();
@@ -308,11 +323,15 @@ void loop() {
 
   float v[2];
   float co2 = co2Sensor.percent();
+#if FLOW_ON_ARDUINO
   float flow = flowSensor.take();
   if (isnan(flow) && millis() - lastSfmRetryMs > 1000) {
     lastSfmRetryMs = millis();
     flowSensor.begin();  // a loose cable or a reset sensor: start it again
   }
+#else
+  float flow = NAN;  // the app puts in the flow from Sensirion's evaluation cable
+#endif
   v[0] = isnan(co2) ? NOT_ANSWERING : co2;
   v[1] = isnan(flow) ? NOT_ANSWERING : flow;
   if (streaming) {

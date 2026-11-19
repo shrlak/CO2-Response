@@ -177,6 +177,21 @@ class CapnoSettings:
 
 
 @dataclass
+class FlowCableSettings:
+    """The flow sensor through Sensirion's evaluation cable (SEK-SFM3xxx-AW/D), plugged
+    straight into the computer: its flow replaces the flow value of the Arduino's data
+    lines. See ``co2response/sources/flow_cable.py``. The cable is not behind the USB
+    isolator, so the laptop runs on its battery while a person is connected."""
+
+    enabled: bool = False
+    #: the cable's serial port (COM5, /dev/ttyUSB0, /dev/cu.usbserial-...)
+    port: str = ""
+    #: +1 if inspiration (towards the subject) reads positive with the sensor as mounted,
+    #: -1 if not. The arrow on the SFM3300 points in the positive direction.
+    sign: int = 1
+
+
+@dataclass
 class TestSettings:
     """The rebreathing test: how the response is analysed, and the subject's size.
 
@@ -283,6 +298,7 @@ class Settings:
     test: TestSettings = field(default_factory=TestSettings)
     spo2: Spo2Settings = field(default_factory=Spo2Settings)
     capno: CapnoSettings = field(default_factory=CapnoSettings)
+    flow_cable: FlowCableSettings = field(default_factory=FlowCableSettings)
     study_code: str = "STUDY-01"
     baud_rate: int = 115200
     bridge_url: str = "ws://localhost:8765"
@@ -290,8 +306,9 @@ class Settings:
     auto_reconnect: bool = True
     #: start recording as soon as an Arduino or bridge connects
     auto_record: bool = False
-    #: the standalone app downloads new releases in the background and installs them the
-    #: next time it starts (never during a recording). No effect on pip/source installs.
+    #: the standalone app checks for a new release every time it is closed (and once a day
+    #: while it runs), downloads it and installs it, so the next start runs it (never during
+    #: a recording). No effect on pip/source installs.
     auto_update: bool = True
     sim: SimSettings = field(default_factory=SimSettings)
     #: folder for session files; empty = the default (Documents/CO2-Response/sessions)
@@ -367,6 +384,10 @@ def sanitize_capno(c: CapnoSettings) -> CapnoSettings:
     )
 
 
+def sanitize_flow_cable(c: FlowCableSettings) -> FlowCableSettings:
+    return dataclasses.replace(c, enabled=bool(c.enabled), port=str(c.port or "").strip(), sign=-1 if c.sign == -1 else 1)
+
+
 def sanitize_test(t: TestSettings) -> TestSettings:
     def opt(v, lo, hi):
         return v if isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi else None
@@ -421,6 +442,7 @@ class SettingsStore:
         s.test = sanitize_test(s.test)
         s.spo2 = sanitize_spo2(s.spo2)
         s.capno = sanitize_capno(s.capno)
+        s.flow_cable = sanitize_flow_cable(s.flow_cable)
         if s.trend_series not in ("etco2", "mv", "rr"):
             s.trend_series = "etco2"
         if s.hardware not in HARDWARE:
