@@ -91,7 +91,7 @@ text(
     24,
     56,
     "W = wire (numbers match the wire list in docs/wiring.md) · C = USB cable · P = power plug · T = tube or fitting. "
-    "Every part shown is purchased (R1, R2 and D1 from the electronics component kit). A dot joins a wire to a rail; wires that only cross are not joined.",
+    "Not in the purchase documents: the breadboard, jumper wires, USB cables C1 and C2, a lead for the SFM3300; R1, R2, D1 only as the component kit. A dot joins a wire to a rail.",
     12,
     fill="#444",
 )

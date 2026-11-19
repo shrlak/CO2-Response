@@ -32,6 +32,7 @@
   <rect x="0" y="0" width="1280" height="1060" fill="#ffffff"/>
   <text x="24" y="34" class="h">CO2-Response · Uno R4 board, wired with the parts the team ordered</text>
   <text x="24" y="54" class="s">Solid boxes: purchased. Dashed boxes: from the mentors (mouthpiece, bag), or room air. Net flags (5V, 5V_EXT, ⏚) join wherever they appear.</text>
+  <text x="24" y="69" class="s" fill="#c0392b">Not in the purchase documents: the USB cables, a lead for the SFM3300, the breadboard and jumpers; R1, R2 and the diode only as the electronics component kit.</text>
 
   <!-- ===================== A. ELECTRICAL ===================== -->
   <text x="24" y="86" class="h" style="font-size:15px">A · Electrical</text>
@@ -256,5 +257,5 @@
   <text x="36" y="992" class="s">1. Sample flow and flow zero: cap the mouthpiece with the pump on. All the pump's flow then goes through the SFM3300, so the flow it shows is the sample flow (aim for 0.15–0.25 L/min:</text>
   <text x="50" y="1006" class="s">change PUMP_DUTY or send "PUMP 120"). Zero the flow there: the pump's draw is removed from every breath. The in-depth analysis reports any flow bias left.</text>
   <text x="36" y="1024" class="s">2. CO2 delay: the sample line makes the CO2 lag the flow. The in-depth analysis measures it from a recording; put (that − 0.2 s) into Settings › Processing › CO2 delay.</text>
-  <text x="36" y="1040" class="s">3. CO2 zero: sample line in fresh air for a minute, pump on, then Settings › Connection › Zero in room air (sends CO2ZERO AIR to the SprintIR-R).</text>
+  <text x="36" y="1040" class="s">3. CO2 zero: turn the sample-line stopcock to room air for a minute, pump on, then Settings › Connection › Zero in room air (sends CO2ZERO AIR to the SprintIR-R).</text>
 </svg>

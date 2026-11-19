@@ -569,7 +569,7 @@ text(
     24,
     PY2 + 17,
     "Check the shifter's printed pin names against this order (A1 A2 LV GND A3 A4 / B1 B2 HV GND B3 B4) and keep each wire on the column of the named pin. "
-    "Rows 11-14, 19-22, 29-30 are free.",
+    "Rows 11-14, 19-22, 29-30 are free. Not in the purchase documents: the breadboard, jumper wires, USB cables C1, C2 and a lead for the SFM3300 (W4-W7); R1, R2, D1 only as the electronics component kit.",
     10.5,
     fill="#333",
 )

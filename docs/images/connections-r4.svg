@@ -2,7 +2,7 @@
 <title>CO2-Response: every connection of the Uno R4 board</title>
 <rect x="0" y="0" width="1720" height="1230" fill="#ffffff"/>
 <text x="24" y="34" font-size="20" text-anchor="start" font-weight="bold" fill="#111">CO2-Response · every connection, pin by pin (Uno R4 board, parts as ordered)</text>
-<text x="24" y="56" font-size="12" text-anchor="start" font-weight="normal" fill="#444">W = wire (numbers match the wire list in docs/wiring.md) · C = USB cable · P = power plug · T = tube or fitting. Every part shown is purchased (R1, R2 and D1 from the electronics component kit). A dot joins a wire to a rail; wires that only cross are not joined.</text>
+<text x="24" y="56" font-size="12" text-anchor="start" font-weight="normal" fill="#444">W = wire (numbers match the wire list in docs/wiring.md) · C = USB cable · P = power plug · T = tube or fitting. Not in the purchase documents: the breadboard, jumper wires, USB cables C1 and C2, a lead for the SFM3300; R1, R2, D1 only as the component kit. A dot joins a wire to a rail.</text>
 <rect x="320" y="288" width="1388" height="56" rx="4" fill="#f6f2e8" stroke="#c8bfa6" stroke-width="1.2"/>
 <path d="M330 300 L1700 300" fill="none" stroke="#ff7f0e" stroke-width="3.4" stroke-linejoin="round"/>
 <path d="M330 316 L1700 316" fill="none" stroke="#d62728" stroke-width="3.4" stroke-linejoin="round"/>

@@ -286,10 +286,34 @@ Firmware: `firmware/CO2ResponseR4/` (Arduino IDE, board "Arduino UNO R4 Minima",
 
 **What is purchased.** Everything above, and everything in the budget increase request except four items that will not be bought: the SparkFun pulse oximeter and heart rate sensor (MAX30101 & MAX32664), the assorted pediatric and infant masks, the pediatric EtCO2 nasal cannulas and the SFM3400-33-D infant flow sensor. From that request:
 
-- In this build: the electronics component kit (R1 220 Ω, R2 100 kΩ, the D1 flyback diode, jumpers, and 4.7 kΩ pull-ups if the flow sensor needs them), the ¾" three-way PVC ball valve, two more ¾×½" reducer bushings (one per valve port), the male and female luer-to-barb adapters (the sample port), the 3-way luer stopcocks (T1: switch the sample line between the breath and room air or calibration gas), a second 1 m of silicone tubing, and the ABS project enclosure for the electronics.
+- In this build: the electronics component kit (expected to supply R1 220 Ω, R2 100 kΩ, the D1 flyback diode and, if the flow sensor needs them, 4.7 kΩ pull-ups: check it), the ¾" three-way PVC ball valve, two more ¾×½" reducer bushings (one per valve port), the male and female luer-to-barb adapters (the sample port), the 3-way luer stopcocks (T1: switch the sample line between the breath and room air or calibration gas), a second 1 m of silicone tubing, and the ABS project enclosure for the electronics.
 - Spares and supports: a spare SFM3300-250-D, the Sensirion Gen. 2 evaluation cable (reads a flow sensor straight from the laptop over USB, with Sensirion's software, for bench checks), the tubing stands and holders. The second level shifter and the Qwiic-to-breadboard cable were for the oximeter and are spare.
 
 The mouthpieces, rebreathing bag and main tubing come from the mentors; the calibration syringe, CO2 calibration gas and test lung are borrowed from the PFT lab.
+
+**Every electrical part in the diagrams, checked against the purchase documents** (the working budget's Purchased sheet and the budget increase request, without the four items that will not be bought):
+
+| Part in the diagrams | In the purchase documents? |
+| --- | --- |
+| Arduino UNO R4 Minima (ABX00080) | Yes: Purchased sheet (Amazon) |
+| USB isolator, Adafruit 2107 (ADuM4160 + ADuM5000) | Yes: Purchased sheet (DigiKey 1528-1784-ND) |
+| SFM3300-250-D flow sensor | Yes: Purchased sheet (DigiKey); a spare in the request |
+| SprintIR-R 20 % CO2 sensor | Yes: Purchased sheet (CO2meter) |
+| BSS138 level shifter, Adafruit 757 | Yes: Purchased sheet (DigiKey 1528-1007-ND); a second in the request |
+| IRLZ44N MOSFET ×3 (Q1 used) | Yes: Purchased sheet (DigiKey IRLZ44NPBF-ND) |
+| ZR370-02PM sample pump | Yes: Purchased sheet (Adafruit 4699) |
+| 5 V 2 A wall adapter, SparkFun TOL-15312 (P1) | Yes: Purchased sheet |
+| 2.1 mm barrel jack, Adafruit 373 (J1) | Yes: Purchased sheet |
+| Magnetic contact (reed) switch, Adafruit 375 | Yes: Purchased sheet |
+| R1 220 Ω, R2 100 kΩ, D1 flyback diode (1N5819, or any 1N4001–1N4007) | Only as the "electronics component kit" (request, Amazon). Check the kit has these three |
+| Half-size breadboard | **No** (the team has one; the kit may include one) |
+| Jumper wires, male-to-male and female-to-male | **No** (the kit may include them) |
+| C1 USB-A → Micro-B data cable (laptop → isolator) | **No** |
+| C2 USB-A → USB-C data cable (isolator → Arduino) | **No** |
+| A lead from the SFM3300's connector to the breadboard (W4–W7) | **No.** The Sensirion Gen. 2 evaluation cable in the request connects the sensor to the laptop's USB, not to the Arduino |
+| Hookup wire and solder for the pump's two contacts | **No** (usually from the lab) |
+
+Purchased but not in the wiring: the ABS project enclosure (houses the Arduino and breadboard), the Qwiic-to-breadboard cable and the second level shifter (bought for the oximeter, now spare).
 
 #### Facts from the datasheets
 
