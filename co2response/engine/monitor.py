@@ -80,6 +80,7 @@ from ..sim.core import Encoders
 from ..sources.base import ClockEvent, MarkerEvent, Source, StatusEvent
 from ..sources.bridge import BridgeSource
 from ..sources.capnostream import CapnoDecoder, CapnoMerge, CapnostreamSource, SimulatedCapnostream, mmhg_to_line_pct
+from ..sources.flow_cable import FlowCableSource, FlowMerge
 from ..sources.replay import ReplaySource
 from ..sources.serial_source import PortInfo, SerialSource, list_ports
 from ..sources.simulator import SimulatorSource
@@ -531,6 +532,10 @@ class MonitorEngine:
         self._capno_src: Source | None = None
         self._merge: CapnoMerge | None = None
         self._capno_on = False
+        #: the flow sensor through Sensirion's evaluation cable (settings.flow_cable): its
+        #: own serial port, and the merge that puts its flow into the board's data lines
+        self._flow_src: FlowCableSource | None = None
+        self._flow_merge: FlowMerge | None = None
         #: what the board's alarm LED and buzzer were last told (None = not told yet)
         self._alarm_out: int | None = None
         self._alarm_out_at = 0.0
@@ -649,6 +654,13 @@ class MonitorEngine:
                 self.connect("simulator")  # with (or without) its simulated Capnostream
                 return
             self._restart_capno()
+        if nxt.flow_cable != prev.flow_cable and self._source is not None and self._source.kind in ("serial", "bridge"):
+            self._stop_flow_cable()
+            if nxt.flow_cable.enabled:
+                self._start_flow_cable()
+            else:
+                self._add_log("Flow cable off: flow from the board")
+                self.recorder.event(self.clock(), "FLOW_SOURCE board")
         if nxt.hardware != prev.hardware:
             if isinstance(self._source, SimulatorSource):
                 self.connect("simulator")  # the simulated board is the other one now
@@ -984,6 +996,8 @@ class MonitorEngine:
             self._known_port = info or PortInfo(src.port)
         self._add_log(f"Connected: {src.label}")
         self.recorder.event(now, f"CONNECTED {src.label}")
+        if self.settings.flow_cable.enabled and kind in ("serial", "bridge"):
+            self._start_flow_cable()
         if self._capno_on:
             self._start_capno(src)
         if self.prevent_sleep:
@@ -1096,6 +1110,7 @@ class MonitorEngine:
             if self.alarms.is_active(aid):
                 self.alarms.remove(aid)
         self._stop_capno()
+        self._stop_flow_cable()
         self._file_channels = None
         self._replay_hardware = None
         if self.pipeline.channels is not self.channels:
@@ -1285,6 +1300,8 @@ class MonitorEngine:
         src = self._source
         if src is not None:
             items = src.poll()
+            if self._flow_merge is not None:
+                items = self._flow_merged(items)
             if self._merge is not None:
                 items = self._merged(items)
             for item in items:
@@ -1880,6 +1897,58 @@ class MonitorEngine:
             m._warned = True  # type: ignore[attr-defined]
             self._add_log("Capnostream: this board sends volts, not units; the Capnostream's CO2 is used with the Uno R4 board only", "error")
         return out
+
+    # ---------- the flow sensor through Sensirion's evaluation cable
+
+    def _start_flow_cable(self) -> None:
+        """Open the evaluation cable and start putting its flow into the board's lines."""
+        c = self.settings.flow_cable
+        if not c.port:
+            self._add_log("Flow cable: choose its port (Settings > Connection)", "error")
+            return
+        src = FlowCableSource(c.port)
+        try:
+            src.start()
+        except Exception as e:  # noqa: BLE001
+            self._add_log(str(e) or "Could not open the flow cable", "error")
+            return
+        self._flow_src = src
+        self._flow_merge = FlowMerge(time.monotonic, c.sign)
+        self._add_log(f"Flow from {src.label}")
+        self.recorder.event(self.clock(), f"FLOW_SOURCE {src.label}")
+
+    def _stop_flow_cable(self) -> None:
+        src, self._flow_src, self._flow_merge = self._flow_src, None, None
+        if src is not None:
+            try:
+                src.stop()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _flow_merged(self, items: list) -> list:
+        """The board's items with the cable's flow in its data lines."""
+        m = self._flow_merge
+        assert m is not None
+        src = self._flow_src
+        if src is not None:
+            had = m.info
+            for ev in m.cable_items(src.poll()):
+                self._add_log(ev.detail or "Flow cable disconnected", "error")
+                self._flow_src = None  # its flow now reads "not answering"
+                try:
+                    src.stop()
+                except Exception:  # noqa: BLE001
+                    pass
+            if m.info is not None and had is None:
+                i = m.info
+                self._add_log(f"Flow cable: {i.sensor}, serial {i.serial} ({i.mode})")
+                self.recorder.event(self.clock(), f"FLOW_SENSOR {i.sensor} SN={i.serial}")
+        return m.board_items(items)
+
+    @property
+    def flow_cable(self) -> FlowMerge | None:
+        """The flow cable link while one is in use."""
+        return self._flow_merge
 
     @property
     def capnostream(self) -> CapnoMerge | None:

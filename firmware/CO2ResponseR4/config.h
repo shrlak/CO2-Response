@@ -13,7 +13,7 @@
 //   Adafruit 375 magnetic contact switch (the valve handle's position)
 #pragma once
 
-#define FW_VERSION "2.1.0"
+#define FW_VERSION "2.2.0"
 
 // ---- serial link to the computer (USB, through the isolator) ----
 #define BAUD_RATE 115200
@@ -21,7 +21,14 @@
 #define MAX_RATE_HZ 200
 #define AUTOSTART 1           // stream on power-up (the app also sends START)
 
-// ---- Sensirion SFM3300-250-D flow sensor (I2C, 5 V: wired straight to the Uno, no shifter) ----
+// ---- Sensirion SFM3300-250-D flow sensor ----
+// 0 (this build): the flow sensor is clipped into Sensirion's evaluation cable, which goes
+//   straight to the laptop; the app reads it there (Settings > Connection > Flow sensor
+//   cable) and puts it into these lines. The board sends the flow as 9999 and says FLOW,CABLE.
+// 1: the flow sensor's I2C pads are wired to the Uno's SDA/SCL (needs a connector that
+//   reaches its pads: Sensirion sells none), and the board reads it itself.
+#define FLOW_ON_ARDUINO 0
+// The rest of this section is used only with FLOW_ON_ARDUINO 1 (I2C, 5 V, no shifter).
 #define SFM_I2C_ADDRESS 0x40
 #define I2C_CLOCK_HZ 100000   // the sensor allows 400 kHz; 100 kHz is kinder to a long cable
 #define SFM_CMD_START 0x1000  // start continuous measurement

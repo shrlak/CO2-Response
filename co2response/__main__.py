@@ -12,6 +12,7 @@
     python -m co2response --fast-test normal  # a whole simulated test in about a second: CSV, PDF and the graph
     python -m co2response --capnostream COM4  # take the CO2 from a Capnostream 35 on COM4 (saved; "off" to stop)
     python -m co2response --capture COM4      # record what a Capnostream sends, to set up its format
+    python -m co2response --flow-cable COM5   # check the SFM3300 through Sensirion's evaluation cable
     python -m co2response --merge-capno rec.csv export.txt   # put a Capnostream export's CO2 into an Arduino recording
 """
 
@@ -64,6 +65,9 @@ def main(argv: list[str] | None = None) -> int:
     cap.add_argument("--capture", metavar="PORT", help="record what a Capnostream sends on PORT (60 s), report what was found, and exit")
     cap.add_argument("--capture-seconds", type=float, default=60, metavar="SEC", help="with --capture: how long to record")
     cap.add_argument("--capture-baud", default="auto", metavar="N", help="with --capture: the serial speed, or auto to try the common ones")
+    fc = ap.add_argument_group("flow sensor through Sensirion's evaluation cable")
+    fc.add_argument("--flow-cable", metavar="PORT", help="read the SFM3300 through Sensirion's evaluation cable on PORT for --flow-cable-seconds, print its flow, and exit (a bench check)")
+    fc.add_argument("--flow-cable-seconds", type=float, default=10, metavar="SEC", help="with --flow-cable: how long to read (default 10)")
     ap.add_argument("--exit-after", type=float, default=None, metavar="SEC", help="close the window by itself after this many seconds (for checking an installation)")
     ap.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     ap.add_argument("--update", action="store_true", help="update to the latest version from GitHub (or git pull, when run from a copy of the repository) and exit")
@@ -81,6 +85,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.update:
         return update()
+
+    if args.flow_cable:
+        from .sources.flow_cable import bench_check
+
+        return bench_check(args.flow_cable, args.flow_cable_seconds)
 
     if args.capture:
         return capture_capnostream(args.capture, args.capture_seconds, args.capture_baud, args.capno_fields, args.capno_units)

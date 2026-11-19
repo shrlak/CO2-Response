@@ -12,8 +12,8 @@ down the page.
 Rails, named by the side they sit on (follow the red + and blue - lines printed on your board):
     + rail, a side  = +5V_EXT   wall adapter, for the pump and the SprintIR-R
     - rail, a side  = GND
-    - rail, j side  = GND       joined to the a-side GND rail by W27
-    + rail, j side  = +5V       Arduino 5V (isolated USB), for the SFM3300 and the shifter
+    - rail, j side  = GND       joined to the a-side GND rail by W20
+    + rail, j side  = +5V       Arduino 5V (isolated USB), for the level shifter
 """
 
 from __future__ import annotations
@@ -44,27 +44,23 @@ WCOL = {
     1: "#e6194b",  # red
     2: "#111111",  # black
     3: "#911eb4",  # purple
-    4: "#e6b800",  # gold
-    5: "#4363d8",  # blue
-    6: "#8c8c8c",  # grey
-    7: "#800000",  # maroon
-    8: "#ff4fa3",  # hot pink
-    9: "#000080",  # navy
-    10: "#2ca02c",  # green
-    11: "#19c3e6",  # cyan
-    12: "#9acd32",  # lime
-    13: "#469990",  # teal
-    14: "#9a6324",  # brown
-    15: "#ffa000",  # amber
-    16: "#f032e6",  # magenta
-    17: "#808000",  # olive
-    18: "#00a86b",  # jade
-    19: "#ff4500",  # orange-red
-    20: "#7b68ee",  # slate blue
-    21: "#2f4f4f",  # dark slate
-    22: "#f58231",  # orange
-    23: "#c71585",  # violet-red
-    24: "#c8c8c8",  # silver
+    4: "#ff4fa3",  # hot pink
+    5: "#000080",  # navy
+    6: "#2ca02c",  # green
+    7: "#19c3e6",  # cyan
+    8: "#9acd32",  # lime
+    9: "#469990",  # teal
+    10: "#9a6324",  # brown
+    11: "#ffa000",  # amber
+    12: "#f032e6",  # magenta
+    13: "#808000",  # olive
+    14: "#00a86b",  # jade
+    15: "#ff4500",  # orange-red
+    16: "#7b68ee",  # slate blue
+    17: "#2f4f4f",  # dark slate
+    18: "#f58231",  # orange
+    19: "#c71585",  # violet-red
+    20: "#c8c8c8",  # silver
 }
 
 
@@ -398,17 +394,19 @@ for k, nm in ((1, "1 Rx_In"), (2, "2 Tx_Out"), (3, "3 GND"), (4, "4 VDD")):
     pin(*SP[k])
     text(SP[k][0], SP[k][1] - 14, nm, 9, "middle", "bold", "#00585e")
 
-# SFM3300, left
+# SFM3300 in the breathing circuit, clipped into Sensirion's evaluation cable (C3) to the laptop
 FX, FY = 20, 470
 rect(FX, FY, 200, 120, fill="#fff6e6", stroke="#b36b00")
 text(FX + 100, FY + 20, "Sensirion SFM3300-250-D", 11.5, "middle", "bold")
-text(FX + 100, FY + 36, "flow sensor · I2C 0x40 · 5 V", 10, "middle", fill="#444")
-text(FX + 100, FY + 52, "4-wire lead: check the pin order", 10, "middle", fill="#444")
-text(FX + 100, FY + 65, "on Sensirion's note / your cable", 10, "middle", fill="#444")
-SF = {"SCL": (FX + 40, FY + 120), "SDA": (FX + 80, FY + 120), "GND": (FX + 120, FY + 120), "VDD": (FX + 160, FY + 120)}
-for k, (x, y) in SF.items():
-    pin(x, y)
-    text(x, y - 14, k, 9, "middle", "bold", "#00585e")
+text(FX + 100, FY + 36, "flow sensor, in the breathing circuit", 10, "middle", fill="#444")
+text(FX + 100, FY + 52, "clipped into Sensirion's evaluation", 10, "middle", fill="#444")
+text(FX + 100, FY + 65, "cable: no wires to the breadboard", 10, "middle", fill="#444")
+rect(FX + 30, FY + 84, 140, 26, fill="#d9d9d9", stroke="#555", r=4)
+text(FX + 100, FY + 101, "clip-on cap", 10, "middle", "bold", "#333")
+add(f'<path d="M{FX + 100} {FY + 110} L{FX + 100} 790" fill="none" stroke="#555" stroke-width="7"/>')
+label(FX + 108, 668, "C3 evaluation cable", 10, "start", fill="#111")
+label(FX + 108, 682, "USB → laptop, not via", 9, "start", fill="#c0392b")
+label(FX + 108, 695, "the isolator", 9, "start", fill="#c0392b")
 
 # Reed switch (on the valve), above the board; its own two leads come down into g15 and g17
 RX, RY = 580, 104
@@ -446,7 +444,7 @@ for name in ["BOOT", "IOREF", "RESET", "3V3", "5V", "GND ", "GND", "VIN", None, 
         continue
     BXP[name] = x
     x += 20
-used = {"SCL", "SDA", "GND", "D10", "D8", "D3", "D2", "D1/TX", "D0/RX", "3V3", "5V", "GND "}
+used = {"D10", "D8", "D3", "D2", "D1/TX", "D0/RX", "3V3", "5V", "GND "}
 for name, xx in TX.items():
     pin(xx, TOP_Y, name, "down90", 9, "#00585e" if name in used else "#9ab")
 for name, xx in BXP.items():
@@ -460,13 +458,14 @@ text(AX + 22, AY + 72, "USB-C", 10, weight="bold", fill="#00585e")
 # Laptop and isolator
 rect(20, 790, 180, 66, fill="#fff")
 text(110, 815, "Laptop", 14, "middle", "bold")
-text(110, 833, "runs co2response", 10, "middle", fill="#444")
+text(110, 831, "runs co2response · on battery", 10, "middle", fill="#444")
+text(110, 845, "(mains unplugged) with a subject", 9, "middle", fill="#c0392b")
 add('<path d="M110 856 L110 900" fill="none" stroke="#555" stroke-width="7"/>')
 text(120, 884, "C1 USB-A → Micro-B", 10, weight="bold")
 rect(20, 900, 300, 90, fill="#fff")
 text(170, 922, "USB isolator (Adafruit 2107)", 12, "middle", "bold")
 text(170, 940, "Micro-B: computer side · USB-A: device side", 10, "middle", fill="#444")
-text(170, 956, "≤100 mA: the Uno and the SFM3300 only", 10, "middle", fill="#444")
+text(170, 956, "≤100 mA: the Uno and its breadboard 5 V", 10, "middle", fill="#444")
 text(170, 975, "nothing on the breadboard goes to it", 10, "middle", fill="#c0392b")
 add(f'<path d="M320 945 L470 945 L470 {AY + 67} L{AX - 14} {AY + 67}" fill="none" stroke="#555" stroke-width="7" stroke-linejoin="round"/>')
 text(478, 900, "C2 USB-A → USB-C", 10, weight="bold")
@@ -479,35 +478,30 @@ B = BOT_Y
 wire(1, "5v", [(BXP["5V"], B), (BXP["5V"], 1044), (1180, 1044), (1180, 652), (cx(30) + 8, 652), hole("B+:30")], "Arduino 5V (power header)", "B+:30", badge=(1180, 780))
 wire(2, "gnd", [(BXP["GND "], B), (BXP["GND "], 1058), (1202, 1058), (1202, 632), (cx(30) + 8, 632), hole("B-:30")], "Arduino GND (power header)", "B-:30", badge=(1202, 840))
 wire(3, "3v3", [(BXP["3V3"], B), (BXP["3V3"], 1074), (1232, 1074), (1232, 390), (cx(25) + 12, 390), hole("b25")], "Arduino 3V3 (power header)", "b25 (shifter LV)", badge=(1232, 900))
-wire(22, "ext", [hole("a3"), (cx(3), 362), (cx(4) - 6, 350), (cx(4) - 6, 326), hole("T+:4")], "a3 (J1 end pin, +)", "T+:4", badge=(cx(3) - 2, 352))
-wire(23, "gnd", [hole("a5"), (cx(5), 360), (cx(6), 352), hole("T-:6")], "a5 (J1 middle pin, −)", "T-:6", badge=(cx(6) + 24, 352))
-wire(24, "gnd", [hole("T-:2"), (cx(2) - 12, 344), (BOARD[0] - 10, 344), (BOARD[0] - 10, 616), (cx(2) - 12, 616), hole("B-:2")], "T-:2", "B-:2", badge=(BOARD[0] - 10, 560))
+wire(18, "ext", [hole("a3"), (cx(3), 362), (cx(4) - 6, 350), (cx(4) - 6, 326), hole("T+:4")], "a3 (J1 end pin, +)", "T+:4", badge=(cx(3) - 2, 352))
+wire(19, "gnd", [hole("a5"), (cx(5), 360), (cx(6), 352), hole("T-:6")], "a5 (J1 middle pin, −)", "T-:6", badge=(cx(6) + 24, 352))
+wire(20, "gnd", [hole("T-:2"), (cx(2) - 12, 344), (BOARD[0] - 10, 344), (BOARD[0] - 10, 616), (cx(2) - 12, 616), hole("B-:2")], "T-:2", "B-:2", badge=(BOARD[0] - 10, 560))
 
-# Flow sensor: straight from the Arduino's top header, and VDD from the j-side + rail
-wire(4, "scl", [(TX["SCL"], T), (TX["SCL"], 784), (SF["SCL"][0], 784), SF["SCL"]], "Arduino SCL (top header)", "SFM3300 SCL", badge=(330, 784))
-wire(5, "sda", [(TX["SDA"], T), (TX["SDA"], 774), (SF["SDA"][0], 774), SF["SDA"]], "Arduino SDA (top header)", "SFM3300 SDA", badge=(420, 774))
-wire(6, "gnd", [(TX["GND"], T), (TX["GND"], 764), (SF["GND"][0], 764), SF["GND"]], "Arduino GND (top header)", "SFM3300 GND", badge=(510, 764))
-wire(7, "5v", [hole("B+:2"), (cx(2), 700), (SF["VDD"][0], 700), SF["VDD"]], "B+:2", "SFM3300 VDD", badge=(250, 700))
 
 # Level shifter and SprintIR-R
-wire(8, "5v", [hole("B+:26"), (cx(26) - 12, 632), (cx(26) - 12, 600), (cx(25), 592), hole("j25")], "B+:26", "j25 (shifter HV)", badge=(cx(25) + 6, 666))
-wire(9, "gnd", [hole("B-:28"), (cx(28), 604), (cx(26) + 12, 596), (cx(26), 588), hole("j26")], "B-:28", "j26 (shifter GND, 5 V side)", badge=(cx(29) + 4, 611))
-wire(10, "tx", [(TX["D1/TX"], T), (TX["D1/TX"], 700), (cx(23), 700), hole("j23")], "Arduino D1/TX", "j23 (shifter B1)", badge=(cx(23) - 2, 640))
-wire(11, "rx", [(TX["D0/RX"], T), (TX["D0/RX"], 690), (cx(24), 690), hole("j24")], "Arduino D0/RX", "j24 (shifter B2)", badge=(cx(24) + 2, 666))
-wire(12, "tx", [hole("a23"), (cx(23), 260), (SP[1][0], 240), SP[1]], "a23 (shifter A1)", "SprintIR-R pin 1 Rx_In", badge=(cx(23) - 4, 290))
-wire(13, "rx", [hole("a24"), (cx(24), 250), (SP[2][0], 232), SP[2]], "a24 (shifter A2)", "SprintIR-R pin 2 Tx_Out", badge=(cx(24) + 4, 262))
-wire(14, "gnd", [hole("a26"), (cx(26), 240), (SP[3][0], 224), SP[3]], "a26 (shifter GND, 3 V side)", "SprintIR-R pin 3 GND", badge=(cx(26) + 2, 290))
-wire(15, "ext", [hole("T+:28"), (cx(28), 270), (SP[4][0], 250), SP[4]], "T+:28", "SprintIR-R pin 4 VDD", badge=(SP[4][0] + 26, 262))
+wire(4, "5v", [hole("B+:26"), (cx(26) - 12, 632), (cx(26) - 12, 600), (cx(25), 592), hole("j25")], "B+:26", "j25 (shifter HV)", badge=(cx(25) + 6, 666))
+wire(5, "gnd", [hole("B-:28"), (cx(28), 604), (cx(26) + 12, 596), (cx(26), 588), hole("j26")], "B-:28", "j26 (shifter GND, 5 V side)", badge=(cx(29) + 4, 611))
+wire(6, "tx", [(TX["D1/TX"], T), (TX["D1/TX"], 700), (cx(23), 700), hole("j23")], "Arduino D1/TX", "j23 (shifter B1)", badge=(cx(23) - 2, 640))
+wire(7, "rx", [(TX["D0/RX"], T), (TX["D0/RX"], 690), (cx(24), 690), hole("j24")], "Arduino D0/RX", "j24 (shifter B2)", badge=(cx(24) + 2, 666))
+wire(8, "tx", [hole("a23"), (cx(23), 260), (SP[1][0], 240), SP[1]], "a23 (shifter A1)", "SprintIR-R pin 1 Rx_In", badge=(cx(23) - 4, 290))
+wire(9, "rx", [hole("a24"), (cx(24), 250), (SP[2][0], 232), SP[2]], "a24 (shifter A2)", "SprintIR-R pin 2 Tx_Out", badge=(cx(24) + 4, 262))
+wire(10, "gnd", [hole("a26"), (cx(26), 240), (SP[3][0], 224), SP[3]], "a26 (shifter GND, 3 V side)", "SprintIR-R pin 3 GND", badge=(cx(26) + 2, 290))
+wire(11, "ext", [hole("T+:28"), (cx(28), 270), (SP[4][0], 250), SP[4]], "T+:28", "SprintIR-R pin 4 VDD", badge=(SP[4][0] + 26, 262))
 
 # Pump
-wire(16, "pwm", [(TX["D10"], T), (TX["D10"], 740), (cx(3), 740), hole("j3")], "Arduino D10", "j3 (R1, then Q1's gate)", badge=(cx(3), 660))
-wire(17, "gnd", [hole("j9"), (cx(9), 600), (cx(10), 606), hole("B-:10")], "j9 (Q1 source)", "B-:10", badge=(cx(10) + 4, 611))
-wire(18, "drain", [PM, (PM[0], 230), (cx(8), 250), hole("g8")], "Pump − contact", "g8 (Q1 drain)", badge=(cx(8) - 24, 268))
-wire(19, "ext", [PP, (PP[0], 230), (cx(10), 250), hole("T+:10")], "Pump + contact", "T+:10", badge=(cx(10) + 22, 268))
+wire(12, "pwm", [(TX["D10"], T), (TX["D10"], 740), (cx(3), 740), hole("j3")], "Arduino D10", "j3 (R1, then Q1's gate)", badge=(cx(3), 660))
+wire(13, "gnd", [hole("j9"), (cx(9), 600), (cx(10), 606), hole("B-:10")], "j9 (Q1 source)", "B-:10", badge=(cx(10) + 4, 611))
+wire(14, "drain", [PM, (PM[0], 230), (cx(8), 250), hole("g8")], "Pump − contact", "g8 (Q1 drain)", badge=(cx(8) - 24, 268))
+wire(15, "ext", [PP, (PP[0], 230), (cx(10), 250), hole("T+:10")], "Pump + contact", "T+:10", badge=(cx(10) + 22, 268))
 
 # Reed switch
-wire(20, "sw", [(TX["D3"], T), (TX["D3"], 720), (cx(15), 720), hole("j15")], "Arduino D3", "j15 (reed lead)", badge=(cx(15), 660))
-wire(21, "sw", [hole("j17"), (cx(17), 600), (cx(18), 606), hole("B-:18")], "j17 (other reed lead)", "B-:18", badge=(cx(18) + 4, 611))
+wire(16, "sw", [(TX["D3"], T), (TX["D3"], 720), (cx(15), 720), hole("j15")], "Arduino D3", "j15 (reed lead)", badge=(cx(15), 660))
+wire(17, "sw", [hole("j17"), (cx(17), 600), (cx(18), 606), hole("B-:18")], "j17 (other reed lead)", "B-:18", badge=(cx(18) + 4, 611))
 
 for w_ in WIRES:
     draw_wire(w_)
@@ -521,13 +515,13 @@ MY = 1084
 rect(20, MY, W - 40, 112, fill="#fbf9f3", stroke="#d8d0b8")
 text(34, MY + 22, "What goes on each rail", 13, weight="bold")
 rails = [
-    ("T+", "#f58231", "+ rail, a side = +5V_EXT", "in: W22 from J1's end pin · out: W15 SprintIR-R VDD, W19 pump +"),
-    ("T-", "#1b1b1b", "− rail, a side = GND", "in: W23 from J1's middle pin · joined to the j-side − rail by W24"),
-    ("B-", "#1b1b1b", "− rail, j side = GND", "in: W2 Arduino GND · out: W9 shifter, W17 Q1 source, R2, W21 reed switch"),
-    ("B+", "#e6194b", "+ rail, j side = +5V", "in: W1 Arduino 5V · out: W7 SFM3300 VDD, W8 shifter HV"),
+    ("T+", "#f58231", "+ rail, a side = +5V_EXT", "in: W18 from J1's end pin · out: W11 SprintIR-R VDD, W15 pump +"),
+    ("T-", "#1b1b1b", "− rail, a side = GND", "in: W19 from J1's middle pin · joined to the j-side − rail by W20"),
+    ("B-", "#1b1b1b", "− rail, j side = GND", "in: W2 Arduino GND · out: W5 shifter, W13 Q1 source, R2, W17 reed switch"),
+    ("B+", "#e6194b", "+ rail, j side = +5V", "in: W1 Arduino 5V · out: W4 shifter HV"),
 ]
 text(1000, MY + 44, "Never join the two + rails: they are different supplies.", 11, weight="bold", fill="#c0392b")
-text(1000, MY + 63, "Both − rails are GND and must be joined (W24).", 11, fill="#333")
+text(1000, MY + 63, "Both − rails are GND and must be joined (W20).", 11, fill="#333")
 text(1000, MY + 82, "Any hole of a rail will do: the rows named (\"by row 4\") are only where", 11, fill="#333")
 text(1000, MY + 101, "the drawing puts each wire end. The holes of a rail are all joined.", 11, fill="#333")
 for i, (_k, c, a, b) in enumerate(rails):
@@ -569,7 +563,7 @@ text(
     24,
     PY2 + 17,
     "Check the shifter's printed pin names against this order (A1 A2 LV GND A3 A4 / B1 B2 HV GND B3 B4) and keep each wire on the column of the named pin. "
-    "Rows 11-14, 19-22, 29-30 are free. Not in the purchase documents: the breadboard, jumper wires, USB cables C1, C2 and a lead for the SFM3300 (W4-W7); R1, R2, D1 only as the electronics component kit.",
+    "Rows 11-14, 19-22, 29-30 are free. Not in the purchase documents: the breadboard, jumper wires and USB cables C1, C2; R1, R2, D1 only as the electronics component kit.",
     10.5,
     fill="#333",
 )

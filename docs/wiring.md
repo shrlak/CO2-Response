@@ -4,7 +4,7 @@ Quick reference. The step-by-step version, with checks and troubleshooting, is i
 
 There are two boards. The app recognises which one is connected from its info line.
 
-- **Uno R4 board, digital sensors** (the current build, below): an Arduino Uno R4 Minima with a Sensirion SFM3300-250-D flow sensor and a GSS SprintIR-R-20 CO2 sensor: the parts on the team's purchase list. Firmware: `firmware/CO2ResponseR4/`.
+- **Uno R4 board, digital sensors** (the current build, below): an Arduino Uno R4 Minima with a GSS SprintIR-R-20 CO2 sensor, and a Sensirion SFM3300-250-D flow sensor read by the laptop through Sensirion's evaluation cable: the parts on the team's purchase list. Firmware: `firmware/CO2ResponseR4/`.
 - **ADC board** (the earlier build, further down): an Arduino Uno with an ADS1115 16-bit ADC reading a capnograph, a flow sensor and a pneumotach. Firmware: `firmware/CO2Response/`.
 
 ## Uno R4 board (digital sensors)
@@ -27,10 +27,10 @@ The rails are named by the side they sit on: the **a side** (next to column a) o
 
 | Rail | Supply | Fed by | Feeds |
 | --- | --- | --- | --- |
-| **+** rail, a side (red line) | **+5V_EXT** (orange wires) | W22 from J1's end pin | W15 SprintIR-R VDD, W19 pump + |
-| **−** rail, a side (blue line) | **GND** (black wires) | W23 from J1's middle pin | joined to the j-side − rail by W24 |
-| **−** rail, j side (blue line) | **GND** (black wires) | W2 from the Arduino's GND | W9 shifter, W17 Q1 source, R2, W21 reed switch |
-| **+** rail, j side (red line) | **+5V** (red wires) | W1 from the Arduino's 5V | W7 SFM3300 VDD, W8 shifter HV |
+| **+** rail, a side (red line) | **+5V_EXT** (orange wires) | W18 from J1's end pin | W11 SprintIR-R VDD, W15 pump + |
+| **−** rail, a side (blue line) | **GND** (black wires) | W19 from J1's middle pin | joined to the j-side − rail by W20 |
+| **−** rail, j side (blue line) | **GND** (black wires) | W2 from the Arduino's GND | W5 shifter, W13 Q1 source, R2, W17 reed switch |
+| **+** rail, j side (red line) | **+5V** (red wires) | W1 from the Arduino's 5V | W4 shifter HV |
 
 The two + rails carry different supplies: **never join them**. In the drawing every wire has its own colour, and its number sits on the hole at each end, so each one can be followed from end to end; the last column below is the jumper colour to use. Any hole of a rail will do; "by row 4" below is only where the drawing puts the wire end.
 
@@ -48,27 +48,23 @@ The two + rails carry different supplies: **never join them**. In the drawing ev
 | W1 | Arduino 5V | + rail, j side (by row 30) | red |
 | W2 | Arduino GND (power header) | − rail, j side (by row 30) | black |
 | W3 | Arduino 3V3 | b25 (shifter LV) | purple |
-| W4 | Arduino SCL | SFM3300 SCL (off the board) | yellow |
-| W5 | Arduino SDA | SFM3300 SDA (off the board) | blue |
-| W6 | Arduino GND (top header) | SFM3300 GND (off the board) | black |
-| W7 | + rail, j side (by row 2) | SFM3300 VDD | red |
-| W8 | + rail, j side (by row 26) | j25 (shifter HV) | red |
-| W9 | − rail, j side (by row 28) | j26 (shifter GND, 5 V side) | black |
-| W10 | Arduino D1/TX | j23 (shifter B1) | green |
-| W11 | Arduino D0/RX | j24 (shifter B2) | cyan |
-| W12 | a23 (shifter A1) | SprintIR-R pin 1 Rx_In | green |
-| W13 | a24 (shifter A2) | SprintIR-R pin 2 Tx_Out | cyan |
-| W14 | a26 (shifter GND, 3 V side) | SprintIR-R pin 3 GND | black |
-| W15 | + rail, a side (by row 28) | SprintIR-R pin 4 VDD | orange |
-| W16 | Arduino D10 | j3 (R1, then Q1's gate) | pink |
-| W17 | j9 (Q1 source) | − rail, j side (by row 10) | black |
-| W18 | Pump − contact | g8 (Q1 drain) | brown |
-| W19 | Pump + contact | + rail, a side (by row 10) | orange |
-| W20 | Arduino D3 | j15 (reed lead) | grey |
-| W21 | j17 (other reed lead) | − rail, j side (by row 18) | grey |
-| W22 | a3 (J1 end pin, +) | + rail, a side (by row 4) | orange |
-| W23 | a5 (J1 middle pin, −) | − rail, a side (by row 6) | black |
-| W24 | − rail, a side (by row 2) | − rail, j side (by row 2) | black |
+| W4 | + rail, j side (by row 26) | j25 (shifter HV) | red |
+| W5 | − rail, j side (by row 28) | j26 (shifter GND, 5 V side) | black |
+| W6 | Arduino D1/TX | j23 (shifter B1) | green |
+| W7 | Arduino D0/RX | j24 (shifter B2) | cyan |
+| W8 | a23 (shifter A1) | SprintIR-R pin 1 Rx_In | green |
+| W9 | a24 (shifter A2) | SprintIR-R pin 2 Tx_Out | cyan |
+| W10 | a26 (shifter GND, 3 V side) | SprintIR-R pin 3 GND | black |
+| W11 | + rail, a side (by row 28) | SprintIR-R pin 4 VDD | orange |
+| W12 | Arduino D10 | j3 (R1, then Q1's gate) | pink |
+| W13 | j9 (Q1 source) | − rail, j side (by row 10) | black |
+| W14 | Pump − contact | g8 (Q1 drain) | brown |
+| W15 | Pump + contact | + rail, a side (by row 10) | orange |
+| W16 | Arduino D3 | j15 (reed lead) | grey |
+| W17 | j17 (other reed lead) | − rail, j side (by row 18) | grey |
+| W18 | a3 (J1 end pin, +) | + rail, a side (by row 4) | orange |
+| W19 | a5 (J1 middle pin, −) | − rail, a side (by row 6) | black |
+| W20 | − rail, a side (by row 2) | − rail, j side (by row 2) | black |
 
 The rows are a suggestion: any free row works as long as every wire that should meet lands in the same row on the same side of the channel, or on the same rail.
 
@@ -78,6 +74,7 @@ The rows are a suggestion: any free row works as long as every wire that should 
 | --- | --- | --- | --- |
 | C1 | Laptop USB-A port | USB isolator, **Micro-B** (computer side) | A USB-A to Micro-B **data** cable (USB-C to Micro-B if the laptop has only USB-C). A charge-only cable shows no serial port |
 | C2 | USB isolator, **USB-A socket** (device side) | Arduino UNO R4 Minima, **USB-C** | A USB-A to USB-C data cable |
+| C3 | SFM3300-250-D, in the breathing circuit | Laptop USB port, **not** the isolator | Sensirion's evaluation cable (SEK-SFM3xxx-AW/D Gen. 2): its clip-on cap snaps onto the sensor. The laptop runs on its battery while a person is connected |
 | P1 | 5 V 2 A wall adapter (SparkFun TOL-15312), 5.5 × 2.1 mm plug, centre positive | 2.1 mm barrel jack (Adafruit 373) on the breadboard | Plug in last, after checking the rails with a meter |
 
 Adafruit's page lists a Micro USB and a USB-A connector on the isolator without naming the sides; the USB-A socket is where a device plugs in, so it faces the Arduino. Check the markings on your board.
@@ -89,29 +86,25 @@ Adafruit's page lists a Micro USB and a USB-A connector on the isolator without 
 | W1 | Arduino **5V** (power header) | +5V rail | red | Isolated USB power for the Uno side only |
 | W2 | Arduino **GND** (power header) | GND rail | black | |
 | W3 | Arduino **3V3** (power header) | Shifter **LV** | purple | A reference only |
-| W4 | Arduino **SCL** (top header, left end; also A5) | SFM3300 **SCL** | yellow | 5 V I2C, no shifter |
-| W5 | Arduino **SDA** (top header, next to SCL; also A4) | SFM3300 **SDA** | blue | |
-| W6 | Arduino **GND** (top header, next to AREF) | SFM3300 **GND** | black | |
-| W7 | +5V rail | SFM3300 **VDD** | red | 5 V ± 5 % |
-| W8 | +5V rail | Shifter **HV** | red | |
-| W9 | GND rail | Shifter **GND** (HV side) | black | The shifter's two GND pins are joined on its board |
-| W10 | Arduino **D1/TX** | Shifter **B1** | green | `Serial1` |
-| W11 | Arduino **D0/RX** | Shifter **B2** | cyan | |
-| W12 | Shifter **A1** | SprintIR-R pin **1 Rx_In** | green | |
-| W13 | Shifter **A2** | SprintIR-R pin **2 Tx_Out** | cyan | |
-| W14 | Shifter **GND** (LV side) | SprintIR-R pin **3 GND** | black | |
-| W15 | +5V_EXT rail | SprintIR-R pin **4 VDD** | orange | 3.25-5.5 V, about 21 mA |
-| W16 | Arduino **D10** | R1 220 Ω → Q1 **gate** | pink | R2 100 kΩ from the gate to the GND rail |
-| W17 | Q1 **source** | GND rail | black | IRLZ44N, front view legs down: G, D, S |
-| W18 | Q1 **drain** (tab or middle leg) | Pump **−** contact | brown | D1 1N5819 across the pump, band to + |
-| W19 | +5V_EXT rail | Pump **+** contact | orange | Solder wires to the pump's two contacts |
-| W20 | Arduino **D3** | Reed switch, either lead | grey | `INPUT_PULLUP` |
-| W21 | Reed switch, other lead | GND rail | grey | Normally open; closes when the magnet is within about 13 mm |
-| W22 | Barrel jack **end pin** (+) | +5V_EXT rail | orange | |
-| W23 | Barrel jack **middle pin** (−) | GND rail | black | The **side pin** (switch) stays unconnected |
-| W24 | − rail, a side | − rail, j side | black | Joins the two GND rails; the pump's current returns through it |
+| W4 | +5V rail | Shifter **HV** | red | |
+| W5 | GND rail | Shifter **GND** (HV side) | black | The shifter's two GND pins are joined on its board |
+| W6 | Arduino **D1/TX** | Shifter **B1** | green | `Serial1` |
+| W7 | Arduino **D0/RX** | Shifter **B2** | cyan | |
+| W8 | Shifter **A1** | SprintIR-R pin **1 Rx_In** | green | |
+| W9 | Shifter **A2** | SprintIR-R pin **2 Tx_Out** | cyan | |
+| W10 | Shifter **GND** (LV side) | SprintIR-R pin **3 GND** | black | |
+| W11 | +5V_EXT rail | SprintIR-R pin **4 VDD** | orange | 3.25-5.5 V, about 21 mA |
+| W12 | Arduino **D10** | R1 220 Ω → Q1 **gate** | pink | R2 100 kΩ from the gate to the GND rail |
+| W13 | Q1 **source** | GND rail | black | IRLZ44N, front view legs down: G, D, S |
+| W14 | Q1 **drain** (tab or middle leg) | Pump **−** contact | brown | D1 1N5819 across the pump, band to + |
+| W15 | +5V_EXT rail | Pump **+** contact | orange | Solder wires to the pump's two contacts |
+| W16 | Arduino **D3** | Reed switch, either lead | grey | `INPUT_PULLUP` |
+| W17 | Reed switch, other lead | GND rail | grey | Normally open; closes when the magnet is within about 13 mm |
+| W18 | Barrel jack **end pin** (+) | +5V_EXT rail | orange | |
+| W19 | Barrel jack **middle pin** (−) | GND rail | black | The **side pin** (switch) stays unconnected |
+| W20 | − rail, a side | − rail, j side | black | Joins the two GND rails; the pump's current returns through it |
 
-If the SFM3300 does not answer, the fix is two 4.7 kΩ pull-ups (from the electronics component kit, if it has them): SDA → +5V rail and SCL → +5V rail (the Uno R4 Minima has none of its own). The Uno R4 Minima allows at most 8 mA per pin, which every signal here stays under; the pump's 0.5 A goes through Q1, never through a pin.
+The Uno R4 Minima allows at most 8 mA per pin, which every signal here stays under; the pump's 0.5 A goes through Q1, never through a pin.
 
 **Tubes and fittings**
 
@@ -129,8 +122,8 @@ If the SFM3300 does not answer, the fix is two 4.7 kΩ pull-ups (from the electr
 | Part (purchase list) | Job | Connected to |
 | --- | --- | --- |
 | Arduino UNO R4 Minima (ABX00080) | Reads both sensors, drives the pump, streams 100 lines/s to the laptop | USB-C to the isolator's device side |
-| Adafruit 2107 USB isolator (ADuM4160 + ADuM5000) | Keeps the laptop and mains away from anything on the subject | Laptop USB → isolator Micro-B (cable C1); isolator USB-A socket → Uno USB-C (cable C2). It works with full-speed USB devices like the Uno R4. Its isolated supply gives up to 100 mA: enough for the Uno and the SFM3300, **not** for the pump |
-| Sensirion SFM3300-250-D | Flow, ±250 L/min, every 0.5 ms; breaths, VT and MV come from it | I2C at 5 V straight to the Uno's SDA/SCL (no level shifter needed), address 0x40, VDD from the Uno's 5V |
+| Adafruit 2107 USB isolator (ADuM4160 + ADuM5000) | Keeps the laptop and mains away from anything on the subject | Laptop USB → isolator Micro-B (cable C1); isolator USB-A socket → Uno USB-C (cable C2). It works with full-speed USB devices like the Uno R4. Its isolated supply gives up to 100 mA: enough for the Uno, **not** for the pump |
+| Sensirion SFM3300-250-D | Flow, ±250 L/min, every 0.5 ms; breaths, VT and MV come from it | Clipped into Sensirion's evaluation cable, USB straight to the laptop (C3); the app reads it ([below](#the-flow-sensor-cable)) |
 | GSS SprintIR-R-20 (CO2meter) | CO2, 0-20 %, 50 readings a second, sidestream | UART at 38,400 baud on D0/D1 through the BSS138 shifter (its inputs are rated to 5 V absolute maximum and its output high is only 2.6-3.0 V, so the shifter works both ways); pins 1 Rx_In, 2 Tx_Out, 3 GND, 4 VDD; VDD from 5V_EXT (3.25-5.5 V, about 21 mA) |
 | Adafruit 757 BSS138 4-channel level shifter | 5 V ↔ 3.3 V for the SprintIR-R's UART | HV = Uno 5V, LV = Uno 3V3, B1/B2 on the Uno side, A1/A2 on the SprintIR side; channels 3-4 spare |
 | ZR370-02PM air pump (Adafruit 4699) | Pulls the CO2 sample through the filter and the SprintIR-R | + to 5V_EXT, − to Q1's drain |
@@ -144,8 +137,8 @@ If the SFM3300 does not answer, the fix is two 4.7 kΩ pull-ups (from the electr
 
 **What is purchased.** Everything above, and everything in the budget increase request except four items that will not be bought: the SparkFun pulse oximeter and heart rate sensor (MAX30101 & MAX32664), the assorted pediatric and infant masks, the pediatric EtCO2 nasal cannulas and the SFM3400-33-D infant flow sensor. From that request:
 
-- In this build: the electronics component kit (expected to supply R1 220 Ω, R2 100 kΩ, the D1 flyback diode and, if the flow sensor needs them, 4.7 kΩ pull-ups: check it), the ¾" three-way PVC ball valve, two more ¾×½" reducer bushings (one per valve port), the male and female luer-to-barb adapters (the sample port), the 3-way luer stopcocks (T1: switch the sample line between the breath and room air or calibration gas), a second 1 m of silicone tubing, and the ABS project enclosure for the electronics.
-- Spares and supports: a spare SFM3300-250-D, the Sensirion Gen. 2 evaluation cable (reads a flow sensor straight from the laptop over USB, with Sensirion's software, for bench checks), the tubing stands and holders. The second level shifter and the Qwiic-to-breadboard cable were for the oximeter and are spare.
+- In this build: the electronics component kit (expected to supply R1 220 Ω, R2 100 kΩ, the D1 flyback diode: check it), the ¾" three-way PVC ball valve, two more ¾×½" reducer bushings (one per valve port), the male and female luer-to-barb adapters (the sample port), the 3-way luer stopcocks (T1: switch the sample line between the breath and room air or calibration gas), a second 1 m of silicone tubing, and the ABS project enclosure for the electronics.
+- Spares and supports: a spare SFM3300-250-D, the tubing stands and holders. The Sensirion Gen. 2 evaluation cable is in this build: it carries the flow sensor to the laptop (C3). The second level shifter and the Qwiic-to-breadboard cable were for the oximeter and are spare.
 
 The mouthpieces, rebreathing bag and main tubing come from the mentors; the calibration syringe, CO2 calibration gas and test lung are borrowed from the PFT lab.
 
@@ -168,7 +161,7 @@ The mouthpieces, rebreathing bag and main tubing come from the mentors; the cali
 | Jumper wires, male-to-male and female-to-male | **No** (the kit may include them) |
 | C1 USB-A → Micro-B data cable (laptop → isolator) | **No** |
 | C2 USB-A → USB-C data cable (isolator → Arduino) | **No** |
-| A lead from the SFM3300's connector to the breadboard (W4–W7) | **No.** The Sensirion Gen. 2 evaluation cable in the request connects the sensor to the laptop's USB, not to the Arduino |
+| C3 Sensirion evaluation cable, SEK-SFM3xxx-AW/D Gen. 2 (flow sensor → laptop USB) | Yes: budget request (Newark) |
 | Hookup wire and solder for the pump's two contacts | **No** (usually from the lab) |
 
 Purchased but not in the wiring: the ABS project enclosure (houses the Arduino and breadboard), the Qwiic-to-breadboard cable and the second level shifter (bought for the oximeter, now spare).
@@ -177,17 +170,29 @@ Purchased but not in the wiring: the ABS project enclosure (houses the Arduino a
 
 | Uno R4 pin | Goes to | Notes |
 | --- | --- | --- |
-| SDA, SCL | SFM3300 SDA, SCL | 5 V I2C, 100 kHz, address 0x40. 4.7 kΩ pull-ups from each to 5V if the sensor does not answer |
-| 5V | SFM3300 VDD; level shifter HV | Isolated USB power: keep this rail to the Uno, the SFM3300 and the shifter |
+| 5V | Level shifter HV | Isolated USB power: keep this rail to the Uno and the shifter |
 | 3V3 | Level shifter LV | A reference only: the shifter draws almost nothing |
 | D1 (TX1) | Shifter B1 → A1 → SprintIR-R Rx_In | `Serial1`, 38400 8N1 |
 | D0 (RX1) | Shifter B2 ← A2 ← SprintIR-R Tx_Out | |
 | D10 (PWM) | Q1 IRLZ44N gate through 220 Ω; 100 kΩ gate to GND | Q1 drain = pump −, pump + = 5V_EXT, diode across the pump (band to +) |
 | D3 | Reed switch, other lead to GND | `INPUT_PULLUP`; the magnet closes it at the bag position (`REED_CLOSED_IS_BAG`) |
 | D13 (built-in LED) | nothing to wire | The alarm LED: follows the app's alarms and flashes if the app stops |
-| GND | Common ground | Uno GND, the wall adapter's −, Q1's source, the shifter, both sensors, joined at one point |
+| GND | Common ground | Uno GND, the wall adapter's −, Q1's source, the shifter, the CO2 sensor, joined at one point |
 
-The SprintIR-R's pin numbers differ between its header variants: wire by the signal names on its datasheet (GND, VDD, Rx_In, Tx_Out). Likewise check the SFM3300's 4-pin connector order (SDA, GND, VDD, SCL on the common cable) against its datasheet before powering up.
+The SprintIR-R's pin numbers differ between its header variants: wire by the signal names on its datasheet (GND, VDD, Rx_In, Tx_Out).
+
+### The flow sensor cable
+
+The SFM3300 has no pins: its contacts are flat pads on its circuit board, made for a spring-pin clip (Sensirion application note GF_AN_SFM-22). So it does not wire to the Arduino. It clips into **Sensirion's evaluation cable** (SEK-SFM3xxx-AW/D Gen. 2), whose cap holds a small microcontroller that reads the sensor and sends its flow over USB. The cable plugs into the laptop (C3), and the monitor app reads it and puts its flow into the Arduino's data lines, where the board now sends `9999` (`FLOW_ON_ARDUINO 0` in `config.h`; the board says `FLOW,CABLE`). Everything downstream, from breaths and VT to the response plot, the alarms and the recordings, is unchanged.
+
+1. **Check the cable on its own:** plug it in, clip the sensor in, and run `co2response --flow-cable PORT` (`co2response --list-ports` lists the ports; the cable is an FTDI USB serial port, and Windows may need the [FTDI VCP driver](https://ftdichip.com/drivers/vcp-drivers/)). It prints the sensor (`SFM3300-D`), its serial number and its flow twice a second. Blow through the sensor: the flow moves.
+2. **In the app:** **Settings > Connection > Flow sensor cable**: choose its port and turn on **Use the flow cable**. It starts with the next connection to the Arduino, or at once if one is open. The log says `Flow cable: SFM3300-D, serial ...`.
+3. **Direction:** breathe in through the mouthpiece. The flow should read positive; if it reads negative, set **Flow direction** to **Reversed**.
+4. **Zero:** as before, cap the mouthpiece with the pump running and zero the flow (below).
+
+**Safety:** the cable is **not** behind the USB isolator (the isolator has one device port, and the Arduino uses it). Run the laptop on its **battery, mains unplugged**, whenever a person is connected, so nothing on the subject's side has a path to mains.
+
+How it reads the cable (`co2response/sources/flow_cable.py`): Nicolay's protocol for the cap (SP_290322000_cp), 115200 baud 8N1; it checks the cable answers its test command, asks for the sensor's name and serial number, then streams the flow (function 30) or, if the stream does not start, asks for it (function 16) about every 2 ms. The cable applies the sensor's own offset and scale. Each Arduino line gets the mean of the cable's readings since the previous line, lined up on the computer's clock to within about 20 ms (USB latency); with no flow from the cable for 0.5 s the flow reads `---` and raises "FLOW SENSOR NOT ANSWERING". The Capnostream and the flow cable can be used together. The browser version cannot use the cable; use the desktop or terminal app.
 
 ### The gas path
 
@@ -200,7 +205,7 @@ flowchart LR
 ```
 
 - **Sample port between the mouthpiece and the flow sensor**, as close to the mouth as possible, so the CO2 is the subject's breath and not the circuit's.
-- **Flow direction:** the SFM3300's positive flow runs from its 22 mm **female** end to its 22 mm **male** end (datasheet 4.1). Put the **male** end (15 mm female inside) towards the subject and the **female** end towards the valve, and inspiration reads positive. Mounted the other way, set `SFM_FLOW_SIGN -1` in `config.h`.
+- **Flow direction:** the SFM3300's positive flow runs from its 22 mm **female** end to its 22 mm **male** end (datasheet 4.1). Put the **male** end (15 mm female inside) towards the subject and the **female** end towards the valve, and inspiration reads positive. Mounted the other way, set **Flow direction** to **Reversed** in **Settings > Connection > Flow sensor cable**.
 - **Fitting the pipe:** the female end is a 22 mm socket; ½" Sch 40 PVC is 21.3 mm across, so wrap it with tape until it seals.
 - **Pump exhaust back into the valve's bag side**, so the closed rebreathing circuit keeps its gas and its CO2.
 

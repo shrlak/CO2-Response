@@ -134,6 +134,39 @@ class ConnectionPage(Page):
         br.add(hbox(button("Connect to Python", self._bridge, kind="primary"), stretch_end=True))
         cards.add(br)
 
+        # ---- the flow sensor through Sensirion's evaluation cable
+        fc = Card("Flow sensor cable", "SFM3300 through Sensirion's evaluation cable")
+        fc.add(
+            label(
+                "Reads the flow from the SFM3300 clipped into Sensirion's evaluation cable (SEK-SFM3xxx-AW/D), plugged straight into "
+                "this computer, and puts it into the Arduino's data lines; the CO2 still comes from the Arduino. The cable is not "
+                "behind the USB isolator: run the laptop on its battery (mains unplugged) while a person is connected. "
+                "Check it first with co2response --flow-cable PORT.",
+                "note",
+                wrap=True,
+            )
+        )
+        f = Form()
+        fcs = s.flow_cable
+        self.fc_on = toggle(fcs.enabled, lambda v: self._fc(enabled=v))
+        f.add("fcon", "Use the flow cable", self.fc_on)
+        self.fc_port = QComboBox()
+        self.fc_port.setEditable(True)
+        self.fc_port.setFixedWidth(260)
+        self.fc_port.lineEdit().editingFinished.connect(lambda: self._fc(port=self._fc_port_value()))
+        self.fc_port.activated.connect(lambda _i: self._fc(port=self._fc_port_value()))
+        f.add("fcport", "Its port", hbox(self.fc_port, button("Refresh", self._refresh_fc_ports, small=True)))
+        f.add(
+            "fcsign",
+            "Flow direction",
+            combo([(1, "As the arrow (+ = towards the subject)"), (-1, "Reversed")], fcs.sign, lambda v: self._fc(sign=v), 260),
+            hint="Breathe in: the flow should read positive. If it reads negative, choose Reversed.",
+        )
+        fc.add(f)
+        self.fc_state = label("", "note", wrap=True)
+        fc.add(self.fc_state)
+        cards.add(fc)
+
         # ---- a Capnostream 35 as the CO2 source
         cap = Card("Capnostream 35", "CO2 from the monitor")
         cap.add(
@@ -173,6 +206,7 @@ class ConnectionPage(Page):
         self._lib_version = -1
         self._refresh_ports()
         self._refresh_capno_ports()
+        self._refresh_fc_ports()
 
     # ---------- actions
 
@@ -259,6 +293,26 @@ class ConnectionPage(Page):
         set_combo(self.capno_port, cur or "sim")
         self.capno_port.blockSignals(False)
 
+    def _fc_port_value(self) -> str:
+        data = self.fc_port.currentData()
+        text = self.fc_port.currentText().strip()
+        return str(data) if data and self.fc_port.itemText(self.fc_port.currentIndex()) == text else text
+
+    def _fc(self, **change) -> None:
+        self.engine.update_settings(flow_cable=dataclasses.replace(self.engine.settings.flow_cable, **change))
+
+    def _refresh_fc_ports(self) -> None:
+        cur = self.engine.settings.flow_cable.port
+        self.fc_port.blockSignals(True)
+        self.fc_port.clear()
+        self.fc_port.addItem("Choose its port", "")
+        for p in self.engine._ports():
+            self.fc_port.addItem(p.label, p.device)
+        if cur and self.fc_port.findData(cur) < 0:
+            self.fc_port.addItem(cur, cur)
+        set_combo(self.fc_port, cur)
+        self.fc_port.blockSignals(False)
+
     def _bridge(self) -> None:
         self.engine.update_settings(bridge_url=self.bridge_url.text().strip())
         if not self.engine.connect("bridge"):
@@ -303,6 +357,18 @@ class ConnectionPage(Page):
         else:
             state = "Off: the CO2 comes from the board's own sensor."
         self.capno_state.setText(state)
+        fcs = s.settings.flow_cable
+        link = self.engine.flow_cable
+        if not fcs.enabled:
+            fstate = "Off: the flow comes from the board."
+        elif link is None:
+            fstate = f"On ({fcs.port or 'no port chosen'}): used at the next connection to the Arduino."
+        elif link.info is None:
+            fstate = "Waiting for the cable's first flow reading."
+        else:
+            fstate = f"Connected: {link.info.sensor}, serial {link.info.serial}, {link.samples_in} readings."
+        self.fc_state.setText(fstate)
         if force:
             self._refresh_ports()
             self._refresh_capno_ports()
+            self._refresh_fc_ports()
