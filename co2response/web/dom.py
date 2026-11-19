@@ -239,10 +239,12 @@ def field(label: str, control: str, hint: str | None = None, for_: str | None = 
     return f'<div class="field">{lab}<div class="ctl">{control}</div>{h}</div>'
 
 
-def num(change: str, value, id_: str | None = None, step=None, lo=None, hi=None, arg=None, aria: str | None = None, width: int | None = None) -> str:
+def num(change: str, value, id_: str | None = None, step=None, lo=None, hi=None, arg=None, aria: str | None = None, width: int | None = None, live: str | None = None) -> str:
+    """A number input; ``change`` runs on Enter or leaving it, ``live`` (if given) on
+    every keystroke."""
     v = "" if value is None or value != value else f"{value:.8g}"
     style = f"width:{width}px" if width else None
-    return f'<input type="number"{attrs(id=id_, value=v, step=step if step is not None else "any", min=lo, max=hi, data_change=change, data_arg=arg, aria_label=aria, style=style)}>'
+    return f'<input type="number"{attrs(id=id_, value=v, step=step if step is not None else "any", min=lo, max=hi, data_change=change, data_input=live, data_arg=arg, aria_label=aria, style=style)}>'
 
 
 def number_field(label: str, change: str, value, unit: str | None = None, hint: str | None = None, id_: str | None = None, lo=None, hi=None, step=None, arg=None) -> str:

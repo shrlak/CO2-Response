@@ -306,3 +306,100 @@ def test_co2_ramp_alarms_within_a_breath_or_two_of_crossing_the_limit():
     assert ets[alarm_at - 1] > 50
     assert all(x <= 50.5 for x in ets[: alarm_at - 1])
     assert ets[alarm_at] < 54
+
+
+# ---------- new settings take effect at once
+
+
+def test_lowering_the_warning_limit_alarms_at_once_on_the_breaths_already_seen():
+    e, _ = make(high_mm_hg=60, delay_breaths=2)
+    e.on_breath(55, 1000)
+    e.on_breath(56, 5000)
+    assert e.get("co2High") is None
+    e.set_settings(dataclasses.replace(e.settings, high_mm_hg=50), 6000)  # no next breath needed
+    r = e.get("co2High")
+    assert (r.state, r.since, r.value) == ("active", 6000, 56)
+    assert "> 50" in r.message
+
+
+def test_a_lowered_limit_still_honours_the_trigger_delay():
+    e, _ = make(high_mm_hg=60, delay_breaths=3)
+    e.on_breath(40, 1000)
+    e.on_breath(55, 5000)
+    e.set_settings(dataclasses.replace(e.settings, high_mm_hg=50), 6000)
+    assert e.get("co2High") is None  # one breath past the new limit, three needed
+    e.on_breath(55, 9000)
+    assert e.get("co2High") is None
+    e.on_breath(55, 13000)
+    assert e.get("co2High").state == "active"
+
+
+def test_raising_the_limit_resolves_an_alarm_it_no_longer_calls_for():
+    e, _ = make(high_mm_hg=50, delay_breaths=1)
+    e.on_breath(55, 1000)
+    assert e.is_active("co2High")
+    e.set_settings(dataclasses.replace(e.settings, high_mm_hg=60), 2000)
+    r = e.get("co2High")
+    assert (r.state, r.resolved_at) == ("resolved", 2000)
+
+
+def test_an_active_alarm_shows_the_new_limit_and_priority():
+    e, _ = make(high_mm_hg=50, delay_breaths=1)
+    e.on_breath(55, 1000)
+    assert e.get("co2High").priority == "high"
+    e.set_settings(dataclasses.replace(e.settings, high_mm_hg=52, stop_mm_hg=65), 2000)
+    r = e.get("co2High")
+    assert (r.state, r.priority) == ("active", "medium")
+    assert "> 52" in r.message
+
+
+def test_a_shorter_delay_alarms_at_once():
+    e, _ = make(high_mm_hg=50, delay_breaths=5)
+    for i in range(3):
+        e.on_breath(55, 1000 + 4000 * i)
+    assert e.get("co2High") is None
+    e.set_settings(dataclasses.replace(e.settings, delay_breaths=3), 10000)
+    assert e.is_active("co2High")
+
+
+def test_setting_a_low_limit_alarms_at_once():
+    e, _ = make(low_mm_hg=None, delay_breaths=2)
+    e.on_breath(20, 1000)
+    e.on_breath(21, 5000)
+    e.set_settings(dataclasses.replace(e.settings, low_mm_hg=25), 6000)
+    assert e.get("co2Low").state == "active"
+
+
+def test_a_lowered_stop_limit_alarms_at_once_on_the_last_breath():
+    e, _ = make(high_mm_hg=50, stop_mm_hg=70, delay_breaths=2)
+    e.on_breath(62, 1000)
+    assert e.get("co2Stop") is None
+    e.set_settings(dataclasses.replace(e.settings, stop_mm_hg=60), 2000)
+    assert e.get("co2Stop").state == "active"
+
+
+def test_live_source_uses_the_waveform_already_seen():
+    e, _ = make(source="live", high_mm_hg=60, delay_sec=1)
+    for i in range(30):
+        e.on_live_co2(55, i * 50)  # 1.5 s at 55
+    assert e.get("co2High") is None
+    e.set_settings(dataclasses.replace(e.settings, high_mm_hg=50), 1500)
+    assert e.is_active("co2High")
+
+
+def test_switching_the_alarm_source_takes_effect_at_once():
+    e, _ = make(high_mm_hg=50, delay_breaths=3, delay_sec=1)
+    e.on_breath(45, 1000)
+    for i in range(30):
+        e.on_live_co2(55, 1000 + i * 50)
+    assert e.get("co2High") is None
+    e.set_settings(dataclasses.replace(e.settings, source="live"), 2500)
+    assert e.is_active("co2High")
+
+
+def test_a_new_connection_forgets_the_last_ones_readings():
+    e, _ = make(high_mm_hg=60, delay_breaths=1)
+    e.on_breath(55, 1000)
+    e.forget_readings()
+    e.set_settings(dataclasses.replace(e.settings, high_mm_hg=50), 2000)
+    assert e.get("co2High") is None

@@ -250,3 +250,23 @@ def test_settings_are_kept_in_range():
     c = sanitize_capno(CapnoSettings(baud=5, units="ppm", delay_ms=-3, port="  COM4 "))
     assert c.baud == 300 and c.units == "mmHg" and c.delay_ms == 0 and c.port == "COM4"  # clamped to the nearest limit
     assert math.isfinite(c.delay_ms)
+
+
+def test_capnostream_settings_take_effect_on_an_open_connection(tmp_path, monkeypatch):
+    """On a board's connection, a change reopens the Capnostream link at once and the
+    flow's CO2 delay follows, rather than waiting for the next connection."""
+    e = make_engine(tmp_path)
+    e.connect("simulator")
+
+    class Board:
+        kind = "bridge"
+
+    opened = []
+    monkeypatch.setattr(e, "_source", Board())
+    monkeypatch.setattr(e, "_start_capno", lambda src: opened.append((src, e.settings.capno.delay_ms)))
+    e.update_settings(capno=CapnoSettings(enabled=True, port="COM9", delay_ms=250))
+    assert opened == [(e._source, 250)] and e._capno_on
+    assert e.pipeline.opts.co2_delay_ms == 250
+    e.update_settings(capno=dataclasses.replace(e.settings.capno, enabled=False))
+    assert not e._capno_on and len(opened) == 1
+    assert e.pipeline.opts.co2_delay_ms != 250
