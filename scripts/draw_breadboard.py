@@ -37,8 +37,43 @@ COL = {
     "pwm": "#e377c2",  # pump gate: pink
     "drain": "#8c564b",  # pump -: brown
     "sw": "#8a8a8a",  # reed switch: grey
-    "opt": "#ffffff",  # optional parts: white
 }
+# Every wire has its own colour in the drawing, so each one can be followed from end to end.
+# The jumper colour to actually use (by what the wire carries) is in COLOUR_NAME, by kind.
+WCOL = {
+    1: "#e6194b",  # red
+    2: "#111111",  # black
+    3: "#911eb4",  # purple
+    4: "#e6b800",  # gold
+    5: "#4363d8",  # blue
+    6: "#8c8c8c",  # grey
+    7: "#800000",  # maroon
+    8: "#ff4fa3",  # hot pink
+    9: "#000080",  # navy
+    10: "#2ca02c",  # green
+    11: "#19c3e6",  # cyan
+    12: "#9acd32",  # lime
+    13: "#469990",  # teal
+    14: "#9a6324",  # brown
+    15: "#ffa000",  # amber
+    16: "#f032e6",  # magenta
+    17: "#808000",  # olive
+    18: "#00a86b",  # jade
+    19: "#ff4500",  # orange-red
+    20: "#7b68ee",  # slate blue
+    21: "#2f4f4f",  # dark slate
+    22: "#f58231",  # orange
+    23: "#c71585",  # violet-red
+    24: "#c8c8c8",  # silver
+}
+
+
+def ink(hexcol: str) -> str:
+    """Black or white text, whichever reads better on this colour."""
+    r, g, b = (int(hexcol[i : i + 2], 16) for i in (1, 3, 5))
+    return "#111" if 0.299 * r + 0.587 * g + 0.114 * b > 150 else "#fff"
+
+
 COLOUR_NAME = {
     "ext": "orange",
     "5v": "red",
@@ -51,7 +86,6 @@ COLOUR_NAME = {
     "pwm": "pink",
     "drain": "brown",
     "sw": "grey",
-    "opt": "white",
 }
 
 out: list[str] = []
@@ -163,50 +197,55 @@ def path_d(pts, r=10) -> str:
     return d
 
 
-def wire(n, kind, pts, a, b, badge=None, note="", optional=False, label_ends=True):
+def wire(n, kind, pts, a, b, badge=None):
     """Record a wire; it is drawn later, above the parts. a and b are the two ends, as text."""
-    WIRES.append(dict(n=n, kind=kind, pts=pts, a=a, b=b, badge=badge, note=note, optional=optional, label_ends=label_ends))
+    WIRES.append(dict(n=n, kind=kind, pts=pts, a=a, b=b, badge=badge))
 
 
 def draw_wire(w) -> None:
-    color = COL[w["kind"]]
+    color = WCOL[w["n"]]
     d = path_d(w["pts"])
-    dash = ' stroke-dasharray="9 6"' if w["optional"] else ""
-    add(f'<path d="{d}" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"{dash}/>')
-    add(f'<path d="{d}" fill="none" stroke="{color}" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"{dash}/>')
+    add(f'<path d="{d}" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>')
+    add(f'<path d="{d}" fill="none" stroke="{color}" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>')
+
+
+def draw_ends(w) -> None:
+    """The wire's number in its own colour, sitting on the hole or pin at each end."""
+    color = WCOL[w["n"]]
     for x, y in (w["pts"][0], w["pts"][-1]):
-        add(f'<circle cx="{x}" cy="{y}" r="5.6" fill="{color}" stroke="#000" stroke-width="1.6"/>')
-        add(f'<circle cx="{x}" cy="{y}" r="1.8" fill="#fff"/>')
+        add(f'<circle cx="{x}" cy="{y}" r="9.5" fill="{color}" stroke="#000" stroke-width="1.8"/>')
+        text(x, y + 3.6, str(w["n"]), 10, "middle", "bold", ink(color))
 
 
 def draw_badge(w) -> None:
     pts = w["pts"]
+    length = sum(abs(pts[i + 1][0] - pts[i][0]) + abs(pts[i + 1][1] - pts[i][1]) for i in range(len(pts) - 1))
+    if length < 130:
+        return
     if w["badge"] is not None:
         bx, by = w["badge"]
     else:  # middle of the longest segment
         best = max(range(len(pts) - 1), key=lambda i: abs(pts[i + 1][0] - pts[i][0]) + abs(pts[i + 1][1] - pts[i][1]))
         bx = (pts[best][0] + pts[best + 1][0]) / 2
         by = (pts[best][1] + pts[best + 1][1]) / 2
-    color = COL[w["kind"]]
+    color = WCOL[w["n"]]
     txt = f"W{w['n']}"
-    bw = 9 + 7.4 * len(txt)
-    stroke = "#555" if w["kind"] in ("opt",) else color
-    tc = {"scl": "#6b6100", "opt": "#333", "ext": "#b35c00"}.get(w["kind"], color)
-    add(f'<rect x="{bx - bw / 2}" y="{by - 9.5}" width="{bw}" height="19" rx="9.5" fill="#fff" stroke="{stroke}" stroke-width="2.2"/>')
-    text(bx, by + 4.5, txt, 11.5, "middle", "bold", tc)
+    bw = 10 + 7.6 * len(txt)
+    add(f'<rect x="{bx - bw / 2}" y="{by - 10}" width="{bw}" height="20" rx="10" fill="{color}" stroke="#000" stroke-width="1.8"/>')
+    text(bx, by + 4.5, txt, 12, "middle", "bold", ink(color))
 
 
 def pin(x, y, label=None, where="above", size=9, color="#00585e"):
     add(f'<rect x="{x - 4.5}" y="{y - 4.5}" width="9" height="9" fill="#222" stroke="#000"/>')
     if label:
         if where == "above":
-            text(x, y - 9, label, size, "middle", "bold", color)
+            text(x, y - 14, label, size, "middle", "bold", color)
         elif where == "below":
             text(x, y + 17, label, size, "middle", "bold", color)
         elif where == "up90":
-            text(x + 3.5, y - 9, label, size, "start", "bold", color, rotate=-90)
+            text(x + 3.5, y - 14, label, size, "start", "bold", color, rotate=-90)
         elif where == "down90":
-            text(x - 3.5, y + 9, label, size, "start", "bold", color, rotate=90)
+            text(x - 3.5, y + 14, label, size, "start", "bold", color, rotate=90)
 
 
 def leg(name, color="#9a9a9a"):
@@ -256,8 +295,8 @@ text(
 text(
     24,
     74,
-    "Each rail runs the full length of the board. W = wire, numbered as in docs/wiring.md; every wire end is a dot on its hole or pin. "
-    "Dashed = optional. Wires that only cross are not joined.",
+    "Each rail runs the full length of the board. W = wire, numbered as in docs/wiring.md. "
+    "Each wire has its own colour, and its number sits on the hole at each end. Wires that only cross are not joined.",
     12,
     fill="#444",
 )
@@ -306,23 +345,9 @@ leg("i7")
 leg("B-:6")
 label(cx(3) + 12, 683, "R2 100 kΩ: i7 → − rail (j side)", 9, "start", fill="#5a4a20")
 
-# Buzzer (optional): + g11, - g14
-add(f'<circle cx="{(cx(11) + cx(14)) / 2}" cy="520" r="26" fill="#2b2b2b" fill-opacity="0.18" stroke="#555" stroke-dasharray="5 3"/>')
-leg("g11", "#c8c8c8")
-leg("g14", "#c8c8c8")
-text(cx(11), 538, "+", 12, "middle", "bold", "#c0392b")
-label((cx(11) + cx(14)) / 2, 556, "buzzer (opt.)", 9, fill="#666")
-
 # Reed switch leads into g15, g17 (the switch itself sits on the valve)
 leg("g15", "#bdbdbd")
 leg("g17", "#bdbdbd")
-
-# Push button (optional), straddling the channel: e19, e21, f19, f21
-rect(cx(19) - 10, 452, cx(21) - cx(19) + 20, 56, fill="#ddd", stroke="#666", r=4, dash=True, opacity=0.65)
-add(f'<circle cx="{(cx(19) + cx(21)) / 2}" cy="480" r="9" fill="#444" fill-opacity="0.6"/>')
-for h in ("e19", "e21", "f19", "f21"):
-    leg(h, "#c8c8c8")
-label((cx(19) + cx(21)) / 2, 446, "button (opt.)", 9, fill="#666")
 
 # Level shifter U1 (Adafruit 757): A side in d23-d28, B side in g23-g28
 SH_A = ["A1", "A2", "LV", "GND", "A3", "A4"]
@@ -351,14 +376,16 @@ text(128, 217, "centre positive", 10, fill="#444")
 
 # Sample pump, above the board, left
 PX, PY = 300, 110
-rect(PX, PY, 210, 70, fill="#fff")
+rect(PX, PY, 210, 84, fill="#fff")
 text(PX + 105, PY + 20, "Sample pump ZR370-02PM", 12, "middle", "bold")
 text(PX + 105, PY + 36, "4.5 V · ~0.5 A · leads soldered on", 10, "middle", fill="#444")
 text(PX + 105, PY + 51, "D1 1N5819 soldered across its", 10, "middle", fill="#444")
 text(PX + 105, PY + 64, "contacts: band (cathode) to +", 10, "middle", fill="#444")
-PM, PP = (PX + 40, PY + 70), (PX + 170, PY + 70)
-pin(*PM, "−", "below", 12, "#111")
-pin(*PP, "+", "below", 12, "#c0392b")
+PM, PP = (PX + 40, PY + 84), (PX + 170, PY + 84)
+pin(*PM)
+text(PM[0] - 20, PM[1] + 4, "−", 14, "middle", "bold", "#111")
+pin(*PP)
+text(PP[0] + 20, PP[1] + 4, "+", 14, "middle", "bold", "#c0392b")
 
 # SprintIR-R, above the board, over the shifter
 SX, SY = 860, 104
@@ -369,7 +396,7 @@ text(SX + 140, SY + 50, "female ends of the jumpers on its header", 10, "middle"
 SP = {1: (SX + 56, SY + 84), 2: (SX + 112, SY + 84), 3: (SX + 168, SY + 84), 4: (SX + 224, SY + 84)}
 for k, nm in ((1, "1 Rx_In"), (2, "2 Tx_Out"), (3, "3 GND"), (4, "4 VDD")):
     pin(*SP[k])
-    text(SP[k][0], SP[k][1] - 10, nm, 9, "middle", "bold", "#00585e")
+    text(SP[k][0], SP[k][1] - 14, nm, 9, "middle", "bold", "#00585e")
 
 # SFM3300, left
 FX, FY = 20, 470
@@ -381,7 +408,7 @@ text(FX + 100, FY + 65, "on Sensirion's note / your cable", 10, "middle", fill="
 SF = {"SCL": (FX + 40, FY + 120), "SDA": (FX + 80, FY + 120), "GND": (FX + 120, FY + 120), "VDD": (FX + 160, FY + 120)}
 for k, (x, y) in SF.items():
     pin(x, y)
-    text(x, y - 10, k, 9, "middle", "bold", "#00585e")
+    text(x, y - 14, k, 9, "middle", "bold", "#00585e")
 
 # Reed switch (on the valve), above the board; its own two leads come down into g15 and g17
 RX, RY = 580, 104
@@ -454,7 +481,7 @@ wire(2, "gnd", [(BXP["GND "], B), (BXP["GND "], 1058), (1202, 1058), (1202, 632)
 wire(3, "3v3", [(BXP["3V3"], B), (BXP["3V3"], 1074), (1232, 1074), (1232, 390), (cx(25) + 12, 390), hole("b25")], "Arduino 3V3 (power header)", "b25 (shifter LV)", badge=(1232, 900))
 wire(22, "ext", [hole("a3"), (cx(3), 362), (cx(4) - 6, 350), (cx(4) - 6, 326), hole("T+:4")], "a3 (J1 end pin, +)", "T+:4", badge=(cx(3) - 2, 352))
 wire(23, "gnd", [hole("a5"), (cx(5), 360), (cx(6), 352), hole("T-:6")], "a5 (J1 middle pin, −)", "T-:6", badge=(cx(6) + 24, 352))
-wire(27, "gnd", [hole("T-:2"), (cx(2) - 12, 344), (BOARD[0] - 10, 344), (BOARD[0] - 10, 616), (cx(2) - 12, 616), hole("B-:2")], "T-:2", "B-:2", badge=(BOARD[0] - 10, 560))
+wire(24, "gnd", [hole("T-:2"), (cx(2) - 12, 344), (BOARD[0] - 10, 344), (BOARD[0] - 10, 616), (cx(2) - 12, 616), hole("B-:2")], "T-:2", "B-:2", badge=(BOARD[0] - 10, 560))
 
 # Flow sensor: straight from the Arduino's top header, and VDD from the j-side + rail
 wire(4, "scl", [(TX["SCL"], T), (TX["SCL"], 784), (SF["SCL"][0], 784), SF["SCL"]], "Arduino SCL (top header)", "SFM3300 SCL", badge=(330, 784))
@@ -482,29 +509,25 @@ wire(19, "ext", [PP, (PP[0], 230), (cx(10), 250), hole("T+:10")], "Pump + contac
 wire(20, "sw", [(TX["D3"], T), (TX["D3"], 720), (cx(15), 720), hole("j15")], "Arduino D3", "j15 (reed lead)", badge=(cx(15), 660))
 wire(21, "sw", [hole("j17"), (cx(17), 600), (cx(18), 606), hole("B-:18")], "j17 (other reed lead)", "B-:18", badge=(cx(18) + 4, 611))
 
-# Optional: buzzer, button
-wire(24, "opt", [(TX["D8"], T), (TX["D8"], 730), (cx(11), 730), hole("j11")], "Arduino D8", "j11 (buzzer +)", badge=(cx(11), 660), optional=True)
-wire(28, "gnd", [hole("j14"), (cx(14) - 10, 592), (cx(14) - 10, 612), hole("B-:14")], "j14 (buzzer −)", "B-:14", badge=(cx(13) - 2, 640), optional=True)
-wire(25, "opt", [(TX["D2"], T), (TX["D2"], 710), (cx(19), 710), hole("j19")], "Arduino D2", "j19 (button)", badge=(cx(19), 660), optional=True)
-wire(29, "gnd", [hole("a21"), (cx(21), 360), (cx(22), 352), hole("T-:22")], "a21 (button, diagonal leg)", "T-:22", badge=(cx(22) + 26, 352), optional=True)
-
 for w_ in WIRES:
     draw_wire(w_)
 for w_ in WIRES:
     draw_badge(w_)
+for w_ in WIRES:
+    draw_ends(w_)
 
 # ------------------------------------------------------------------ the rail map
 MY = 1084
 rect(20, MY, W - 40, 112, fill="#fbf9f3", stroke="#d8d0b8")
 text(34, MY + 22, "What goes on each rail", 13, weight="bold")
 rails = [
-    ("T+", COL["ext"], "+ rail, a side = +5V_EXT", "in: W22 from J1's end pin · out: W15 SprintIR-R VDD, W19 pump +"),
-    ("T-", "#1b1b1b", "− rail, a side = GND", "in: W23 from J1's middle pin · out: W29 button (opt.) · joined to the j-side − rail by W27"),
-    ("B-", "#1b1b1b", "− rail, j side = GND", "in: W2 Arduino GND · out: W9 shifter, W17 Q1 source, R2, W21 reed, W28 buzzer (opt.)"),
-    ("B+", COL["5v"], "+ rail, j side = +5V", "in: W1 Arduino 5V · out: W7 SFM3300 VDD, W8 shifter HV"),
+    ("T+", "#f58231", "+ rail, a side = +5V_EXT", "in: W22 from J1's end pin · out: W15 SprintIR-R VDD, W19 pump +"),
+    ("T-", "#1b1b1b", "− rail, a side = GND", "in: W23 from J1's middle pin · joined to the j-side − rail by W24"),
+    ("B-", "#1b1b1b", "− rail, j side = GND", "in: W2 Arduino GND · out: W9 shifter, W17 Q1 source, R2, W21 reed switch"),
+    ("B+", "#e6194b", "+ rail, j side = +5V", "in: W1 Arduino 5V · out: W7 SFM3300 VDD, W8 shifter HV"),
 ]
 text(1000, MY + 44, "Never join the two + rails: they are different supplies.", 11, weight="bold", fill="#c0392b")
-text(1000, MY + 63, "Both − rails are GND and must be joined (W27).", 11, fill="#333")
+text(1000, MY + 63, "Both − rails are GND and must be joined (W24).", 11, fill="#333")
 text(1000, MY + 82, "Any hole of a rail will do: the rows named (\"by row 4\") are only where", 11, fill="#333")
 text(1000, MY + 101, "the drawing puts each wire end. The holes of a rail are all joined.", 11, fill="#333")
 for i, (_k, c, a, b) in enumerate(rails):
@@ -518,28 +541,27 @@ LY = MY + 128
 text(24, LY, "Every wire, end to end (hole = column letter + row number, as printed on the breadboard)", 14, weight="bold")
 ordered = sorted(WIRES, key=lambda w_: w_["n"])
 half = (len(ordered) + 1) // 2
+text(24 + 820, LY, "jumper colour to use", 10, "end", "bold", "#666")
+text(24 + 860 + 820, LY, "jumper colour to use", 10, "end", "bold", "#666")
 for i, w_ in enumerate(ordered):
     col_ = i // half
     row = i % half
     x0 = 24 + col_ * 860
-    yy = LY + 26 + row * 22
-    c = COL[w_["kind"]]
-    dash = ' stroke-dasharray="7 4"' if w_["optional"] else ""
-    add(f'<line x1="{x0}" y1="{yy - 4}" x2="{x0 + 34}" y2="{yy - 4}" stroke="#000" stroke-opacity="0.75" stroke-width="7"{dash}/>')
-    add(f'<line x1="{x0}" y1="{yy - 4}" x2="{x0 + 34}" y2="{yy - 4}" stroke="{c}" stroke-width="4.4"{dash}/>')
-    text(x0 + 42, yy, f"W{w_['n']}", 11, weight="bold")
-    a = hole_label(w_["a"])
-    b = hole_label(w_["b"])
-    cname = COLOUR_NAME[w_["kind"]] + (", optional" if w_["optional"] else "")
-    text(x0 + 76, yy, f"{a}  →  {b}", 11)
-    text(x0 + 820, yy, cname, 10, "end", fill="#666")
+    yy = LY + 28 + row * 24
+    c = WCOL[w_["n"]]
+    add(f'<line x1="{x0}" y1="{yy - 4}" x2="{x0 + 40}" y2="{yy - 4}" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>')
+    add(f'<line x1="{x0}" y1="{yy - 4}" x2="{x0 + 40}" y2="{yy - 4}" stroke="{c}" stroke-width="5.6" stroke-linecap="round"/>')
+    add(f'<rect x="{x0 + 50}" y="{yy - 14}" width="38" height="20" rx="10" fill="{c}" stroke="#000" stroke-width="1.6"/>')
+    text(x0 + 69, yy + 0.5, f"W{w_['n']}", 11.5, "middle", "bold", ink(c))
+    text(x0 + 98, yy, f"{hole_label(w_['a'])}  →  {hole_label(w_['b'])}", 11.5)
+    text(x0 + 820, yy, COLOUR_NAME[w_["kind"]], 10.5, "end", fill="#555")
 
-PY2 = LY + 26 + half * 22 + 8
+PY2 = LY + 28 + half * 24 + 8
 text(
     24,
     PY2,
     "Parts in holes: J1 c3/c5/c7 · Q1 IRLZ44N f7 G, f8 D, f9 S (printed side towards column j) · R1 220 Ω h3-h7 · R2 100 kΩ i7 → − rail (j side) · "
-    "U1 shifter A side d23-d28, B side g23-g28 · reed leads g15, g17 · buzzer g11 (+), g14 (opt.) · button e19/e21/f19/f21 (opt.)",
+    "U1 shifter A side d23-d28, B side g23-g28 · reed switch leads g15, g17",
     10.5,
     fill="#333",
 )
@@ -547,7 +569,7 @@ text(
     24,
     PY2 + 17,
     "Check the shifter's printed pin names against this order (A1 A2 LV GND A3 A4 / B1 B2 HV GND B3 B4) and keep each wire on the column of the named pin. "
-    "Optional R3, R4 4.7 kΩ I2C pull-ups and the Q2 heater driver (W26) are not drawn; see docs/wiring.md.",
+    "Rows 11-14, 19-22, 29-30 are free.",
     10.5,
     fill="#333",
 )

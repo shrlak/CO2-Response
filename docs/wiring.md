@@ -21,18 +21,18 @@ The picture above shows the Arduino's two headers as they sit on the board (top 
 
 ![The whole build on a half-size breadboard: every part in its holes, both pairs of power rails, and every wire numbered from hole to hole](images/breadboard-r4.svg)
 
-A half-size (400-point) breadboard: rows 1–30, columns a–e on one side of the centre channel and f–j on the other, and a pair of power rails down each long edge. A hole is its column letter plus its row number: **j12** is column j, row 12. The five holes a12–e12 are joined inside the board; the channel separates them from f12–j12. Each rail runs the full length of the board. The drawing has the board on its side (row 1 on the left); turn it so row 1 is at the top and it matches an upright board. `scripts/draw_breadboard.py` redraws it.
+A half-size (400-point) breadboard: rows 1–30, columns a–e on one side of the centre channel and f–j on the other, and a pair of power rails down each long edge. A hole is its column letter plus its row number: **j12** is column j, row 12. The five holes a12–e12 are joined inside the board; the channel separates them from f12–j12. Each rail runs the full length of the board. The drawing has the board on its side (row 1 on the left); turn it so row 1 is at the top and it matches an upright board. `scripts/draw_breadboard.py` redraws it; a [high-resolution PNG](images/breadboard-r4.png) is there for printing.
 
 The rails are named by the side they sit on: the **a side** (next to column a) or the **j side** (next to column j).
 
 | Rail | Supply | Fed by | Feeds |
 | --- | --- | --- | --- |
 | **+** rail, a side (red line) | **+5V_EXT** (orange wires) | W22 from J1's end pin | W15 SprintIR-R VDD, W19 pump + |
-| **−** rail, a side (blue line) | **GND** (black wires) | W23 from J1's middle pin | W29 button (optional); joined to the j-side − rail by W27 |
-| **−** rail, j side (blue line) | **GND** (black wires) | W2 from the Arduino's GND | W9 shifter, W17 Q1 source, R2, W21 reed switch, W28 buzzer (optional) |
+| **−** rail, a side (blue line) | **GND** (black wires) | W23 from J1's middle pin | joined to the j-side − rail by W24 |
+| **−** rail, j side (blue line) | **GND** (black wires) | W2 from the Arduino's GND | W9 shifter, W17 Q1 source, R2, W21 reed switch |
 | **+** rail, j side (red line) | **+5V** (red wires) | W1 from the Arduino's 5V | W7 SFM3300 VDD, W8 shifter HV |
 
-The two + rails carry different supplies: **never join them**. Any hole of a rail will do; "by row 4" below is only where the drawing puts the wire end.
+The two + rails carry different supplies: **never join them**. In the drawing every wire has its own colour, and its number sits on the hole at each end, so each one can be followed from end to end; the last column below is the jumper colour to use. Any hole of a rail will do; "by row 4" below is only where the drawing puts the wire end.
 
 | Part | Holes |
 | --- | --- |
@@ -42,8 +42,6 @@ The two + rails carry different supplies: **never join them**. Any hole of a rai
 | R2 100 kΩ | i7 to the j-side − rail |
 | U1 level shifter | A side in d23–d28 (A1, A2, LV, GND, A3, A4), B side in g23–g28 (B1, B2, HV, GND, B3, B4), straddling the channel. Check the names printed on your board and keep each wire in the row of the named pin |
 | Reed switch leads | g15 and g17, either way round |
-| Buzzer (optional) | + in g11, − in g14 |
-| Button (optional) | e19, e21, f19, f21, straddling the channel; wired on diagonal legs (j19, a21), which works whichever way it is turned |
 
 | # | From (hole or pin) | To (hole or pin) | Colour |
 | --- | --- | --- | --- |
@@ -70,11 +68,7 @@ The two + rails carry different supplies: **never join them**. Any hole of a rai
 | W21 | j17 (other reed lead) | − rail, j side (by row 18) | grey |
 | W22 | a3 (J1 end pin, +) | + rail, a side (by row 4) | orange |
 | W23 | a5 (J1 middle pin, −) | − rail, a side (by row 6) | black |
-| W24 | Arduino D8 | j11 (buzzer +) | optional |
-| W25 | Arduino D2 | j19 (button) | optional |
-| W27 | − rail, a side (by row 2) | − rail, j side (by row 2) | black |
-| W28 | j14 (buzzer −) | − rail, j side (by row 14) | black, optional |
-| W29 | a21 (button, diagonal leg) | − rail, a side (by row 22) | black, optional |
+| W24 | − rail, a side (by row 2) | − rail, j side (by row 2) | black |
 
 The rows are a suggestion: any free row works as long as every wire that should meet lands in the same row on the same side of the channel, or on the same rail.
 
@@ -115,14 +109,9 @@ Adafruit's page lists a Micro USB and a USB-A connector on the isolator without 
 | W21 | Reed switch, other lead | GND rail | grey | Normally open; closes when the magnet is within about 13 mm |
 | W22 | Barrel jack **end pin** (+) | +5V_EXT rail | orange | |
 | W23 | Barrel jack **middle pin** (−) | GND rail | black | The **side pin** (switch) stays unconnected |
-| W24 | Arduino **D8** | Active buzzer + (− to GND rail) | | Optional |
-| W25 | Arduino **D2** | Push button (other side to GND rail) | | Optional: stop / marker |
-| W26 | Arduino **D9** | Q2 gate (220 Ω, 100 kΩ to GND); Q2 drain → SFM3300 heater pad, other pad → +5V_EXT | | Optional: the sensor's 51 Ω heater against condensation; set `HEATER_PIN 9` |
-| W27 | Top **−** rail | Bottom **−** rail | black | Joins the two GND rails; the pump's current returns through it |
-| W28 | Buzzer **−** | GND rail | black | Optional, with W24 |
-| W29 | Push button, other side | GND rail | black | Optional, with W25 |
+| W24 | − rail, a side | − rail, j side | black | Joins the two GND rails; the pump's current returns through it |
 
-R3 and R4 (4.7 kΩ, optional): SDA → +5V rail and SCL → +5V rail, if the SFM3300 does not answer. The Uno R4 Minima allows at most 8 mA per pin, which every signal here stays under; the pump's 0.5 A goes through Q1, never through a pin.
+If the SFM3300 does not answer, the fix is two 4.7 kΩ pull-ups from the lab's parts kit: SDA → +5V rail and SCL → +5V rail (the Uno R4 Minima has none of its own). The Uno R4 Minima allows at most 8 mA per pin, which every signal here stays under; the pump's 0.5 A goes through Q1, never through a pin.
 
 **Tubes and fittings**
 
@@ -144,7 +133,7 @@ R3 and R4 (4.7 kΩ, optional): SDA → +5V rail and SCL → +5V rail, if the SFM
 | GSS SprintIR-R-20 (CO2meter) | CO2, 0-20 %, 50 readings a second, sidestream | UART at 38,400 baud on D0/D1 through the BSS138 shifter (its inputs are rated to 5 V absolute maximum and its output high is only 2.6-3.0 V, so the shifter works both ways); pins 1 Rx_In, 2 Tx_Out, 3 GND, 4 VDD; VDD from 5V_EXT (3.25-5.5 V, about 21 mA) |
 | Adafruit 757 BSS138 4-channel level shifter | 5 V ↔ 3.3 V for the SprintIR-R's UART | HV = Uno 5V, LV = Uno 3V3, B1/B2 on the Uno side, A1/A2 on the SprintIR side; channels 3-4 spare |
 | ZR370-02PM air pump (Adafruit 4699) | Pulls the CO2 sample through the filter and the SprintIR-R | + to 5V_EXT, − to Q1's drain |
-| IRLZ44N MOSFET ×3 | Q1 switches the pump from D10 (PWM). Q2, Q3 spare (a louder buzzer, a valve later) | Gate via 220 Ω from D10, 100 kΩ gate to GND, source to GND |
+| IRLZ44N MOSFET ×3 | Q1 switches the pump from D10 (PWM). Q2, Q3 spare | Gate via 220 Ω from D10, 100 kΩ gate to GND, source to GND |
 | 5 V / 2 A wall adapter (SparkFun TOL-15312) + 2.1 mm barrel jack (Adafruit 373) | The **5V_EXT** rail: the pump and the SprintIR-R | + = 5V_EXT, − = common GND. **Never** to the Uno's 5V or VIN pin (VIN needs 6-24 V, and 5V would push power back into the isolator) |
 | Magnetic contact switch (Adafruit 375) | Tells the app where the valve handle is: at the bag the rebreathing phase starts, back at room air the test ends | D3 and GND; the magnet on the valve handle |
 | Silicone tubing (Adafruit 4661) | The sample line | Filter → adapter → SprintIR-R → pump |
@@ -152,7 +141,7 @@ R3 and R4 (4.7 kΩ, optional): SDA → +5V rail and SCL → +5V rail, if the SFM
 | P-859 barbed adapter, female luer lock × ⅛" barb | Joins the filter's male luer to the silicone tubing | |
 | ½" Sch 40 PVC pipe, ¾×½" reducer bushing, ¾" S×FPT adapters, PTFE tape | The main breathing circuit from the flow sensor to the valve | PTFE tape on every thread |
 
-Not on the purchase list yet but in the design: the 3-way valve and extra luer adapters (in the budget increase request), the mouthpiece and rebreathing bag (from the mentors), a flyback diode across the pump (1N5819 or 1N4001, from the electronics kit), 4.7 kΩ pull-ups on SDA and SCL if the SFM3300 does not answer (the Uno R4 Minima has none of its own), and optionally a button and a buzzer.
+Everything above is purchased, including the 3-way valve, the male luer adapters and the stopcocks. The mouthpiece and the rebreathing bag come from the mentors; the breadboard, jumper wires, R1 220 Ω, R2 100 kΩ and the D1 flyback diode (1N5819 or 1N4001) from the lab's parts kit. Not being bought: a pulse oximeter and the pediatric items. Not in this build: the stop button, the buzzer and the SFM3300's heater (the firmware runs without them).
 
 ### Pin by pin
 
@@ -166,8 +155,6 @@ Not on the purchase list yet but in the design: the 3-way valve and extra luer a
 | D10 (PWM) | Q1 IRLZ44N gate through 220 Ω; 100 kΩ gate to GND | Q1 drain = pump −, pump + = 5V_EXT, diode across the pump (band to +) |
 | D3 | Reed switch, other lead to GND | `INPUT_PULLUP`; the magnet closes it at the bag position (`REED_CLOSED_IS_BAG`) |
 | D13 (built-in LED) | nothing to wire | The alarm LED: follows the app's alarms and flashes if the app stops |
-| D2 (optional) | Stop / marker button to GND | During rebreathing: emergency stop; otherwise a marker |
-| D8 (optional) | Active piezo buzzer to GND | Sounds for a high alarm and if the app stops |
 | GND | Common ground | Uno GND, the wall adapter's −, Q1's source, the shifter, both sensors, joined at one point |
 
 The SprintIR-R's pin numbers differ between its header variants: wire by the signal names on its datasheet (GND, VDD, Rx_In, Tx_Out). Likewise check the SFM3300's 4-pin connector order (SDA, GND, VDD, SCL on the common cable) against its datasheet before powering up.
@@ -255,6 +242,8 @@ The pin gives a 5 V logic signal at a few milliamps. **It cannot drive a solenoi
 The board starts on room air and returns to room air by itself when the host watchdog trips (the app stopped). The app switches the valve only when **Settings > Alarms > Switch the valve from the app** is on; **Emergency stop** always sends it to room air. See [protocol.md](protocol.md) and [safety.md](safety.md). This output has not been tested on hardware.
 
 ### Pulse oximeter (optional)
+
+No oximeter is being bought for this project; this is only for a team that has one.
 
 Wire the oximeter's analog SpO2 output to A3 and its ground to the common ground, build the firmware with `SPO2_CHANNEL 1`, and switch on **Settings > Display & units > SpO2 channel connected**. Enter the output's scaling from the oximeter's manual (often 1 V = 100 %). The same input-range rule applies: nothing above VDD.
 

@@ -91,7 +91,7 @@ text(
     24,
     56,
     "W = wire (numbers match the wire list in docs/wiring.md) · C = USB cable · P = power plug · T = tube or fitting. "
-    "Dashed = optional or not bought yet. A dot joins a wire to a rail; wires that only cross are not joined.",
+    "Every part shown is purchased (R1, R2 and D1 from the lab's parts kit). A dot joins a wire to a rail; wires that only cross are not joined.",
     12,
     fill="#444",
 )
@@ -141,7 +141,6 @@ for name, x in BX.items():
 text(AX + 270, AY + 160, "Arduino UNO R4 Minima", 18, "middle", "bold")
 text(AX + 270, AY + 180, "top view · 5 V logic · max 8 mA per pin", 12, "middle", fill="#444")
 text(AX + 270, AY + 198, "built-in LED on D13 = the alarm light (nothing to wire)", 11, "middle", fill="#444")
-text(AX + 270, AY + 216, "D2, D8, D9: optional (box on the right)", 11, "middle", fill="#888")
 box(AX - 14, AY + 30, 30, 34, fill="#bbb", stroke="#555", r=3)
 text(AX + 22, AY + 52, "USB-C", 11, weight="bold", fill="#00585e")
 text(BX["BOOT"] - 10, BOT_Y + 26, "power header", 10, fill="#555")
@@ -195,7 +194,6 @@ tag(SFM["GND"], 236, 6, COL["gnd"])
 wire([(SFM["VDD"], S_Y), (SFM["VDD"], RAIL["5v"])], COL["5v"])
 dot(SFM["VDD"], RAIL["5v"], COL["5v"])
 tag(SFM["VDD"], 236, 7, COL["5v"])
-text(SFX, 84, "optional 4.7 kΩ pull-ups R3, R4: SDA → +5V, SCL → +5V", 10, fill="#666")
 
 # ------------------------------------------------------------------ SprintIR-R and the level shifter (top middle)
 A1, A2, LG, LV = TX["D1/TX"], TX["D0/RX"], TX["D0/RX"] + 22, TX["D0/RX"] + 66
@@ -343,21 +341,6 @@ wire([(RX0 + 230, RY0 + 26), (RX0 + 260, RY0 + 26), (RX0 + 260, RAIL["gnd"])], C
 dot(RX0 + 260, RAIL["gnd"])
 tag(RX0 + 260, 372, 21, COL["sw"])
 
-# ------------------------------------------------------------------ optional parts (dashed)
-OX0, OY0 = 1000, 470
-box(OX0, OY0, 380, 130, dash=True, fill="#fafafa", stroke="#999")
-text(OX0 + 12, OY0 + 20, "Optional (from the electronics kit)", 12, weight="bold")
-for i, line in enumerate(
-    (
-        "W24  D8 → active buzzer +; buzzer − → GND rail",
-        "W25  D2 → push button → GND rail (stop / marker)",
-        "W26  D9 → Q2 gate (220 Ω, 100 kΩ to GND); Q2 drain → one",
-        "         SFM3300 heater pad, other pad → +5V_EXT (51 Ω heater)",
-        "R3, R4  4.7 kΩ: SDA → +5V rail, SCL → +5V rail",
-    )
-):
-    text(OX0 + 12, OY0 + 42 + i * 17, line, 10, fill="#444")
-
 # ------------------------------------------------------------------ gas path and tubing
 GY = 820
 add(f'<line x1="20" y1="{GY - 30}" x2="{W - 20}" y2="{GY - 30}" stroke="#ccc"/>')
@@ -366,11 +349,11 @@ text(190, GY - 4, "(main circuit in grey; the CO2 sample line in green)", 11, fi
 my = GY + 52
 main = [
     (20, 170, "Subject +", "mouthpiece (from mentors)", None, True),
-    (220, 170, "Sample port", "luer fitting between mouth-", "piece and sensor (requested)", True),
+    (220, 170, "Sample port", "male luer adapter between", "mouthpiece and sensor", False),
     (420, 330, "SFM3300-250-D", "22 mm MALE end → subject  |  22 mm", "FEMALE end → circuit (+ = inspiration)", False),
     (780, 190, "½\" Sch 40 PVC pipe", "21.3 mm OD into the sensor's", "22 mm socket: tape if loose", False),
     (1000, 200, "¾×½\" reducer bushing", "+ ¾\" S×FPT adapter;", "PTFE tape on the threads", False),
-    (1230, 190, "3-way valve", "¾\" PVC (requested); magnet", "on its handle for the reed switch", True),
+    (1230, 190, "3-way valve", "¾\" PVC; magnet on its", "handle for the reed switch", False),
 ]
 for x, w, a, b, c, dash in main:
     box(x, my - 30, w, 64, fill="#f4f4f4" if dash else "#fff", stroke="#888" if dash else "#333", dash=dash)

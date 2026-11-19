@@ -3,7 +3,7 @@
 <rect x="0" y="0" width="1760" height="1640" fill="#ffffff"/>
 <text x="24" y="34" font-size="20" text-anchor="start" font-weight="bold" fill="#111">CO2-Response · the whole Uno R4 build on a half-size breadboard (rows 1-30, columns a-j), hole by hole</text>
 <text x="24" y="56" font-size="12" text-anchor="start" font-weight="normal" fill="#444">Drawn on its side: turn the page so row 1 is at the top and it matches an upright board. A hole is column letter + row number (j12). The five holes a12-e12 are joined inside the board; the centre channel separates them from f12-j12.</text>
-<text x="24" y="74" font-size="12" text-anchor="start" font-weight="normal" fill="#444">Each rail runs the full length of the board. W = wire, numbered as in docs/wiring.md; every wire end is a dot on its hole or pin. Dashed = optional. Wires that only cross are not joined.</text>
+<text x="24" y="74" font-size="12" text-anchor="start" font-weight="normal" fill="#444">Each rail runs the full length of the board. W = wire, numbered as in docs/wiring.md. Each wire has its own colour, and its number sits on the hole at each end. Wires that only cross are not joined.</text>
 <rect x="266" y="295" width="888" height="380" rx="10" fill="#000" fill-opacity="0.12"/>
 <rect x="262" y="290" width="888" height="380" rx="10" fill="#f4f1ea" stroke="#bdb6a3" stroke-width="1.4"/>
 <rect x="270" y="472" width="872" height="16" rx="3" fill="#e2ddd0"/>
@@ -546,22 +546,8 @@
 <circle cx="440" cy="622" r="4.6" fill="#9a9a9a" stroke="#333" stroke-width="1.4"/>
 <rect x="365" y="674" width="162.24000000000004" height="13" rx="3" fill="#fff" fill-opacity="0.93"/>
 <text x="368" y="683" font-size="9" text-anchor="start" font-weight="bold" fill="#5a4a20">R2 100 kΩ: i7 → − rail (j side)</text>
-<circle cx="622.0" cy="520" r="26" fill="#2b2b2b" fill-opacity="0.18" stroke="#555" stroke-dasharray="5 3"/>
-<circle cx="580" cy="520" r="4.6" fill="#c8c8c8" stroke="#333" stroke-width="1.4"/>
-<circle cx="664" cy="520" r="4.6" fill="#c8c8c8" stroke="#333" stroke-width="1.4"/>
-<text x="580" y="538" font-size="12" text-anchor="middle" font-weight="bold" fill="#c0392b">+</text>
-<rect x="586.24" y="547" width="71.52000000000001" height="13" rx="3" fill="#fff" fill-opacity="0.93"/>
-<text x="622.0" y="556" font-size="9" text-anchor="middle" font-weight="bold" fill="#666">buzzer (opt.)</text>
 <circle cx="692" cy="520" r="4.6" fill="#bdbdbd" stroke="#333" stroke-width="1.4"/>
 <circle cx="748" cy="520" r="4.6" fill="#bdbdbd" stroke="#333" stroke-width="1.4"/>
-<rect x="794" y="452" width="76" height="56" rx="4" fill="#ddd" stroke="#666" stroke-width="1.6" stroke-dasharray="6 4" fill-opacity="0.65"/>
-<circle cx="832.0" cy="480" r="9" fill="#444" fill-opacity="0.6"/>
-<circle cx="804" cy="460" r="4.6" fill="#c8c8c8" stroke="#333" stroke-width="1.4"/>
-<circle cx="860" cy="460" r="4.6" fill="#c8c8c8" stroke="#333" stroke-width="1.4"/>
-<circle cx="804" cy="500" r="4.6" fill="#c8c8c8" stroke="#333" stroke-width="1.4"/>
-<circle cx="860" cy="500" r="4.6" fill="#c8c8c8" stroke="#333" stroke-width="1.4"/>
-<rect x="796.24" y="437" width="71.52000000000001" height="13" rx="3" fill="#fff" fill-opacity="0.93"/>
-<text x="832.0" y="446" font-size="9" text-anchor="middle" font-weight="bold" fill="#666">button (opt.)</text>
 <rect x="902" y="428" width="168" height="104" rx="4" fill="#1d4f91" stroke="#0b2c57" stroke-width="1.6"/>
 <text x="986.0" y="470" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">U1 level shifter</text>
 <text x="986.0" y="483" font-size="8.5" text-anchor="middle" font-weight="normal" fill="#d8e6ff">BSS138 · Adafruit 757</text>
@@ -600,40 +586,40 @@
 <text x="128" y="190" font-size="12" text-anchor="start" font-weight="bold" fill="#111">P1</text>
 <text x="128" y="204" font-size="10" text-anchor="start" font-weight="normal" fill="#444">5.5×2.1 mm plug,</text>
 <text x="128" y="217" font-size="10" text-anchor="start" font-weight="normal" fill="#444">centre positive</text>
-<rect x="300" y="110" width="210" height="70" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
+<rect x="300" y="110" width="210" height="84" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
 <text x="405" y="130" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">Sample pump ZR370-02PM</text>
 <text x="405" y="146" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">4.5 V · ~0.5 A · leads soldered on</text>
 <text x="405" y="161" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">D1 1N5819 soldered across its</text>
 <text x="405" y="174" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">contacts: band (cathode) to +</text>
-<rect x="335.5" y="175.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="340" y="197" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">−</text>
-<rect x="465.5" y="175.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="470" y="197" font-size="12" text-anchor="middle" font-weight="bold" fill="#c0392b">+</text>
+<rect x="335.5" y="189.5" width="9" height="9" fill="#222" stroke="#000"/>
+<text x="320" y="198" font-size="14" text-anchor="middle" font-weight="bold" fill="#111">−</text>
+<rect x="465.5" y="189.5" width="9" height="9" fill="#222" stroke="#000"/>
+<text x="490" y="198" font-size="14" text-anchor="middle" font-weight="bold" fill="#c0392b">+</text>
 <rect x="860" y="104" width="280" height="84" rx="6" fill="#fff6e6" stroke="#b36b00" stroke-width="1.6"/>
 <text x="1000" y="124" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">GSS SprintIR-R 20 % CO2 sensor</text>
 <text x="1000" y="140" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">UART 38400 8N1 · VDD 3.25-5.5 V</text>
 <text x="1000" y="154" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">female ends of the jumpers on its header</text>
 <rect x="911.5" y="183.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="916" y="178" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">1 Rx_In</text>
+<text x="916" y="174" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">1 Rx_In</text>
 <rect x="967.5" y="183.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="972" y="178" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">2 Tx_Out</text>
+<text x="972" y="174" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">2 Tx_Out</text>
 <rect x="1023.5" y="183.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="1028" y="178" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">3 GND</text>
+<text x="1028" y="174" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">3 GND</text>
 <rect x="1079.5" y="183.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="1084" y="178" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">4 VDD</text>
+<text x="1084" y="174" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">4 VDD</text>
 <rect x="20" y="470" width="200" height="120" rx="6" fill="#fff6e6" stroke="#b36b00" stroke-width="1.6"/>
 <text x="120" y="490" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#111">Sensirion SFM3300-250-D</text>
 <text x="120" y="506" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">flow sensor · I2C 0x40 · 5 V</text>
 <text x="120" y="522" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">4-wire lead: check the pin order</text>
 <text x="120" y="535" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">on Sensirion's note / your cable</text>
 <rect x="55.5" y="585.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="60" y="580" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">SCL</text>
+<text x="60" y="576" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">SCL</text>
 <rect x="95.5" y="585.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="100" y="580" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">SDA</text>
+<text x="100" y="576" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">SDA</text>
 <rect x="135.5" y="585.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="140" y="580" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">GND</text>
+<text x="140" y="576" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">GND</text>
 <rect x="175.5" y="585.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="180" y="580" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">VDD</text>
+<text x="180" y="576" font-size="9" text-anchor="middle" font-weight="bold" fill="#00585e">VDD</text>
 <rect x="580" y="104" width="250" height="70" rx="6" fill="#fff" stroke="#333" stroke-width="1.6"/>
 <text x="705" y="124" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">Reed switch (Adafruit 375)</text>
 <text x="705" y="140" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">on the valve; magnet on its handle</text>
@@ -648,69 +634,69 @@
 <text x="734" y="264" font-size="9" text-anchor="middle" font-weight="bold" fill="#555">reed leads</text>
 <rect x="600" y="800" width="560" height="230" rx="10" fill="#e8f4f6" stroke="#00878f" stroke-width="2.2"/>
 <rect x="655.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="656.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 656.5 825)">SCL</text>
+<text x="656.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 656.5 830)">SCL</text>
 <rect x="675.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="676.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 676.5 825)">SDA</text>
+<text x="676.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 676.5 830)">SDA</text>
 <rect x="695.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="696.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 696.5 825)">AREF</text>
+<text x="696.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 696.5 830)">AREF</text>
 <rect x="715.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="716.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 716.5 825)">GND</text>
+<text x="716.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 716.5 830)">GND</text>
 <rect x="735.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="736.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 736.5 825)">D13</text>
+<text x="736.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 736.5 830)">D13</text>
 <rect x="755.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="756.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 756.5 825)">D12</text>
+<text x="756.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 756.5 830)">D12</text>
 <rect x="775.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="776.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 776.5 825)">D11</text>
+<text x="776.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 776.5 830)">D11</text>
 <rect x="795.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="796.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 796.5 825)">D10</text>
+<text x="796.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 796.5 830)">D10</text>
 <rect x="815.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="816.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 816.5 825)">D9</text>
+<text x="816.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 816.5 830)">D9</text>
 <rect x="835.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="836.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 836.5 825)">D8</text>
+<text x="836.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 836.5 830)">D8</text>
 <rect x="867.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="868.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 868.5 825)">D7</text>
+<text x="868.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 868.5 830)">D7</text>
 <rect x="887.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="888.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 888.5 825)">D6</text>
+<text x="888.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 888.5 830)">D6</text>
 <rect x="907.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="908.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 908.5 825)">D5</text>
+<text x="908.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 908.5 830)">D5</text>
 <rect x="927.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="928.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 928.5 825)">D4</text>
+<text x="928.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(90 928.5 830)">D4</text>
 <rect x="947.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="948.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 948.5 825)">D3</text>
+<text x="948.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 948.5 830)">D3</text>
 <rect x="967.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="968.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 968.5 825)">D2</text>
+<text x="968.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 968.5 830)">D2</text>
 <rect x="987.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="988.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 988.5 825)">D1/TX</text>
+<text x="988.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 988.5 830)">D1/TX</text>
 <rect x="1007.5" y="811.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="1008.5" y="825" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 1008.5 825)">D0/RX</text>
+<text x="1008.5" y="830" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(90 1008.5 830)">D0/RX</text>
 <rect x="695.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="703.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 703.5 1005)">BOOT</text>
+<text x="703.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 703.5 1000)">BOOT</text>
 <rect x="715.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="723.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 723.5 1005)">IOREF</text>
+<text x="723.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 723.5 1000)">IOREF</text>
 <rect x="735.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="743.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 743.5 1005)">RESET</text>
+<text x="743.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 743.5 1000)">RESET</text>
 <rect x="755.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="763.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(-90 763.5 1005)">3V3</text>
+<text x="763.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(-90 763.5 1000)">3V3</text>
 <rect x="775.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="783.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(-90 783.5 1005)">5V</text>
+<text x="783.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(-90 783.5 1000)">5V</text>
 <rect x="795.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="803.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(-90 803.5 1005)">GND</text>
+<text x="803.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(-90 803.5 1000)">GND</text>
 <rect x="815.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="823.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(-90 823.5 1005)">GND</text>
+<text x="823.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#00585e" transform="rotate(-90 823.5 1000)">GND</text>
 <rect x="835.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="843.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 843.5 1005)">VIN</text>
+<text x="843.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 843.5 1000)">VIN</text>
 <rect x="867.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="875.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 875.5 1005)">A0</text>
+<text x="875.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 875.5 1000)">A0</text>
 <rect x="887.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="895.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 895.5 1005)">A1</text>
+<text x="895.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 895.5 1000)">A1</text>
 <rect x="907.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="915.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 915.5 1005)">A2</text>
+<text x="915.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 915.5 1000)">A2</text>
 <rect x="927.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="935.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 935.5 1005)">A3</text>
+<text x="935.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 935.5 1000)">A3</text>
 <rect x="947.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="955.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 955.5 1005)">A4</text>
+<text x="955.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 955.5 1000)">A4</text>
 <rect x="967.5" y="1009.5" width="9" height="9" fill="#222" stroke="#000"/>
-<text x="975.5" y="1005" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 975.5 1005)">A5</text>
+<text x="975.5" y="1000" font-size="9" text-anchor="start" font-weight="bold" fill="#9ab" transform="rotate(-90 975.5 1000)">A5</text>
 <text x="900" y="928" font-size="17" text-anchor="middle" font-weight="bold" fill="#111">Arduino UNO R4 Minima</text>
 <text x="900" y="946" font-size="11" text-anchor="middle" font-weight="normal" fill="#444">top view · USB-C on the left</text>
 <text x="900" y="961" font-size="10" text-anchor="middle" font-weight="normal" fill="#444">D13 LED = alarm light (nothing to wire)</text>
@@ -728,389 +714,351 @@
 <text x="170" y="975" font-size="10" text-anchor="middle" font-weight="normal" fill="#c0392b">nothing on the breadboard goes to it</text>
 <path d="M320 945 L470 945 L470 867 L586 867" fill="none" stroke="#555" stroke-width="7" stroke-linejoin="round"/>
 <text x="478" y="900" font-size="10" text-anchor="start" font-weight="bold" fill="#111">C2 USB-A → USB-C</text>
-<path d="M780 1014 L780.0 1034.0 Q780 1044 790.0 1044.0 L1170.0 1044.0 Q1180 1044 1180.0 1034.0 L1180.0 662.0 Q1180 652 1170.0 652.0 L1126.4 652.0 Q1120 652 1116.0 647.0 L1112 642" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M780 1014 L780.0 1034.0 Q780 1044 790.0 1044.0 L1170.0 1044.0 Q1180 1044 1180.0 1034.0 L1180.0 662.0 Q1180 652 1170.0 652.0 L1126.4 652.0 Q1120 652 1116.0 647.0 L1112 642" fill="none" stroke="#d62728" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="780" cy="1014" r="5.6" fill="#d62728" stroke="#000" stroke-width="1.6"/>
-<circle cx="780" cy="1014" r="1.8" fill="#fff"/>
-<circle cx="1112" cy="642" r="5.6" fill="#d62728" stroke="#000" stroke-width="1.6"/>
-<circle cx="1112" cy="642" r="1.8" fill="#fff"/>
-<path d="M800 1014 L800.0 1048.0 Q800 1058 810.0 1058.0 L1192.0 1058.0 Q1202 1058 1202.0 1048.0 L1202.0 642.0 Q1202 632 1192.0 632.0 L1126.4 632.0 Q1120 632 1116.0 627.0 L1112 622" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M800 1014 L800.0 1048.0 Q800 1058 810.0 1058.0 L1192.0 1058.0 Q1202 1058 1202.0 1048.0 L1202.0 642.0 Q1202 632 1192.0 632.0 L1126.4 632.0 Q1120 632 1116.0 627.0 L1112 622" fill="none" stroke="#1b1b1b" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="800" cy="1014" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="800" cy="1014" r="1.8" fill="#fff"/>
-<circle cx="1112" cy="622" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="1112" cy="622" r="1.8" fill="#fff"/>
-<path d="M760 1014 L760.0 1064.0 Q760 1074 770.0 1074.0 L1222.0 1074.0 Q1232 1074 1232.0 1064.0 L1232.0 400.0 Q1232 390 1222.0 390.0 L991.8 390.0 Q984 390 978.0 395.0 L972 400" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M760 1014 L760.0 1064.0 Q760 1074 770.0 1074.0 L1222.0 1074.0 Q1232 1074 1232.0 1064.0 L1232.0 400.0 Q1232 390 1222.0 390.0 L991.8 390.0 Q984 390 978.0 395.0 L972 400" fill="none" stroke="#8e5cc4" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="760" cy="1014" r="5.6" fill="#8e5cc4" stroke="#000" stroke-width="1.6"/>
-<circle cx="760" cy="1014" r="1.8" fill="#fff"/>
-<circle cx="972" cy="400" r="5.6" fill="#8e5cc4" stroke="#000" stroke-width="1.6"/>
-<circle cx="972" cy="400" r="1.8" fill="#fff"/>
-<path d="M356 380 L356.0 371.0 Q356 362 363.9 357.7 L369.2 354.8 Q378 350 378.0 340.0 L378.0 331.0 Q378 326 381.0 322.0 L384 318" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M356 380 L356.0 371.0 Q356 362 363.9 357.7 L369.2 354.8 Q378 350 378.0 340.0 L378.0 331.0 Q378 326 381.0 322.0 L384 318" fill="none" stroke="#f28e1c" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="356" cy="380" r="5.6" fill="#f28e1c" stroke="#000" stroke-width="1.6"/>
-<circle cx="356" cy="380" r="1.8" fill="#fff"/>
-<circle cx="384" cy="318" r="5.6" fill="#f28e1c" stroke="#000" stroke-width="1.6"/>
-<circle cx="384" cy="318" r="1.8" fill="#fff"/>
-<path d="M412 380 L412.0 370.0 Q412 360 421.6 357.3 L433.3 353.9 Q440 352 440.0 345.0 L440 338" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M412 380 L412.0 370.0 Q412 360 421.6 357.3 L433.3 353.9 Q440 352 440.0 345.0 L440 338" fill="none" stroke="#1b1b1b" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="412" cy="380" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="412" cy="380" r="1.8" fill="#fff"/>
-<circle cx="440" cy="338" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="440" cy="338" r="1.8" fill="#fff"/>
-<path d="M328 338 L322.0 341.0 Q316 344 309.3 344.0 L262.0 344.0 Q252 344 252.0 354.0 L252.0 606.0 Q252 616 262.0 616.0 L309.3 616.0 Q316 616 322.0 619.0 L328 622" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M328 338 L322.0 341.0 Q316 344 309.3 344.0 L262.0 344.0 Q252 344 252.0 354.0 L252.0 606.0 Q252 616 262.0 616.0 L309.3 616.0 Q316 616 322.0 619.0 L328 622" fill="none" stroke="#1b1b1b" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="328" cy="338" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="328" cy="338" r="1.8" fill="#fff"/>
-<circle cx="328" cy="622" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="328" cy="622" r="1.8" fill="#fff"/>
-<path d="M660 816 L660.0 794.0 Q660 784 650.0 784.0 L70.0 784.0 Q60 784 60.0 774.0 L60 590" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M660 816 L660.0 794.0 Q660 784 650.0 784.0 L70.0 784.0 Q60 784 60.0 774.0 L60 590" fill="none" stroke="#d4c21a" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="660" cy="816" r="5.6" fill="#d4c21a" stroke="#000" stroke-width="1.6"/>
-<circle cx="660" cy="816" r="1.8" fill="#fff"/>
-<circle cx="60" cy="590" r="5.6" fill="#d4c21a" stroke="#000" stroke-width="1.6"/>
-<circle cx="60" cy="590" r="1.8" fill="#fff"/>
-<path d="M680 816 L680.0 784.0 Q680 774 670.0 774.0 L110.0 774.0 Q100 774 100.0 764.0 L100 590" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M680 816 L680.0 784.0 Q680 774 670.0 774.0 L110.0 774.0 Q100 774 100.0 764.0 L100 590" fill="none" stroke="#1f6fd1" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="680" cy="816" r="5.6" fill="#1f6fd1" stroke="#000" stroke-width="1.6"/>
-<circle cx="680" cy="816" r="1.8" fill="#fff"/>
-<circle cx="100" cy="590" r="5.6" fill="#1f6fd1" stroke="#000" stroke-width="1.6"/>
-<circle cx="100" cy="590" r="1.8" fill="#fff"/>
-<path d="M720 816 L720.0 774.0 Q720 764 710.0 764.0 L150.0 764.0 Q140 764 140.0 754.0 L140 590" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M720 816 L720.0 774.0 Q720 764 710.0 764.0 L150.0 764.0 Q140 764 140.0 754.0 L140 590" fill="none" stroke="#1b1b1b" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="720" cy="816" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="720" cy="816" r="1.8" fill="#fff"/>
-<circle cx="140" cy="590" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="140" cy="590" r="1.8" fill="#fff"/>
-<path d="M328 642 L328.0 690.0 Q328 700 318.0 700.0 L190.0 700.0 Q180 700 180.0 690.0 L180 590" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M328 642 L328.0 690.0 Q328 700 318.0 700.0 L190.0 700.0 Q180 700 180.0 690.0 L180 590" fill="none" stroke="#d62728" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="328" cy="642" r="5.6" fill="#d62728" stroke="#000" stroke-width="1.6"/>
-<circle cx="328" cy="642" r="1.8" fill="#fff"/>
-<circle cx="180" cy="590" r="5.6" fill="#d62728" stroke="#000" stroke-width="1.6"/>
-<circle cx="180" cy="590" r="1.8" fill="#fff"/>
-<path d="M1000 642 L994.0 637.0 Q988 632 988.0 624.2 L988.0 608.9 Q988 600 980.0 596.0 L977.4 594.7 Q972 592 972.0 586.0 L972 580" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M1000 642 L994.0 637.0 Q988 632 988.0 624.2 L988.0 608.9 Q988 600 980.0 596.0 L977.4 594.7 Q972 592 972.0 586.0 L972 580" fill="none" stroke="#d62728" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="1000" cy="642" r="5.6" fill="#d62728" stroke="#000" stroke-width="1.6"/>
-<circle cx="1000" cy="642" r="1.8" fill="#fff"/>
-<circle cx="972" cy="580" r="5.6" fill="#d62728" stroke="#000" stroke-width="1.6"/>
-<circle cx="972" cy="580" r="1.8" fill="#fff"/>
-<path d="M1056 622 L1056.0 613.0 Q1056 604 1047.1 602.4 L1019.1 597.3 Q1012 596 1006.0 592.0 L1003.3 590.2 Q1000 588 1000.0 584.0 L1000 580" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M1056 622 L1056.0 613.0 Q1056 604 1047.1 602.4 L1019.1 597.3 Q1012 596 1006.0 592.0 L1003.3 590.2 Q1000 588 1000.0 584.0 L1000 580" fill="none" stroke="#1b1b1b" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="1056" cy="622" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="1056" cy="622" r="1.8" fill="#fff"/>
-<circle cx="1000" cy="580" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="1000" cy="580" r="1.8" fill="#fff"/>
-<path d="M992 816 L992.0 710.0 Q992 700 982.0 700.0 L926.0 700.0 Q916 700 916.0 690.0 L916 580" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M992 816 L992.0 710.0 Q992 700 982.0 700.0 L926.0 700.0 Q916 700 916.0 690.0 L916 580" fill="none" stroke="#2ca02c" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="992" cy="816" r="5.6" fill="#2ca02c" stroke="#000" stroke-width="1.6"/>
-<circle cx="992" cy="816" r="1.8" fill="#fff"/>
-<circle cx="916" cy="580" r="5.6" fill="#2ca02c" stroke="#000" stroke-width="1.6"/>
-<circle cx="916" cy="580" r="1.8" fill="#fff"/>
-<path d="M1012 816 L1012.0 700.0 Q1012 690 1002.0 690.0 L954.0 690.0 Q944 690 944.0 680.0 L944 580" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M1012 816 L1012.0 700.0 Q1012 690 1002.0 690.0 L954.0 690.0 Q944 690 944.0 680.0 L944 580" fill="none" stroke="#17becf" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="1012" cy="816" r="5.6" fill="#17becf" stroke="#000" stroke-width="1.6"/>
-<circle cx="1012" cy="816" r="1.8" fill="#fff"/>
-<circle cx="944" cy="580" r="5.6" fill="#17becf" stroke="#000" stroke-width="1.6"/>
-<circle cx="944" cy="580" r="1.8" fill="#fff"/>
-<path d="M916 380 L916.0 270.0 Q916 260 916.0 250.0 L916.0 250.0 Q916 240 916.0 230.0 L916 188" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M916 380 L916.0 270.0 Q916 260 916.0 250.0 L916.0 250.0 Q916 240 916.0 230.0 L916 188" fill="none" stroke="#2ca02c" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="916" cy="380" r="5.6" fill="#2ca02c" stroke="#000" stroke-width="1.6"/>
-<circle cx="916" cy="380" r="1.8" fill="#fff"/>
-<circle cx="916" cy="188" r="5.6" fill="#2ca02c" stroke="#000" stroke-width="1.6"/>
-<circle cx="916" cy="188" r="1.8" fill="#fff"/>
-<path d="M944 380 L944.0 260.0 Q944 250 952.4 244.6 L963.6 237.4 Q972 232 972.0 222.0 L972 188" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M944 380 L944.0 260.0 Q944 250 952.4 244.6 L963.6 237.4 Q972 232 972.0 222.0 L972 188" fill="none" stroke="#17becf" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="944" cy="380" r="5.6" fill="#17becf" stroke="#000" stroke-width="1.6"/>
-<circle cx="944" cy="380" r="1.8" fill="#fff"/>
-<circle cx="972" cy="188" r="5.6" fill="#17becf" stroke="#000" stroke-width="1.6"/>
-<circle cx="972" cy="188" r="1.8" fill="#fff"/>
-<path d="M1000 380 L1000.0 250.0 Q1000 240 1008.7 235.0 L1019.3 229.0 Q1028 224 1028.0 214.0 L1028 188" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M1000 380 L1000.0 250.0 Q1000 240 1008.7 235.0 L1019.3 229.0 Q1028 224 1028.0 214.0 L1028 188" fill="none" stroke="#1b1b1b" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="1000" cy="380" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="1000" cy="380" r="1.8" fill="#fff"/>
-<circle cx="1028" cy="188" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="1028" cy="188" r="1.8" fill="#fff"/>
-<path d="M1056 318 L1056.0 280.0 Q1056 270 1064.1 264.2 L1075.9 255.8 Q1084 250 1084.0 240.0 L1084 188" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M1056 318 L1056.0 280.0 Q1056 270 1064.1 264.2 L1075.9 255.8 Q1084 250 1084.0 240.0 L1084 188" fill="none" stroke="#f28e1c" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="1056" cy="318" r="5.6" fill="#f28e1c" stroke="#000" stroke-width="1.6"/>
-<circle cx="1056" cy="318" r="1.8" fill="#fff"/>
-<circle cx="1084" cy="188" r="5.6" fill="#f28e1c" stroke="#000" stroke-width="1.6"/>
-<circle cx="1084" cy="188" r="1.8" fill="#fff"/>
-<path d="M800 816 L800.0 750.0 Q800 740 790.0 740.0 L366.0 740.0 Q356 740 356.0 730.0 L356 580" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M800 816 L800.0 750.0 Q800 740 790.0 740.0 L366.0 740.0 Q356 740 356.0 730.0 L356 580" fill="none" stroke="#e377c2" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="800" cy="816" r="5.6" fill="#e377c2" stroke="#000" stroke-width="1.6"/>
-<circle cx="800" cy="816" r="1.8" fill="#fff"/>
-<circle cx="356" cy="580" r="5.6" fill="#e377c2" stroke="#000" stroke-width="1.6"/>
-<circle cx="356" cy="580" r="1.8" fill="#fff"/>
-<path d="M524 580 L524.0 590.0 Q524 600 533.8 602.1 L544.2 604.3 Q552 606 552.0 614.0 L552 622" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M524 580 L524.0 590.0 Q524 600 533.8 602.1 L544.2 604.3 Q552 606 552.0 614.0 L552 622" fill="none" stroke="#1b1b1b" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="524" cy="580" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="524" cy="580" r="1.8" fill="#fff"/>
-<circle cx="552" cy="622" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="552" cy="622" r="1.8" fill="#fff"/>
-<path d="M340 180 L340.0 220.0 Q340 230 349.9 231.3 L486.1 248.7 Q496 250 496.0 260.0 L496 520" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M340 180 L340.0 220.0 Q340 230 349.9 231.3 L486.1 248.7 Q496 250 496.0 260.0 L496 520" fill="none" stroke="#8c564b" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="340" cy="180" r="5.6" fill="#8c564b" stroke="#000" stroke-width="1.6"/>
-<circle cx="340" cy="180" r="1.8" fill="#fff"/>
-<circle cx="496" cy="520" r="5.6" fill="#8c564b" stroke="#000" stroke-width="1.6"/>
-<circle cx="496" cy="520" r="1.8" fill="#fff"/>
-<path d="M470 180 L470.0 220.0 Q470 230 479.7 232.4 L542.3 247.6 Q552 250 552.0 260.0 L552 318" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M470 180 L470.0 220.0 Q470 230 479.7 232.4 L542.3 247.6 Q552 250 552.0 260.0 L552 318" fill="none" stroke="#f28e1c" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="470" cy="180" r="5.6" fill="#f28e1c" stroke="#000" stroke-width="1.6"/>
-<circle cx="470" cy="180" r="1.8" fill="#fff"/>
-<circle cx="552" cy="318" r="5.6" fill="#f28e1c" stroke="#000" stroke-width="1.6"/>
-<circle cx="552" cy="318" r="1.8" fill="#fff"/>
-<path d="M952 816 L952.0 730.0 Q952 720 942.0 720.0 L702.0 720.0 Q692 720 692.0 710.0 L692 580" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M952 816 L952.0 730.0 Q952 720 942.0 720.0 L702.0 720.0 Q692 720 692.0 710.0 L692 580" fill="none" stroke="#8a8a8a" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="952" cy="816" r="5.6" fill="#8a8a8a" stroke="#000" stroke-width="1.6"/>
-<circle cx="952" cy="816" r="1.8" fill="#fff"/>
-<circle cx="692" cy="580" r="5.6" fill="#8a8a8a" stroke="#000" stroke-width="1.6"/>
-<circle cx="692" cy="580" r="1.8" fill="#fff"/>
-<path d="M748 580 L748.0 590.0 Q748 600 757.8 602.1 L768.2 604.3 Q776 606 776.0 614.0 L776 622" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M748 580 L748.0 590.0 Q748 600 757.8 602.1 L768.2 604.3 Q776 606 776.0 614.0 L776 622" fill="none" stroke="#8a8a8a" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="748" cy="580" r="5.6" fill="#8a8a8a" stroke="#000" stroke-width="1.6"/>
-<circle cx="748" cy="580" r="1.8" fill="#fff"/>
-<circle cx="776" cy="622" r="5.6" fill="#8a8a8a" stroke="#000" stroke-width="1.6"/>
-<circle cx="776" cy="622" r="1.8" fill="#fff"/>
-<path d="M840 816 L840.0 740.0 Q840 730 830.0 730.0 L590.0 730.0 Q580 730 580.0 720.0 L580 580" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="9 6"/>
-<path d="M840 816 L840.0 740.0 Q840 730 830.0 730.0 L590.0 730.0 Q580 730 580.0 720.0 L580 580" fill="none" stroke="#ffffff" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="9 6"/>
-<circle cx="840" cy="816" r="5.6" fill="#ffffff" stroke="#000" stroke-width="1.6"/>
-<circle cx="840" cy="816" r="1.8" fill="#fff"/>
-<circle cx="580" cy="580" r="5.6" fill="#ffffff" stroke="#000" stroke-width="1.6"/>
-<circle cx="580" cy="580" r="1.8" fill="#fff"/>
-<path d="M664 580 L659.0 586.0 Q654 592 654.0 599.8 L654.0 604.9 Q654 612 659.0 617.0 L664 622" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="9 6"/>
-<path d="M664 580 L659.0 586.0 Q654 592 654.0 599.8 L654.0 604.9 Q654 612 659.0 617.0 L664 622" fill="none" stroke="#1b1b1b" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="9 6"/>
-<circle cx="664" cy="580" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="664" cy="580" r="1.8" fill="#fff"/>
-<circle cx="664" cy="622" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="664" cy="622" r="1.8" fill="#fff"/>
-<path d="M972 816 L972.0 720.0 Q972 710 962.0 710.0 L814.0 710.0 Q804 710 804.0 700.0 L804 580" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="9 6"/>
-<path d="M972 816 L972.0 720.0 Q972 710 962.0 710.0 L814.0 710.0 Q804 710 804.0 700.0 L804 580" fill="none" stroke="#ffffff" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="9 6"/>
-<circle cx="972" cy="816" r="5.6" fill="#ffffff" stroke="#000" stroke-width="1.6"/>
-<circle cx="972" cy="816" r="1.8" fill="#fff"/>
-<circle cx="804" cy="580" r="5.6" fill="#ffffff" stroke="#000" stroke-width="1.6"/>
-<circle cx="804" cy="580" r="1.8" fill="#fff"/>
-<path d="M860 380 L860.0 370.0 Q860 360 869.6 357.3 L881.3 353.9 Q888 352 888.0 345.0 L888 338" fill="none" stroke="#000" stroke-opacity="0.75" stroke-width="7.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="9 6"/>
-<path d="M860 380 L860.0 370.0 Q860 360 869.6 357.3 L881.3 353.9 Q888 352 888.0 345.0 L888 338" fill="none" stroke="#1b1b1b" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="9 6"/>
-<circle cx="860" cy="380" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="860" cy="380" r="1.8" fill="#fff"/>
-<circle cx="888" cy="338" r="5.6" fill="#1b1b1b" stroke="#000" stroke-width="1.6"/>
-<circle cx="888" cy="338" r="1.8" fill="#fff"/>
-<rect x="1168.1" y="770.5" width="23.8" height="19" rx="9.5" fill="#fff" stroke="#d62728" stroke-width="2.2"/>
-<text x="1180" y="784.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#d62728">W1</text>
-<rect x="1190.1" y="830.5" width="23.8" height="19" rx="9.5" fill="#fff" stroke="#1b1b1b" stroke-width="2.2"/>
-<text x="1202" y="844.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1b1b1b">W2</text>
-<rect x="1220.1" y="890.5" width="23.8" height="19" rx="9.5" fill="#fff" stroke="#8e5cc4" stroke-width="2.2"/>
-<text x="1232" y="904.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#8e5cc4">W3</text>
-<rect x="338.4" y="342.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#f28e1c" stroke-width="2.2"/>
-<text x="354" y="356.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#b35c00">W22</text>
-<rect x="448.4" y="342.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#1b1b1b" stroke-width="2.2"/>
-<text x="464" y="356.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1b1b1b">W23</text>
-<rect x="236.4" y="550.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#1b1b1b" stroke-width="2.2"/>
-<text x="252" y="564.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1b1b1b">W27</text>
-<rect x="318.1" y="774.5" width="23.8" height="19" rx="9.5" fill="#fff" stroke="#d4c21a" stroke-width="2.2"/>
-<text x="330" y="788.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#6b6100">W4</text>
-<rect x="408.1" y="764.5" width="23.8" height="19" rx="9.5" fill="#fff" stroke="#1f6fd1" stroke-width="2.2"/>
-<text x="420" y="778.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1f6fd1">W5</text>
-<rect x="498.1" y="754.5" width="23.8" height="19" rx="9.5" fill="#fff" stroke="#1b1b1b" stroke-width="2.2"/>
-<text x="510" y="768.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1b1b1b">W6</text>
-<rect x="238.1" y="690.5" width="23.8" height="19" rx="9.5" fill="#fff" stroke="#d62728" stroke-width="2.2"/>
-<text x="250" y="704.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#d62728">W7</text>
-<rect x="966.1" y="656.5" width="23.8" height="19" rx="9.5" fill="#fff" stroke="#d62728" stroke-width="2.2"/>
-<text x="978" y="670.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#d62728">W8</text>
-<rect x="1076.1" y="601.5" width="23.8" height="19" rx="9.5" fill="#fff" stroke="#1b1b1b" stroke-width="2.2"/>
-<text x="1088" y="615.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1b1b1b">W9</text>
-<rect x="898.4" y="630.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#2ca02c" stroke-width="2.2"/>
-<text x="914" y="644.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#2ca02c">W10</text>
-<rect x="930.4" y="656.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#17becf" stroke-width="2.2"/>
-<text x="946" y="670.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#17becf">W11</text>
-<rect x="896.4" y="280.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#2ca02c" stroke-width="2.2"/>
-<text x="912" y="294.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#2ca02c">W12</text>
-<rect x="932.4" y="252.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#17becf" stroke-width="2.2"/>
-<text x="948" y="266.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#17becf">W13</text>
-<rect x="986.4" y="280.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#1b1b1b" stroke-width="2.2"/>
-<text x="1002" y="294.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1b1b1b">W14</text>
-<rect x="1094.4" y="252.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#f28e1c" stroke-width="2.2"/>
-<text x="1110" y="266.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#b35c00">W15</text>
-<rect x="340.4" y="650.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#e377c2" stroke-width="2.2"/>
-<text x="356" y="664.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#e377c2">W16</text>
-<rect x="540.4" y="601.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#1b1b1b" stroke-width="2.2"/>
-<text x="556" y="615.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1b1b1b">W17</text>
-<rect x="456.4" y="258.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#8c564b" stroke-width="2.2"/>
-<text x="472" y="272.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#8c564b">W18</text>
-<rect x="558.4" y="258.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#f28e1c" stroke-width="2.2"/>
-<text x="574" y="272.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#b35c00">W19</text>
-<rect x="676.4" y="650.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#8a8a8a" stroke-width="2.2"/>
-<text x="692" y="664.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#8a8a8a">W20</text>
-<rect x="764.4" y="601.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#8a8a8a" stroke-width="2.2"/>
-<text x="780" y="615.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#8a8a8a">W21</text>
-<rect x="564.4" y="650.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#555" stroke-width="2.2"/>
-<text x="580" y="664.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#333">W24</text>
-<rect x="618.4" y="630.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#1b1b1b" stroke-width="2.2"/>
-<text x="634" y="644.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1b1b1b">W28</text>
-<rect x="788.4" y="650.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#555" stroke-width="2.2"/>
-<text x="804" y="664.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#333">W25</text>
-<rect x="898.4" y="342.5" width="31.200000000000003" height="19" rx="9.5" fill="#fff" stroke="#1b1b1b" stroke-width="2.2"/>
-<text x="914" y="356.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1b1b1b">W29</text>
+<path d="M780 1014 L780.0 1034.0 Q780 1044 790.0 1044.0 L1170.0 1044.0 Q1180 1044 1180.0 1034.0 L1180.0 662.0 Q1180 652 1170.0 652.0 L1126.4 652.0 Q1120 652 1116.0 647.0 L1112 642" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M780 1014 L780.0 1034.0 Q780 1044 790.0 1044.0 L1170.0 1044.0 Q1180 1044 1180.0 1034.0 L1180.0 662.0 Q1180 652 1170.0 652.0 L1126.4 652.0 Q1120 652 1116.0 647.0 L1112 642" fill="none" stroke="#e6194b" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M800 1014 L800.0 1048.0 Q800 1058 810.0 1058.0 L1192.0 1058.0 Q1202 1058 1202.0 1048.0 L1202.0 642.0 Q1202 632 1192.0 632.0 L1126.4 632.0 Q1120 632 1116.0 627.0 L1112 622" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M800 1014 L800.0 1048.0 Q800 1058 810.0 1058.0 L1192.0 1058.0 Q1202 1058 1202.0 1048.0 L1202.0 642.0 Q1202 632 1192.0 632.0 L1126.4 632.0 Q1120 632 1116.0 627.0 L1112 622" fill="none" stroke="#111111" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M760 1014 L760.0 1064.0 Q760 1074 770.0 1074.0 L1222.0 1074.0 Q1232 1074 1232.0 1064.0 L1232.0 400.0 Q1232 390 1222.0 390.0 L991.8 390.0 Q984 390 978.0 395.0 L972 400" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M760 1014 L760.0 1064.0 Q760 1074 770.0 1074.0 L1222.0 1074.0 Q1232 1074 1232.0 1064.0 L1232.0 400.0 Q1232 390 1222.0 390.0 L991.8 390.0 Q984 390 978.0 395.0 L972 400" fill="none" stroke="#911eb4" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M356 380 L356.0 371.0 Q356 362 363.9 357.7 L369.2 354.8 Q378 350 378.0 340.0 L378.0 331.0 Q378 326 381.0 322.0 L384 318" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M356 380 L356.0 371.0 Q356 362 363.9 357.7 L369.2 354.8 Q378 350 378.0 340.0 L378.0 331.0 Q378 326 381.0 322.0 L384 318" fill="none" stroke="#f58231" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M412 380 L412.0 370.0 Q412 360 421.6 357.3 L433.3 353.9 Q440 352 440.0 345.0 L440 338" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M412 380 L412.0 370.0 Q412 360 421.6 357.3 L433.3 353.9 Q440 352 440.0 345.0 L440 338" fill="none" stroke="#c71585" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M328 338 L322.0 341.0 Q316 344 309.3 344.0 L262.0 344.0 Q252 344 252.0 354.0 L252.0 606.0 Q252 616 262.0 616.0 L309.3 616.0 Q316 616 322.0 619.0 L328 622" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M328 338 L322.0 341.0 Q316 344 309.3 344.0 L262.0 344.0 Q252 344 252.0 354.0 L252.0 606.0 Q252 616 262.0 616.0 L309.3 616.0 Q316 616 322.0 619.0 L328 622" fill="none" stroke="#c8c8c8" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M660 816 L660.0 794.0 Q660 784 650.0 784.0 L70.0 784.0 Q60 784 60.0 774.0 L60 590" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M660 816 L660.0 794.0 Q660 784 650.0 784.0 L70.0 784.0 Q60 784 60.0 774.0 L60 590" fill="none" stroke="#e6b800" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M680 816 L680.0 784.0 Q680 774 670.0 774.0 L110.0 774.0 Q100 774 100.0 764.0 L100 590" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M680 816 L680.0 784.0 Q680 774 670.0 774.0 L110.0 774.0 Q100 774 100.0 764.0 L100 590" fill="none" stroke="#4363d8" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M720 816 L720.0 774.0 Q720 764 710.0 764.0 L150.0 764.0 Q140 764 140.0 754.0 L140 590" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M720 816 L720.0 774.0 Q720 764 710.0 764.0 L150.0 764.0 Q140 764 140.0 754.0 L140 590" fill="none" stroke="#8c8c8c" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M328 642 L328.0 690.0 Q328 700 318.0 700.0 L190.0 700.0 Q180 700 180.0 690.0 L180 590" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M328 642 L328.0 690.0 Q328 700 318.0 700.0 L190.0 700.0 Q180 700 180.0 690.0 L180 590" fill="none" stroke="#800000" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M1000 642 L994.0 637.0 Q988 632 988.0 624.2 L988.0 608.9 Q988 600 980.0 596.0 L977.4 594.7 Q972 592 972.0 586.0 L972 580" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M1000 642 L994.0 637.0 Q988 632 988.0 624.2 L988.0 608.9 Q988 600 980.0 596.0 L977.4 594.7 Q972 592 972.0 586.0 L972 580" fill="none" stroke="#ff4fa3" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M1056 622 L1056.0 613.0 Q1056 604 1047.1 602.4 L1019.1 597.3 Q1012 596 1006.0 592.0 L1003.3 590.2 Q1000 588 1000.0 584.0 L1000 580" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M1056 622 L1056.0 613.0 Q1056 604 1047.1 602.4 L1019.1 597.3 Q1012 596 1006.0 592.0 L1003.3 590.2 Q1000 588 1000.0 584.0 L1000 580" fill="none" stroke="#000080" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M992 816 L992.0 710.0 Q992 700 982.0 700.0 L926.0 700.0 Q916 700 916.0 690.0 L916 580" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M992 816 L992.0 710.0 Q992 700 982.0 700.0 L926.0 700.0 Q916 700 916.0 690.0 L916 580" fill="none" stroke="#2ca02c" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M1012 816 L1012.0 700.0 Q1012 690 1002.0 690.0 L954.0 690.0 Q944 690 944.0 680.0 L944 580" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M1012 816 L1012.0 700.0 Q1012 690 1002.0 690.0 L954.0 690.0 Q944 690 944.0 680.0 L944 580" fill="none" stroke="#19c3e6" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M916 380 L916.0 270.0 Q916 260 916.0 250.0 L916.0 250.0 Q916 240 916.0 230.0 L916 188" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M916 380 L916.0 270.0 Q916 260 916.0 250.0 L916.0 250.0 Q916 240 916.0 230.0 L916 188" fill="none" stroke="#9acd32" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M944 380 L944.0 260.0 Q944 250 952.4 244.6 L963.6 237.4 Q972 232 972.0 222.0 L972 188" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M944 380 L944.0 260.0 Q944 250 952.4 244.6 L963.6 237.4 Q972 232 972.0 222.0 L972 188" fill="none" stroke="#469990" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M1000 380 L1000.0 250.0 Q1000 240 1008.7 235.0 L1019.3 229.0 Q1028 224 1028.0 214.0 L1028 188" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M1000 380 L1000.0 250.0 Q1000 240 1008.7 235.0 L1019.3 229.0 Q1028 224 1028.0 214.0 L1028 188" fill="none" stroke="#9a6324" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M1056 318 L1056.0 280.0 Q1056 270 1064.1 264.2 L1075.9 255.8 Q1084 250 1084.0 240.0 L1084 188" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M1056 318 L1056.0 280.0 Q1056 270 1064.1 264.2 L1075.9 255.8 Q1084 250 1084.0 240.0 L1084 188" fill="none" stroke="#ffa000" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M800 816 L800.0 750.0 Q800 740 790.0 740.0 L366.0 740.0 Q356 740 356.0 730.0 L356 580" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M800 816 L800.0 750.0 Q800 740 790.0 740.0 L366.0 740.0 Q356 740 356.0 730.0 L356 580" fill="none" stroke="#f032e6" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M524 580 L524.0 590.0 Q524 600 533.8 602.1 L544.2 604.3 Q552 606 552.0 614.0 L552 622" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M524 580 L524.0 590.0 Q524 600 533.8 602.1 L544.2 604.3 Q552 606 552.0 614.0 L552 622" fill="none" stroke="#808000" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M340 194 L340.0 220.0 Q340 230 349.9 231.3 L486.1 248.7 Q496 250 496.0 260.0 L496 520" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M340 194 L340.0 220.0 Q340 230 349.9 231.3 L486.1 248.7 Q496 250 496.0 260.0 L496 520" fill="none" stroke="#00a86b" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M470 194 L470.0 220.0 Q470 230 479.7 232.4 L542.3 247.6 Q552 250 552.0 260.0 L552 318" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M470 194 L470.0 220.0 Q470 230 479.7 232.4 L542.3 247.6 Q552 250 552.0 260.0 L552 318" fill="none" stroke="#ff4500" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M952 816 L952.0 730.0 Q952 720 942.0 720.0 L702.0 720.0 Q692 720 692.0 710.0 L692 580" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M952 816 L952.0 730.0 Q952 720 942.0 720.0 L702.0 720.0 Q692 720 692.0 710.0 L692 580" fill="none" stroke="#7b68ee" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M748 580 L748.0 590.0 Q748 600 757.8 602.1 L768.2 604.3 Q776 606 776.0 614.0 L776 622" fill="none" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M748 580 L748.0 590.0 Q748 600 757.8 602.1 L768.2 604.3 Q776 606 776.0 614.0 L776 622" fill="none" stroke="#2f4f4f" stroke-width="5.6" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="1167.4" y="770" width="25.2" height="20" rx="10" fill="#e6194b" stroke="#000" stroke-width="1.8"/>
+<text x="1180" y="784.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W1</text>
+<rect x="1189.4" y="830" width="25.2" height="20" rx="10" fill="#111111" stroke="#000" stroke-width="1.8"/>
+<text x="1202" y="844.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W2</text>
+<rect x="1219.4" y="890" width="25.2" height="20" rx="10" fill="#911eb4" stroke="#000" stroke-width="1.8"/>
+<text x="1232" y="904.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W3</text>
+<rect x="235.6" y="550" width="32.8" height="20" rx="10" fill="#c8c8c8" stroke="#000" stroke-width="1.8"/>
+<text x="252" y="564.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">W24</text>
+<rect x="317.4" y="774" width="25.2" height="20" rx="10" fill="#e6b800" stroke="#000" stroke-width="1.8"/>
+<text x="330" y="788.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">W4</text>
+<rect x="407.4" y="764" width="25.2" height="20" rx="10" fill="#4363d8" stroke="#000" stroke-width="1.8"/>
+<text x="420" y="778.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W5</text>
+<rect x="497.4" y="754" width="25.2" height="20" rx="10" fill="#8c8c8c" stroke="#000" stroke-width="1.8"/>
+<text x="510" y="768.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W6</text>
+<rect x="237.4" y="690" width="25.2" height="20" rx="10" fill="#800000" stroke="#000" stroke-width="1.8"/>
+<text x="250" y="704.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W7</text>
+<rect x="897.6" y="630" width="32.8" height="20" rx="10" fill="#2ca02c" stroke="#000" stroke-width="1.8"/>
+<text x="914" y="644.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W10</text>
+<rect x="929.6" y="656" width="32.8" height="20" rx="10" fill="#19c3e6" stroke="#000" stroke-width="1.8"/>
+<text x="946" y="670.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W11</text>
+<rect x="895.6" y="280" width="32.8" height="20" rx="10" fill="#9acd32" stroke="#000" stroke-width="1.8"/>
+<text x="912" y="294.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">W12</text>
+<rect x="931.6" y="252" width="32.8" height="20" rx="10" fill="#469990" stroke="#000" stroke-width="1.8"/>
+<text x="948" y="266.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W13</text>
+<rect x="985.6" y="280" width="32.8" height="20" rx="10" fill="#9a6324" stroke="#000" stroke-width="1.8"/>
+<text x="1002" y="294.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W14</text>
+<rect x="1093.6" y="252" width="32.8" height="20" rx="10" fill="#ffa000" stroke="#000" stroke-width="1.8"/>
+<text x="1110" y="266.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#111">W15</text>
+<rect x="339.6" y="650" width="32.8" height="20" rx="10" fill="#f032e6" stroke="#000" stroke-width="1.8"/>
+<text x="356" y="664.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W16</text>
+<rect x="455.6" y="258" width="32.8" height="20" rx="10" fill="#00a86b" stroke="#000" stroke-width="1.8"/>
+<text x="472" y="272.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W18</text>
+<rect x="557.6" y="258" width="32.8" height="20" rx="10" fill="#ff4500" stroke="#000" stroke-width="1.8"/>
+<text x="574" y="272.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W19</text>
+<rect x="675.6" y="650" width="32.8" height="20" rx="10" fill="#7b68ee" stroke="#000" stroke-width="1.8"/>
+<text x="692" y="664.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#fff">W20</text>
+<circle cx="780" cy="1014" r="9.5" fill="#e6194b" stroke="#000" stroke-width="1.8"/>
+<text x="780" y="1017.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">1</text>
+<circle cx="1112" cy="642" r="9.5" fill="#e6194b" stroke="#000" stroke-width="1.8"/>
+<text x="1112" y="645.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">1</text>
+<circle cx="800" cy="1014" r="9.5" fill="#111111" stroke="#000" stroke-width="1.8"/>
+<text x="800" y="1017.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">2</text>
+<circle cx="1112" cy="622" r="9.5" fill="#111111" stroke="#000" stroke-width="1.8"/>
+<text x="1112" y="625.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">2</text>
+<circle cx="760" cy="1014" r="9.5" fill="#911eb4" stroke="#000" stroke-width="1.8"/>
+<text x="760" y="1017.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">3</text>
+<circle cx="972" cy="400" r="9.5" fill="#911eb4" stroke="#000" stroke-width="1.8"/>
+<text x="972" y="403.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">3</text>
+<circle cx="356" cy="380" r="9.5" fill="#f58231" stroke="#000" stroke-width="1.8"/>
+<text x="356" y="383.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#111">22</text>
+<circle cx="384" cy="318" r="9.5" fill="#f58231" stroke="#000" stroke-width="1.8"/>
+<text x="384" y="321.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#111">22</text>
+<circle cx="412" cy="380" r="9.5" fill="#c71585" stroke="#000" stroke-width="1.8"/>
+<text x="412" y="383.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">23</text>
+<circle cx="440" cy="338" r="9.5" fill="#c71585" stroke="#000" stroke-width="1.8"/>
+<text x="440" y="341.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">23</text>
+<circle cx="328" cy="338" r="9.5" fill="#c8c8c8" stroke="#000" stroke-width="1.8"/>
+<text x="328" y="341.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#111">24</text>
+<circle cx="328" cy="622" r="9.5" fill="#c8c8c8" stroke="#000" stroke-width="1.8"/>
+<text x="328" y="625.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#111">24</text>
+<circle cx="660" cy="816" r="9.5" fill="#e6b800" stroke="#000" stroke-width="1.8"/>
+<text x="660" y="819.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#111">4</text>
+<circle cx="60" cy="590" r="9.5" fill="#e6b800" stroke="#000" stroke-width="1.8"/>
+<text x="60" y="593.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#111">4</text>
+<circle cx="680" cy="816" r="9.5" fill="#4363d8" stroke="#000" stroke-width="1.8"/>
+<text x="680" y="819.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">5</text>
+<circle cx="100" cy="590" r="9.5" fill="#4363d8" stroke="#000" stroke-width="1.8"/>
+<text x="100" y="593.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">5</text>
+<circle cx="720" cy="816" r="9.5" fill="#8c8c8c" stroke="#000" stroke-width="1.8"/>
+<text x="720" y="819.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">6</text>
+<circle cx="140" cy="590" r="9.5" fill="#8c8c8c" stroke="#000" stroke-width="1.8"/>
+<text x="140" y="593.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">6</text>
+<circle cx="328" cy="642" r="9.5" fill="#800000" stroke="#000" stroke-width="1.8"/>
+<text x="328" y="645.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">7</text>
+<circle cx="180" cy="590" r="9.5" fill="#800000" stroke="#000" stroke-width="1.8"/>
+<text x="180" y="593.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">7</text>
+<circle cx="1000" cy="642" r="9.5" fill="#ff4fa3" stroke="#000" stroke-width="1.8"/>
+<text x="1000" y="645.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">8</text>
+<circle cx="972" cy="580" r="9.5" fill="#ff4fa3" stroke="#000" stroke-width="1.8"/>
+<text x="972" y="583.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">8</text>
+<circle cx="1056" cy="622" r="9.5" fill="#000080" stroke="#000" stroke-width="1.8"/>
+<text x="1056" y="625.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">9</text>
+<circle cx="1000" cy="580" r="9.5" fill="#000080" stroke="#000" stroke-width="1.8"/>
+<text x="1000" y="583.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">9</text>
+<circle cx="992" cy="816" r="9.5" fill="#2ca02c" stroke="#000" stroke-width="1.8"/>
+<text x="992" y="819.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">10</text>
+<circle cx="916" cy="580" r="9.5" fill="#2ca02c" stroke="#000" stroke-width="1.8"/>
+<text x="916" y="583.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">10</text>
+<circle cx="1012" cy="816" r="9.5" fill="#19c3e6" stroke="#000" stroke-width="1.8"/>
+<text x="1012" y="819.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">11</text>
+<circle cx="944" cy="580" r="9.5" fill="#19c3e6" stroke="#000" stroke-width="1.8"/>
+<text x="944" y="583.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">11</text>
+<circle cx="916" cy="380" r="9.5" fill="#9acd32" stroke="#000" stroke-width="1.8"/>
+<text x="916" y="383.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#111">12</text>
+<circle cx="916" cy="188" r="9.5" fill="#9acd32" stroke="#000" stroke-width="1.8"/>
+<text x="916" y="191.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#111">12</text>
+<circle cx="944" cy="380" r="9.5" fill="#469990" stroke="#000" stroke-width="1.8"/>
+<text x="944" y="383.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">13</text>
+<circle cx="972" cy="188" r="9.5" fill="#469990" stroke="#000" stroke-width="1.8"/>
+<text x="972" y="191.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">13</text>
+<circle cx="1000" cy="380" r="9.5" fill="#9a6324" stroke="#000" stroke-width="1.8"/>
+<text x="1000" y="383.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">14</text>
+<circle cx="1028" cy="188" r="9.5" fill="#9a6324" stroke="#000" stroke-width="1.8"/>
+<text x="1028" y="191.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">14</text>
+<circle cx="1056" cy="318" r="9.5" fill="#ffa000" stroke="#000" stroke-width="1.8"/>
+<text x="1056" y="321.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#111">15</text>
+<circle cx="1084" cy="188" r="9.5" fill="#ffa000" stroke="#000" stroke-width="1.8"/>
+<text x="1084" y="191.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#111">15</text>
+<circle cx="800" cy="816" r="9.5" fill="#f032e6" stroke="#000" stroke-width="1.8"/>
+<text x="800" y="819.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">16</text>
+<circle cx="356" cy="580" r="9.5" fill="#f032e6" stroke="#000" stroke-width="1.8"/>
+<text x="356" y="583.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">16</text>
+<circle cx="524" cy="580" r="9.5" fill="#808000" stroke="#000" stroke-width="1.8"/>
+<text x="524" y="583.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">17</text>
+<circle cx="552" cy="622" r="9.5" fill="#808000" stroke="#000" stroke-width="1.8"/>
+<text x="552" y="625.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">17</text>
+<circle cx="340" cy="194" r="9.5" fill="#00a86b" stroke="#000" stroke-width="1.8"/>
+<text x="340" y="197.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">18</text>
+<circle cx="496" cy="520" r="9.5" fill="#00a86b" stroke="#000" stroke-width="1.8"/>
+<text x="496" y="523.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">18</text>
+<circle cx="470" cy="194" r="9.5" fill="#ff4500" stroke="#000" stroke-width="1.8"/>
+<text x="470" y="197.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">19</text>
+<circle cx="552" cy="318" r="9.5" fill="#ff4500" stroke="#000" stroke-width="1.8"/>
+<text x="552" y="321.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">19</text>
+<circle cx="952" cy="816" r="9.5" fill="#7b68ee" stroke="#000" stroke-width="1.8"/>
+<text x="952" y="819.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">20</text>
+<circle cx="692" cy="580" r="9.5" fill="#7b68ee" stroke="#000" stroke-width="1.8"/>
+<text x="692" y="583.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">20</text>
+<circle cx="748" cy="580" r="9.5" fill="#2f4f4f" stroke="#000" stroke-width="1.8"/>
+<text x="748" y="583.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">21</text>
+<circle cx="776" cy="622" r="9.5" fill="#2f4f4f" stroke="#000" stroke-width="1.8"/>
+<text x="776" y="625.6" font-size="10" text-anchor="middle" font-weight="bold" fill="#fff">21</text>
 <rect x="20" y="1084" width="1720" height="112" rx="6" fill="#fbf9f3" stroke="#d8d0b8" stroke-width="1.6"/>
 <text x="34" y="1106" font-size="13" text-anchor="start" font-weight="bold" fill="#111">What goes on each rail</text>
 <text x="1000" y="1128" font-size="11" text-anchor="start" font-weight="bold" fill="#c0392b">Never join the two + rails: they are different supplies.</text>
-<text x="1000" y="1147" font-size="11" text-anchor="start" font-weight="normal" fill="#333">Both − rails are GND and must be joined (W27).</text>
+<text x="1000" y="1147" font-size="11" text-anchor="start" font-weight="normal" fill="#333">Both − rails are GND and must be joined (W24).</text>
 <text x="1000" y="1166" font-size="11" text-anchor="start" font-weight="normal" fill="#333">Any hole of a rail will do: the rows named ("by row 4") are only where</text>
 <text x="1000" y="1185" font-size="11" text-anchor="start" font-weight="normal" fill="#333">the drawing puts each wire end. The holes of a rail are all joined.</text>
-<line x1="34" y1="1124" x2="70" y2="1124" stroke="#f28e1c" stroke-width="5"/>
+<line x1="34" y1="1124" x2="70" y2="1124" stroke="#f58231" stroke-width="5"/>
 <text x="80" y="1128" font-size="11" text-anchor="start" font-weight="bold" fill="#111">+ rail, a side = +5V_EXT</text>
 <text x="270" y="1128" font-size="11" text-anchor="start" font-weight="normal" fill="#333">in: W22 from J1's end pin · out: W15 SprintIR-R VDD, W19 pump +</text>
 <line x1="34" y1="1143" x2="70" y2="1143" stroke="#1b1b1b" stroke-width="5"/>
 <text x="80" y="1147" font-size="11" text-anchor="start" font-weight="bold" fill="#111">− rail, a side = GND</text>
-<text x="270" y="1147" font-size="11" text-anchor="start" font-weight="normal" fill="#333">in: W23 from J1's middle pin · out: W29 button (opt.) · joined to the j-side − rail by W27</text>
+<text x="270" y="1147" font-size="11" text-anchor="start" font-weight="normal" fill="#333">in: W23 from J1's middle pin · joined to the j-side − rail by W24</text>
 <line x1="34" y1="1162" x2="70" y2="1162" stroke="#1b1b1b" stroke-width="5"/>
 <text x="80" y="1166" font-size="11" text-anchor="start" font-weight="bold" fill="#111">− rail, j side = GND</text>
-<text x="270" y="1166" font-size="11" text-anchor="start" font-weight="normal" fill="#333">in: W2 Arduino GND · out: W9 shifter, W17 Q1 source, R2, W21 reed, W28 buzzer (opt.)</text>
-<line x1="34" y1="1181" x2="70" y2="1181" stroke="#d62728" stroke-width="5"/>
+<text x="270" y="1166" font-size="11" text-anchor="start" font-weight="normal" fill="#333">in: W2 Arduino GND · out: W9 shifter, W17 Q1 source, R2, W21 reed switch</text>
+<line x1="34" y1="1181" x2="70" y2="1181" stroke="#e6194b" stroke-width="5"/>
 <text x="80" y="1185" font-size="11" text-anchor="start" font-weight="bold" fill="#111">+ rail, j side = +5V</text>
 <text x="270" y="1185" font-size="11" text-anchor="start" font-weight="normal" fill="#333">in: W1 Arduino 5V · out: W7 SFM3300 VDD, W8 shifter HV</text>
 <text x="24" y="1212" font-size="14" text-anchor="start" font-weight="bold" fill="#111">Every wire, end to end (hole = column letter + row number, as printed on the breadboard)</text>
-<line x1="24" y1="1234" x2="58" y2="1234" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1234" x2="58" y2="1234" stroke="#d62728" stroke-width="4.4"/>
-<text x="66" y="1238" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W1</text>
-<text x="100" y="1238" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino 5V (power header)  →  + rail (j side), by row 30</text>
-<text x="844" y="1238" font-size="10" text-anchor="end" font-weight="normal" fill="#666">red</text>
-<line x1="24" y1="1256" x2="58" y2="1256" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1256" x2="58" y2="1256" stroke="#1b1b1b" stroke-width="4.4"/>
-<text x="66" y="1260" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W2</text>
-<text x="100" y="1260" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino GND (power header)  →  − rail (j side), by row 30</text>
-<text x="844" y="1260" font-size="10" text-anchor="end" font-weight="normal" fill="#666">black</text>
-<line x1="24" y1="1278" x2="58" y2="1278" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1278" x2="58" y2="1278" stroke="#8e5cc4" stroke-width="4.4"/>
-<text x="66" y="1282" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W3</text>
-<text x="100" y="1282" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino 3V3 (power header)  →  b25 (shifter LV)</text>
-<text x="844" y="1282" font-size="10" text-anchor="end" font-weight="normal" fill="#666">purple</text>
-<line x1="24" y1="1300" x2="58" y2="1300" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1300" x2="58" y2="1300" stroke="#d4c21a" stroke-width="4.4"/>
-<text x="66" y="1304" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W4</text>
-<text x="100" y="1304" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino SCL (top header)  →  SFM3300 SCL</text>
-<text x="844" y="1304" font-size="10" text-anchor="end" font-weight="normal" fill="#666">yellow</text>
-<line x1="24" y1="1322" x2="58" y2="1322" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1322" x2="58" y2="1322" stroke="#1f6fd1" stroke-width="4.4"/>
-<text x="66" y="1326" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W5</text>
-<text x="100" y="1326" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino SDA (top header)  →  SFM3300 SDA</text>
-<text x="844" y="1326" font-size="10" text-anchor="end" font-weight="normal" fill="#666">blue</text>
-<line x1="24" y1="1344" x2="58" y2="1344" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1344" x2="58" y2="1344" stroke="#1b1b1b" stroke-width="4.4"/>
-<text x="66" y="1348" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W6</text>
-<text x="100" y="1348" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino GND (top header)  →  SFM3300 GND</text>
-<text x="844" y="1348" font-size="10" text-anchor="end" font-weight="normal" fill="#666">black</text>
-<line x1="24" y1="1366" x2="58" y2="1366" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1366" x2="58" y2="1366" stroke="#d62728" stroke-width="4.4"/>
-<text x="66" y="1370" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W7</text>
-<text x="100" y="1370" font-size="11" text-anchor="start" font-weight="normal" fill="#111">+ rail (j side), by row 2  →  SFM3300 VDD</text>
-<text x="844" y="1370" font-size="10" text-anchor="end" font-weight="normal" fill="#666">red</text>
-<line x1="24" y1="1388" x2="58" y2="1388" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1388" x2="58" y2="1388" stroke="#d62728" stroke-width="4.4"/>
-<text x="66" y="1392" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W8</text>
-<text x="100" y="1392" font-size="11" text-anchor="start" font-weight="normal" fill="#111">+ rail (j side), by row 26  →  j25 (shifter HV)</text>
-<text x="844" y="1392" font-size="10" text-anchor="end" font-weight="normal" fill="#666">red</text>
-<line x1="24" y1="1410" x2="58" y2="1410" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1410" x2="58" y2="1410" stroke="#1b1b1b" stroke-width="4.4"/>
-<text x="66" y="1414" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W9</text>
-<text x="100" y="1414" font-size="11" text-anchor="start" font-weight="normal" fill="#111">− rail (j side), by row 28  →  j26 (shifter GND, 5 V side)</text>
-<text x="844" y="1414" font-size="10" text-anchor="end" font-weight="normal" fill="#666">black</text>
-<line x1="24" y1="1432" x2="58" y2="1432" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1432" x2="58" y2="1432" stroke="#2ca02c" stroke-width="4.4"/>
-<text x="66" y="1436" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W10</text>
-<text x="100" y="1436" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino D1/TX  →  j23 (shifter B1)</text>
-<text x="844" y="1436" font-size="10" text-anchor="end" font-weight="normal" fill="#666">green</text>
-<line x1="24" y1="1454" x2="58" y2="1454" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1454" x2="58" y2="1454" stroke="#17becf" stroke-width="4.4"/>
-<text x="66" y="1458" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W11</text>
-<text x="100" y="1458" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino D0/RX  →  j24 (shifter B2)</text>
-<text x="844" y="1458" font-size="10" text-anchor="end" font-weight="normal" fill="#666">cyan</text>
-<line x1="24" y1="1476" x2="58" y2="1476" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1476" x2="58" y2="1476" stroke="#2ca02c" stroke-width="4.4"/>
-<text x="66" y="1480" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W12</text>
-<text x="100" y="1480" font-size="11" text-anchor="start" font-weight="normal" fill="#111">a23 (shifter A1)  →  SprintIR-R pin 1 Rx_In</text>
-<text x="844" y="1480" font-size="10" text-anchor="end" font-weight="normal" fill="#666">green</text>
-<line x1="24" y1="1498" x2="58" y2="1498" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1498" x2="58" y2="1498" stroke="#17becf" stroke-width="4.4"/>
-<text x="66" y="1502" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W13</text>
-<text x="100" y="1502" font-size="11" text-anchor="start" font-weight="normal" fill="#111">a24 (shifter A2)  →  SprintIR-R pin 2 Tx_Out</text>
-<text x="844" y="1502" font-size="10" text-anchor="end" font-weight="normal" fill="#666">cyan</text>
-<line x1="24" y1="1520" x2="58" y2="1520" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="24" y1="1520" x2="58" y2="1520" stroke="#1b1b1b" stroke-width="4.4"/>
-<text x="66" y="1524" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W14</text>
-<text x="100" y="1524" font-size="11" text-anchor="start" font-weight="normal" fill="#111">a26 (shifter GND, 3 V side)  →  SprintIR-R pin 3 GND</text>
-<text x="844" y="1524" font-size="10" text-anchor="end" font-weight="normal" fill="#666">black</text>
-<line x1="884" y1="1234" x2="918" y2="1234" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="884" y1="1234" x2="918" y2="1234" stroke="#f28e1c" stroke-width="4.4"/>
-<text x="926" y="1238" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W15</text>
-<text x="960" y="1238" font-size="11" text-anchor="start" font-weight="normal" fill="#111">+ rail (a side), by row 28  →  SprintIR-R pin 4 VDD</text>
-<text x="1704" y="1238" font-size="10" text-anchor="end" font-weight="normal" fill="#666">orange</text>
-<line x1="884" y1="1256" x2="918" y2="1256" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="884" y1="1256" x2="918" y2="1256" stroke="#e377c2" stroke-width="4.4"/>
-<text x="926" y="1260" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W16</text>
-<text x="960" y="1260" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino D10  →  j3 (R1, then Q1's gate)</text>
-<text x="1704" y="1260" font-size="10" text-anchor="end" font-weight="normal" fill="#666">pink</text>
-<line x1="884" y1="1278" x2="918" y2="1278" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="884" y1="1278" x2="918" y2="1278" stroke="#1b1b1b" stroke-width="4.4"/>
-<text x="926" y="1282" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W17</text>
-<text x="960" y="1282" font-size="11" text-anchor="start" font-weight="normal" fill="#111">j9 (Q1 source)  →  − rail (j side), by row 10</text>
-<text x="1704" y="1282" font-size="10" text-anchor="end" font-weight="normal" fill="#666">black</text>
-<line x1="884" y1="1300" x2="918" y2="1300" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="884" y1="1300" x2="918" y2="1300" stroke="#8c564b" stroke-width="4.4"/>
-<text x="926" y="1304" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W18</text>
-<text x="960" y="1304" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Pump − contact  →  g8 (Q1 drain)</text>
-<text x="1704" y="1304" font-size="10" text-anchor="end" font-weight="normal" fill="#666">brown</text>
-<line x1="884" y1="1322" x2="918" y2="1322" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="884" y1="1322" x2="918" y2="1322" stroke="#f28e1c" stroke-width="4.4"/>
-<text x="926" y="1326" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W19</text>
-<text x="960" y="1326" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Pump + contact  →  + rail (a side), by row 10</text>
-<text x="1704" y="1326" font-size="10" text-anchor="end" font-weight="normal" fill="#666">orange</text>
-<line x1="884" y1="1344" x2="918" y2="1344" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="884" y1="1344" x2="918" y2="1344" stroke="#8a8a8a" stroke-width="4.4"/>
-<text x="926" y="1348" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W20</text>
-<text x="960" y="1348" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino D3  →  j15 (reed lead)</text>
-<text x="1704" y="1348" font-size="10" text-anchor="end" font-weight="normal" fill="#666">grey</text>
-<line x1="884" y1="1366" x2="918" y2="1366" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="884" y1="1366" x2="918" y2="1366" stroke="#8a8a8a" stroke-width="4.4"/>
-<text x="926" y="1370" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W21</text>
-<text x="960" y="1370" font-size="11" text-anchor="start" font-weight="normal" fill="#111">j17 (other reed lead)  →  − rail (j side), by row 18</text>
-<text x="1704" y="1370" font-size="10" text-anchor="end" font-weight="normal" fill="#666">grey</text>
-<line x1="884" y1="1388" x2="918" y2="1388" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="884" y1="1388" x2="918" y2="1388" stroke="#f28e1c" stroke-width="4.4"/>
-<text x="926" y="1392" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W22</text>
-<text x="960" y="1392" font-size="11" text-anchor="start" font-weight="normal" fill="#111">a3 (J1 end pin, +)  →  + rail (a side), by row 4</text>
-<text x="1704" y="1392" font-size="10" text-anchor="end" font-weight="normal" fill="#666">orange</text>
-<line x1="884" y1="1410" x2="918" y2="1410" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="884" y1="1410" x2="918" y2="1410" stroke="#1b1b1b" stroke-width="4.4"/>
-<text x="926" y="1414" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W23</text>
-<text x="960" y="1414" font-size="11" text-anchor="start" font-weight="normal" fill="#111">a5 (J1 middle pin, −)  →  − rail (a side), by row 6</text>
-<text x="1704" y="1414" font-size="10" text-anchor="end" font-weight="normal" fill="#666">black</text>
-<line x1="884" y1="1432" x2="918" y2="1432" stroke="#000" stroke-opacity="0.75" stroke-width="7" stroke-dasharray="7 4"/>
-<line x1="884" y1="1432" x2="918" y2="1432" stroke="#ffffff" stroke-width="4.4" stroke-dasharray="7 4"/>
-<text x="926" y="1436" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W24</text>
-<text x="960" y="1436" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino D8  →  j11 (buzzer +)</text>
-<text x="1704" y="1436" font-size="10" text-anchor="end" font-weight="normal" fill="#666">white, optional</text>
-<line x1="884" y1="1454" x2="918" y2="1454" stroke="#000" stroke-opacity="0.75" stroke-width="7" stroke-dasharray="7 4"/>
-<line x1="884" y1="1454" x2="918" y2="1454" stroke="#ffffff" stroke-width="4.4" stroke-dasharray="7 4"/>
-<text x="926" y="1458" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W25</text>
-<text x="960" y="1458" font-size="11" text-anchor="start" font-weight="normal" fill="#111">Arduino D2  →  j19 (button)</text>
-<text x="1704" y="1458" font-size="10" text-anchor="end" font-weight="normal" fill="#666">white, optional</text>
-<line x1="884" y1="1476" x2="918" y2="1476" stroke="#000" stroke-opacity="0.75" stroke-width="7"/>
-<line x1="884" y1="1476" x2="918" y2="1476" stroke="#1b1b1b" stroke-width="4.4"/>
-<text x="926" y="1480" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W27</text>
-<text x="960" y="1480" font-size="11" text-anchor="start" font-weight="normal" fill="#111">− rail (a side), by row 2  →  − rail (j side), by row 2</text>
-<text x="1704" y="1480" font-size="10" text-anchor="end" font-weight="normal" fill="#666">black</text>
-<line x1="884" y1="1498" x2="918" y2="1498" stroke="#000" stroke-opacity="0.75" stroke-width="7" stroke-dasharray="7 4"/>
-<line x1="884" y1="1498" x2="918" y2="1498" stroke="#1b1b1b" stroke-width="4.4" stroke-dasharray="7 4"/>
-<text x="926" y="1502" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W28</text>
-<text x="960" y="1502" font-size="11" text-anchor="start" font-weight="normal" fill="#111">j14 (buzzer −)  →  − rail (j side), by row 14</text>
-<text x="1704" y="1502" font-size="10" text-anchor="end" font-weight="normal" fill="#666">black, optional</text>
-<line x1="884" y1="1520" x2="918" y2="1520" stroke="#000" stroke-opacity="0.75" stroke-width="7" stroke-dasharray="7 4"/>
-<line x1="884" y1="1520" x2="918" y2="1520" stroke="#1b1b1b" stroke-width="4.4" stroke-dasharray="7 4"/>
-<text x="926" y="1524" font-size="11" text-anchor="start" font-weight="bold" fill="#111">W29</text>
-<text x="960" y="1524" font-size="11" text-anchor="start" font-weight="normal" fill="#111">a21 (button, diagonal leg)  →  − rail (a side), by row 22</text>
-<text x="1704" y="1524" font-size="10" text-anchor="end" font-weight="normal" fill="#666">black, optional</text>
-<text x="24" y="1554" font-size="10.5" text-anchor="start" font-weight="normal" fill="#333">Parts in holes: J1 c3/c5/c7 · Q1 IRLZ44N f7 G, f8 D, f9 S (printed side towards column j) · R1 220 Ω h3-h7 · R2 100 kΩ i7 → − rail (j side) · U1 shifter A side d23-d28, B side g23-g28 · reed leads g15, g17 · buzzer g11 (+), g14 (opt.) · button e19/e21/f19/f21 (opt.)</text>
-<text x="24" y="1571" font-size="10.5" text-anchor="start" font-weight="normal" fill="#333">Check the shifter's printed pin names against this order (A1 A2 LV GND A3 A4 / B1 B2 HV GND B3 B4) and keep each wire on the column of the named pin. Optional R3, R4 4.7 kΩ I2C pull-ups and the Q2 heater driver (W26) are not drawn; see docs/wiring.md.</text>
+<text x="844" y="1212" font-size="10" text-anchor="end" font-weight="bold" fill="#666">jumper colour to use</text>
+<text x="1704" y="1212" font-size="10" text-anchor="end" font-weight="bold" fill="#666">jumper colour to use</text>
+<line x1="24" y1="1236" x2="64" y2="1236" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1236" x2="64" y2="1236" stroke="#e6194b" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1226" width="38" height="20" rx="10" fill="#e6194b" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1240.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W1</text>
+<text x="122" y="1240" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Arduino 5V (power header)  →  + rail (j side), by row 30</text>
+<text x="844" y="1240" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">red</text>
+<line x1="24" y1="1260" x2="64" y2="1260" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1260" x2="64" y2="1260" stroke="#111111" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1250" width="38" height="20" rx="10" fill="#111111" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1264.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W2</text>
+<text x="122" y="1264" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Arduino GND (power header)  →  − rail (j side), by row 30</text>
+<text x="844" y="1264" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">black</text>
+<line x1="24" y1="1284" x2="64" y2="1284" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1284" x2="64" y2="1284" stroke="#911eb4" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1274" width="38" height="20" rx="10" fill="#911eb4" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1288.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W3</text>
+<text x="122" y="1288" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Arduino 3V3 (power header)  →  b25 (shifter LV)</text>
+<text x="844" y="1288" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">purple</text>
+<line x1="24" y1="1308" x2="64" y2="1308" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1308" x2="64" y2="1308" stroke="#e6b800" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1298" width="38" height="20" rx="10" fill="#e6b800" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1312.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#111">W4</text>
+<text x="122" y="1312" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Arduino SCL (top header)  →  SFM3300 SCL</text>
+<text x="844" y="1312" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">yellow</text>
+<line x1="24" y1="1332" x2="64" y2="1332" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1332" x2="64" y2="1332" stroke="#4363d8" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1322" width="38" height="20" rx="10" fill="#4363d8" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1336.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W5</text>
+<text x="122" y="1336" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Arduino SDA (top header)  →  SFM3300 SDA</text>
+<text x="844" y="1336" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">blue</text>
+<line x1="24" y1="1356" x2="64" y2="1356" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1356" x2="64" y2="1356" stroke="#8c8c8c" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1346" width="38" height="20" rx="10" fill="#8c8c8c" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1360.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W6</text>
+<text x="122" y="1360" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Arduino GND (top header)  →  SFM3300 GND</text>
+<text x="844" y="1360" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">black</text>
+<line x1="24" y1="1380" x2="64" y2="1380" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1380" x2="64" y2="1380" stroke="#800000" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1370" width="38" height="20" rx="10" fill="#800000" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1384.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W7</text>
+<text x="122" y="1384" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">+ rail (j side), by row 2  →  SFM3300 VDD</text>
+<text x="844" y="1384" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">red</text>
+<line x1="24" y1="1404" x2="64" y2="1404" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1404" x2="64" y2="1404" stroke="#ff4fa3" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1394" width="38" height="20" rx="10" fill="#ff4fa3" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1408.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W8</text>
+<text x="122" y="1408" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">+ rail (j side), by row 26  →  j25 (shifter HV)</text>
+<text x="844" y="1408" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">red</text>
+<line x1="24" y1="1428" x2="64" y2="1428" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1428" x2="64" y2="1428" stroke="#000080" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1418" width="38" height="20" rx="10" fill="#000080" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1432.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W9</text>
+<text x="122" y="1432" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">− rail (j side), by row 28  →  j26 (shifter GND, 5 V side)</text>
+<text x="844" y="1432" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">black</text>
+<line x1="24" y1="1452" x2="64" y2="1452" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1452" x2="64" y2="1452" stroke="#2ca02c" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1442" width="38" height="20" rx="10" fill="#2ca02c" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1456.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W10</text>
+<text x="122" y="1456" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Arduino D1/TX  →  j23 (shifter B1)</text>
+<text x="844" y="1456" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">green</text>
+<line x1="24" y1="1476" x2="64" y2="1476" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1476" x2="64" y2="1476" stroke="#19c3e6" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1466" width="38" height="20" rx="10" fill="#19c3e6" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1480.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W11</text>
+<text x="122" y="1480" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Arduino D0/RX  →  j24 (shifter B2)</text>
+<text x="844" y="1480" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">cyan</text>
+<line x1="24" y1="1500" x2="64" y2="1500" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="24" y1="1500" x2="64" y2="1500" stroke="#9acd32" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="74" y="1490" width="38" height="20" rx="10" fill="#9acd32" stroke="#000" stroke-width="1.6"/>
+<text x="93" y="1504.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#111">W12</text>
+<text x="122" y="1504" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">a23 (shifter A1)  →  SprintIR-R pin 1 Rx_In</text>
+<text x="844" y="1504" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">green</text>
+<line x1="884" y1="1236" x2="924" y2="1236" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1236" x2="924" y2="1236" stroke="#469990" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1226" width="38" height="20" rx="10" fill="#469990" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1240.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W13</text>
+<text x="982" y="1240" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">a24 (shifter A2)  →  SprintIR-R pin 2 Tx_Out</text>
+<text x="1704" y="1240" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">cyan</text>
+<line x1="884" y1="1260" x2="924" y2="1260" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1260" x2="924" y2="1260" stroke="#9a6324" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1250" width="38" height="20" rx="10" fill="#9a6324" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1264.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W14</text>
+<text x="982" y="1264" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">a26 (shifter GND, 3 V side)  →  SprintIR-R pin 3 GND</text>
+<text x="1704" y="1264" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">black</text>
+<line x1="884" y1="1284" x2="924" y2="1284" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1284" x2="924" y2="1284" stroke="#ffa000" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1274" width="38" height="20" rx="10" fill="#ffa000" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1288.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#111">W15</text>
+<text x="982" y="1288" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">+ rail (a side), by row 28  →  SprintIR-R pin 4 VDD</text>
+<text x="1704" y="1288" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">orange</text>
+<line x1="884" y1="1308" x2="924" y2="1308" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1308" x2="924" y2="1308" stroke="#f032e6" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1298" width="38" height="20" rx="10" fill="#f032e6" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1312.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W16</text>
+<text x="982" y="1312" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Arduino D10  →  j3 (R1, then Q1's gate)</text>
+<text x="1704" y="1312" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">pink</text>
+<line x1="884" y1="1332" x2="924" y2="1332" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1332" x2="924" y2="1332" stroke="#808000" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1322" width="38" height="20" rx="10" fill="#808000" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1336.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W17</text>
+<text x="982" y="1336" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">j9 (Q1 source)  →  − rail (j side), by row 10</text>
+<text x="1704" y="1336" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">black</text>
+<line x1="884" y1="1356" x2="924" y2="1356" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1356" x2="924" y2="1356" stroke="#00a86b" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1346" width="38" height="20" rx="10" fill="#00a86b" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1360.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W18</text>
+<text x="982" y="1360" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Pump − contact  →  g8 (Q1 drain)</text>
+<text x="1704" y="1360" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">brown</text>
+<line x1="884" y1="1380" x2="924" y2="1380" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1380" x2="924" y2="1380" stroke="#ff4500" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1370" width="38" height="20" rx="10" fill="#ff4500" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1384.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W19</text>
+<text x="982" y="1384" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Pump + contact  →  + rail (a side), by row 10</text>
+<text x="1704" y="1384" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">orange</text>
+<line x1="884" y1="1404" x2="924" y2="1404" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1404" x2="924" y2="1404" stroke="#7b68ee" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1394" width="38" height="20" rx="10" fill="#7b68ee" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1408.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W20</text>
+<text x="982" y="1408" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">Arduino D3  →  j15 (reed lead)</text>
+<text x="1704" y="1408" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">grey</text>
+<line x1="884" y1="1428" x2="924" y2="1428" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1428" x2="924" y2="1428" stroke="#2f4f4f" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1418" width="38" height="20" rx="10" fill="#2f4f4f" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1432.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W21</text>
+<text x="982" y="1432" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">j17 (other reed lead)  →  − rail (j side), by row 18</text>
+<text x="1704" y="1432" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">grey</text>
+<line x1="884" y1="1452" x2="924" y2="1452" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1452" x2="924" y2="1452" stroke="#f58231" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1442" width="38" height="20" rx="10" fill="#f58231" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1456.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#111">W22</text>
+<text x="982" y="1456" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">a3 (J1 end pin, +)  →  + rail (a side), by row 4</text>
+<text x="1704" y="1456" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">orange</text>
+<line x1="884" y1="1476" x2="924" y2="1476" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1476" x2="924" y2="1476" stroke="#c71585" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1466" width="38" height="20" rx="10" fill="#c71585" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1480.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#fff">W23</text>
+<text x="982" y="1480" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">a5 (J1 middle pin, −)  →  − rail (a side), by row 6</text>
+<text x="1704" y="1480" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">black</text>
+<line x1="884" y1="1500" x2="924" y2="1500" stroke="#000" stroke-opacity="0.8" stroke-width="8.5" stroke-linecap="round"/>
+<line x1="884" y1="1500" x2="924" y2="1500" stroke="#c8c8c8" stroke-width="5.6" stroke-linecap="round"/>
+<rect x="934" y="1490" width="38" height="20" rx="10" fill="#c8c8c8" stroke="#000" stroke-width="1.6"/>
+<text x="953" y="1504.5" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#111">W24</text>
+<text x="982" y="1504" font-size="11.5" text-anchor="start" font-weight="normal" fill="#111">− rail (a side), by row 2  →  − rail (j side), by row 2</text>
+<text x="1704" y="1504" font-size="10.5" text-anchor="end" font-weight="normal" fill="#555">black</text>
+<text x="24" y="1536" font-size="10.5" text-anchor="start" font-weight="normal" fill="#333">Parts in holes: J1 c3/c5/c7 · Q1 IRLZ44N f7 G, f8 D, f9 S (printed side towards column j) · R1 220 Ω h3-h7 · R2 100 kΩ i7 → − rail (j side) · U1 shifter A side d23-d28, B side g23-g28 · reed switch leads g15, g17</text>
+<text x="24" y="1553" font-size="10.5" text-anchor="start" font-weight="normal" fill="#333">Check the shifter's printed pin names against this order (A1 A2 LV GND A3 A4 / B1 B2 HV GND B3 B4) and keep each wire on the column of the named pin. Rows 11-14, 19-22, 29-30 are free.</text>
 </svg>
