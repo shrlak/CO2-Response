@@ -648,7 +648,7 @@ class MonitorEngine:
             if isinstance(self._source, SimulatorSource):
                 self.connect("simulator")  # with (or without) its simulated Capnostream
                 return
-            self._add_log("Capnostream settings take effect at the next connection")
+            self._restart_capno()
         if nxt.hardware != prev.hardware:
             if isinstance(self._source, SimulatorSource):
                 self.connect("simulator")  # the simulated board is the other one now
@@ -663,6 +663,11 @@ class MonitorEngine:
         self.audio.volume = nxt.alarms.volume
         if nxt.processing != prev.processing:
             self.pipeline.set_options(self._processing_options())
+            p = nxt.processing
+            if self._merge is not None and (p.barometric_mm_hg, p.water_vapor) != (prev.processing.barometric_mm_hg, prev.processing.water_vapor):
+                # the Capnostream's CO2 is converted with the new pressure at once
+                self._merge.decoder.barometric = p.barometric_mm_hg
+                self._merge.mmhg_to_line = mmhg_to_line_pct(p.barometric_mm_hg, p.water_vapor)
         if nxt.spo2 != prev.spo2:
             self.pipeline.spo2 = nxt.spo2
             self._spo2_low_since = None
@@ -948,6 +953,7 @@ class MonitorEngine:
         self._wave_every = max(1, round(src.run_speed if isinstance(src, SimulatorSource) else float(getattr(src, "speed", 1) or 1)))
         self._clear_waves()
         self.alarms.set_condition("deviceLost", False, now, "medium", "")
+        self.alarms.forget_readings()  # the last connection's readings are not this one's
         self._awaiting_reconnect = False
         self._reconnect_at = None
         self._i2c_scan = None
@@ -1828,6 +1834,21 @@ class MonitorEngine:
         self._capno_src = capno
         self._add_log(f"CO2 from {capno.label}: its CO2 delay {c.delay_ms:g} ms is applied to the flow")
         self.recorder.event(self.clock(), f"CO2_SOURCE {capno.label}")
+
+    def _restart_capno(self) -> None:
+        """Changed Capnostream settings, in effect at once on the open connection:
+        its link is reopened (or closed) and the flow's CO2 delay follows."""
+        src = self._source
+        if src is None or src.kind not in ("serial", "bridge"):
+            return
+        self._stop_capno()
+        self._capno_on = self.settings.capno.enabled
+        if self._capno_on:
+            self._start_capno(src)
+        else:
+            self._add_log("Capnostream off: CO2 from the board")
+            self.recorder.event(self.clock(), "CO2_SOURCE board")
+        self.pipeline.set_options(self._processing_options())
 
     def _stop_capno(self) -> None:
         capno, self._capno_src, self._merge = self._capno_src, None, None

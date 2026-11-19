@@ -12,11 +12,15 @@
 - High and medium alarms latch: once the condition clears they stay, marked resolved,
   until acknowledged. Advisories come and go on their own.
 - Silence mutes audio for ``silence_sec`` (≤ 120 s) and then re-arms by itself.
+- New settings take effect at once: the recent breaths and live CO2 are kept, so a
+  changed limit, delay, hysteresis or alarm source is checked against them the
+  moment it is set, not at the next breath.
 """
 
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
 from typing import Callable
 
@@ -26,6 +30,10 @@ from ..settings import AlarmSettings
 # Alarm ids: co2Stop co2High co2Low apnea noData deviceLost adcError railCo2 railFlow
 #            railPneumo testTime test audioOff dropped checksum leak calibration settingsSave
 PRIORITIES = ("high", "medium", "advisory")
+#: breaths and seconds of live CO2 kept so new settings can be checked at once
+#: (at least the longest trigger delays the settings allow)
+_KEEP_BREATHS = 12
+_KEEP_LIVE_MS = 65000
 _RANK = {"high": 0, "medium": 1, "advisory": 2}
 
 
@@ -70,9 +78,13 @@ class AlarmEngine:
         self._stop_since: float | None = None
         self._stop_clear_since: float | None = None
         self._silenced_until = 0.0
+        #: (t, EtCO2) of the latest breaths and (t, CO2) of the latest samples
+        self._recent_breaths: deque[tuple[float, float]] = deque(maxlen=_KEEP_BREATHS)
+        self._recent_live: deque[tuple[float, float]] = deque()
 
     def set_settings(self, s: AlarmSettings, now: float) -> None:
-        self.settings = s
+        """New settings, in effect at once: the recent readings are checked against them."""
+        prev, self.settings = self.settings, s
         if s.stop_mm_hg is None:
             self._stop_since = self._stop_clear_since = None
             if self.is_active("co2Stop"):
@@ -83,6 +95,91 @@ class AlarmEngine:
             low = self._records.get("co2Low")
             if low and low.state == "active":
                 self._resolve("co2Low", now)
+        if s != prev:
+            self._recheck(now)
+
+    def forget_readings(self) -> None:
+        """Drop the kept breaths and samples (a new connection starts afresh)."""
+        self._recent_breaths.clear()
+        self._recent_live.clear()
+        self._high_count = self._low_count = 0
+        self._high_since = self._low_since = None
+        self._stop_since = self._stop_clear_since = None
+
+    def _recheck(self, now: float) -> None:
+        """Check the kept readings against the current settings, as if every one of
+        them had arrived under them: counts and timers are rebuilt, an alarm the new
+        limits call for is raised now, one they no longer call for is resolved, and the
+        messages and priorities of active ones show the new limits."""
+        s = self.settings
+        breaths, live = list(self._recent_breaths), list(self._recent_live)
+
+        def run(seq, past) -> list[tuple[float, float]]:
+            """The trailing readings that are all past a limit."""
+            out: list[tuple[float, float]] = []
+            for item in reversed(seq):
+                if not past(item[1]):
+                    break
+                out.append(item)
+            return out[::-1]
+
+        above = lambda v: v > s.high_mm_hg  # noqa: E731
+        below = lambda v: s.low_mm_hg is not None and v < s.low_mm_hg  # noqa: E731
+        self._high_count = len(run(breaths, above))
+        self._low_count = len(run(breaths, below))
+        hi_run, lo_run = run(live, above), run(live, below)
+        self._high_since = hi_run[0][0] if hi_run else None
+        self._low_since = lo_run[0][0] if lo_run else None
+
+        # ---- stop limit (any alarm source)
+        if s.stop_mm_hg is not None:
+            st_run = run(live, lambda v: v >= s.stop_mm_hg)
+            self._stop_since = st_run[0][0] if st_run else None
+            last_b = breaths[-1] if breaths else None
+            if self.is_active("co2Stop"):
+                since_b = [v for t, v in live if last_b is None or t >= last_b[0]]
+                peak = max(since_b + ([last_b[1]] if last_b else []), default=math.nan)
+                if math.isfinite(peak) and peak < s.stop_mm_hg - s.hysteresis_mm_hg:
+                    self._resolve("co2Stop", now)
+                else:
+                    r = self._records["co2Stop"]
+                    r.message = self._stop_msg(r.value if r.value is not None else peak)
+            elif last_b is not None and last_b[1] >= s.stop_mm_hg:
+                self.set_condition("co2Stop", True, now, "high", self._stop_msg(last_b[1], "EtCO2"), last_b[1])
+            elif st_run and st_run[-1][0] - st_run[0][0] >= s.stop_delay_sec * 1000:
+                self.set_condition("co2Stop", True, now, "high", self._stop_msg(st_run[-1][1]), st_run[-1][1])
+
+        # ---- warning and low limits, on the chosen source
+        latest = breaths[-1][1] if s.source == "etco2" and breaths else (live[-1][1] if s.source == "live" and live else None)
+        if latest is None:
+            return
+        msg_hi = self._high_msg if s.source == "etco2" else lambda v: f"CO2 HIGH {to_fixed(v, 0)} mmHg > {js_num(s.high_mm_hg)}"
+        msg_lo = self._low_msg if s.source == "etco2" else lambda v: f"CO2 LOW {to_fixed(v, 0)} mmHg < {_limit(s.low_mm_hg)}"
+        if s.source == "etco2":
+            hi_due, lo_due = self._high_count >= s.delay_breaths, self._low_count >= s.delay_breaths
+        else:
+            ms = s.delay_sec * 1000
+            hi_due = bool(hi_run) and hi_run[-1][0] - hi_run[0][0] >= ms
+            lo_due = bool(lo_run) and lo_run[-1][0] - lo_run[0][0] >= ms
+
+        pri = self._high_priority
+        if self.is_active("co2High"):
+            if latest < s.high_mm_hg - s.hysteresis_mm_hg:
+                self._resolve("co2High", now)
+            else:
+                r = self._records["co2High"]
+                r.priority, r.message = pri, msg_hi(latest)
+        elif hi_due:
+            self.set_condition("co2High", True, now, pri, msg_hi(latest), latest)
+
+        if s.low_mm_hg is not None:
+            if self.is_active("co2Low"):
+                if latest > s.low_mm_hg + s.hysteresis_mm_hg:
+                    self._resolve("co2Low", now)
+                else:
+                    self._records["co2Low"].message = msg_lo(latest)
+            elif lo_due:
+                self.set_condition("co2Low", True, now, "medium", msg_lo(latest), latest)
 
     # ---------- generic conditions ----------
 
@@ -174,6 +271,7 @@ class AlarmEngine:
         s = self.settings
         if not math.isfinite(etco2):
             return
+        self._recent_breaths.append((t, etco2))
         self._check_stop_breath(etco2, t)
         if s.source != "etco2":
             return
@@ -213,6 +311,10 @@ class AlarmEngine:
         s = self.settings
         if not math.isfinite(co2):
             return
+        keep = self._recent_live
+        keep.append((t, co2))
+        while keep and t - keep[0][0] > _KEEP_LIVE_MS:
+            keep.popleft()
         self._check_stop_sample(co2, t)
         if s.source != "live":
             return
@@ -324,6 +426,4 @@ class AlarmEngine:
 
     def reset(self) -> None:
         self._records.clear()
-        self._high_count = self._low_count = 0
-        self._high_since = self._low_since = None
-        self._stop_since = self._stop_clear_since = None
+        self.forget_readings()

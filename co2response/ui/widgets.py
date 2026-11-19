@@ -263,14 +263,20 @@ class Seg(QWidget):
 
 
 class NumberEdit(QLineEdit):
-    """A number box that only commits when you press Enter or leave it, so
-    half-typed values never reach the engine. Out-of-range values are clamped."""
+    """A number box that commits when you press Enter or leave it; an out-of-range
+    value is then clamped. With ``live`` (settings), it also commits a moment after
+    you stop typing (``LIVE_MS``), so a change is in effect at once, but only while
+    what is typed is a number inside the range: the "1" of "15" in a box that starts
+    at 5 never reaches the engine."""
+
+    #: pause in typing after which a valid value is applied
+    LIVE_MS = 600
 
     committed = Signal(float)
     #: emitted when a box that may be empty (``allow_blank``) is emptied
     cleared = Signal()
 
-    def __init__(self, value: float | None = 0, lo: float = -math.inf, hi: float = math.inf, step: float = 1, width: int = 110, allow_blank: bool = False) -> None:
+    def __init__(self, value: float | None = 0, lo: float = -math.inf, hi: float = math.inf, step: float = 1, width: int = 110, allow_blank: bool = False, live: bool = False) -> None:
         super().__init__()
         self.lo, self.hi = lo, hi
         self.allow_blank = allow_blank
@@ -278,6 +284,12 @@ class NumberEdit(QLineEdit):
         self.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.setFixedWidth(width)
         self.editingFinished.connect(self._commit)
+        self._live = QTimer(self)
+        self._live.setSingleShot(True)
+        self._live.setInterval(self.LIVE_MS)
+        self._live.timeout.connect(self._commit_typed)
+        if live:
+            self.textEdited.connect(lambda _t: self._live.start())
         self.set(value)
 
     @staticmethod
@@ -295,7 +307,20 @@ class NumberEdit(QLineEdit):
         if self.text() != self._text(v):
             self.setText(self._text(v))
 
+    def _commit_typed(self) -> None:
+        """Apply what is being typed, if it is already a valid value (the text is left
+        as typed: the box is still being edited)."""
+        t = self.text().strip()
+        try:
+            n = float(t)
+        except ValueError:
+            return
+        if math.isfinite(n) and self.lo <= n <= self.hi and n != self._value:
+            self._value = n
+            self.committed.emit(n)
+
     def _commit(self) -> None:
+        self._live.stop()
         t = self.text().strip()
         try:
             n = float(t)
@@ -367,7 +392,7 @@ class Form(QWidget):
 
 
 def number_field(form: Form, key: str, text: str, value: float, on_commit: Callable[[float], None], unit: str | None = None, hint: str | None = None, lo=-1e9, hi=1e9, step=1.0) -> NumberEdit:
-    ne = NumberEdit(value, lo, hi, step)
+    ne = NumberEdit(value, lo, hi, step, live=True)
     ne.committed.connect(on_commit)
     form.add(key, text, ne, unit, hint)
     return ne

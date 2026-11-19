@@ -56,7 +56,7 @@ class SpecForm(Form):
             self._hints[f.name] = self.rows[key][2]
 
     def _number(self, f: Field, stored) -> NumberEdit:
-        ne = NumberEdit(f.to_display(stored), f.lo, f.hi, f.step, allow_blank=f.kind == "blank")
+        ne = NumberEdit(f.to_display(stored), f.lo, f.hi, f.step, allow_blank=f.kind == "blank", live=True)
         ne.committed.connect(lambda v, f=f: self._edit(f, shown=v))
         ne.cleared.connect(lambda f=f: self._edit(f, shown=None))
         ne.setAccessibleName(f.value_label or f.label)

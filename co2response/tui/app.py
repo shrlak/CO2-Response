@@ -914,7 +914,7 @@ class MonitorApp(App):
             else:
                 new = dataclasses.replace(c, enabled=True, port="sim" if choice == "sim" else choice[5:])
             e.update_settings(capno=new)
-            self.notify("Capnostream off" if not new.enabled else f"CO2 from the Capnostream on {new.port}" + ("" if isinstance(e.source, type(None)) else " (applies at the next connection)" if e.source is not None and e.source.kind != "simulator" else ""), timeout=5)
+            self.notify("Capnostream off" if not new.enabled else f"CO2 from the Capnostream on {new.port}", timeout=5)
 
         self.push_screen(Picker("Capnostream 35 as the CO2 source", opts, note), done)
 

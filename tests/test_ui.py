@@ -645,3 +645,26 @@ def test_replay_bar_and_continuing_a_recording_from_the_review(win, tmp_path, mo
     assert e.recorder.active and e.recorder.file_name.endswith("_resumed.csv") and len(e.trend) >= 40
     assert win.stack.currentWidget() is m
     assert e.stop_recording().path.name.endswith("_resumed.csv")
+
+
+def test_a_typed_alarm_limit_is_in_effect_without_pressing_enter(win, qtbot):
+    from PySide6.QtCore import Qt
+
+    from co2response.ui.alarm_form import AlarmForm
+
+    e = win.engine
+    form = AlarmForm(e)
+    qtbot.addWidget(form)
+    form.show()
+    box = form.controls["high"]
+    box.setFocus()
+    box.selectAll()
+    qtbot.keyClicks(box, "1")  # half-typed and outside the range (5 to 150): not applied
+    qtbot.wait(box.LIVE_MS + 200)
+    assert e.settings.alarms.high_mm_hg != 1
+    qtbot.keyClicks(box, "5")
+    qtbot.wait(box.LIVE_MS + 200)
+    assert e.settings.alarms.high_mm_hg == 15  # applied while the box still has focus
+    assert box.text() == "15"
+    qtbot.keyClick(box, Qt.Key.Key_Return)
+    assert e.settings.alarms.high_mm_hg == 15

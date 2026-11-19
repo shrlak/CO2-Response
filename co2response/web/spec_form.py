@@ -3,14 +3,21 @@
 The desktop window builds the same forms from the same lists (``ui/spec_form.py``).
 ``spec_form_html`` gives the rows; ``install_spec_actions`` registers the handlers
 that turn an edit into a settings change. Inputs are named ``<prefix>-<field name>``.
+A typed number is in effect a moment after typing stops (``LIVE_MS``), as long as it
+is inside the field's range; Enter or leaving the box applies it too.
 """
 
 from __future__ import annotations
 
 from typing import Any, Callable, Sequence
 
+import js
+
 from ..forms import Field, patch_for
-from .dom import actions, as_float, data, esc, field, num, seg, toggle
+from .dom import actions, as_float, data, esc, field, num, proxy_once, seg, toggle
+
+#: pause in typing after which a valid number is applied
+LIVE_MS = 600
 
 
 def spec_form_html(fields: Sequence[Field], obj: Any, prefix: str, action: str, snapshot: Any = None) -> str:
@@ -31,9 +38,9 @@ def spec_form_html(fields: Sequence[Field], obj: Any, prefix: str, action: str, 
         elif f.kind == "optional":
             out.append(field(esc(f.label), toggle(f"{action}-on", cur is not None, f"{i}on", f.key), hint, f"{i}on"))
             if cur is not None:
-                out.append(field(esc(f.value_label or f.label), num(action, f.to_display(cur), i, f.step, f.lo, f.hi, f.key) + unit, None, i))
+                out.append(field(esc(f.value_label or f.label), num(action, f.to_display(cur), i, f.step, f.lo, f.hi, f.key, live=f"{action}-live") + unit, None, i))
         else:
-            out.append(field(esc(f.label), num(action, f.to_display(cur), i, f.step, f.lo, f.hi, f.key) + unit, hint, i))
+            out.append(field(esc(f.label), num(action, f.to_display(cur), i, f.step, f.lo, f.hi, f.key, live=f"{action}-live") + unit, hint, i))
     return "".join(out)
 
 
@@ -59,6 +66,26 @@ def install_spec_actions(action: str, fields: Sequence[Field], get: Callable[[],
             return
         edit(data(el, "arg"), shown=v)
 
+    timer: list = [None]
+
+    def on_typing(el) -> None:
+        """Apply a typed number once typing pauses, if it is already valid. The form is
+        not redrawn (the box is still being edited); that happens on Enter or leaving."""
+        if timer[0] is not None:
+            js.clearTimeout(timer[0])
+
+        def fire() -> None:
+            timer[0] = None
+            f = by_key.get(data(el, "arg") or "")
+            v = as_float(el)
+            if f is None or v is None or not el.isConnected or not f.lo <= v <= f.hi:
+                return
+            patch = patch_for(f, get(), shown=v)
+            if patch:
+                apply(patch)
+
+        timer[0] = js.setTimeout(proxy_once(fire), LIVE_MS)
+
     def on_choice(el) -> None:
         key, _, value = (data(el, "arg") or "").partition(":")
         edit(key, choice=value)
@@ -66,6 +93,7 @@ def install_spec_actions(action: str, fields: Sequence[Field], get: Callable[[],
     actions(
         **{
             action: on_number,
+            f"{action}-live": on_typing,
             f"{action}-bool": lambda el: edit(data(el, "arg"), on=bool(el.checked)),
             f"{action}-on": lambda el: edit(data(el, "arg"), on=bool(el.checked)),
             f"{action}-choice": on_choice,
