@@ -367,6 +367,9 @@ class ConnectionPage(Page):
             fstate = "Waiting for the cable's first flow reading."
         else:
             fstate = f"Connected: {link.info.sensor}, serial {link.info.serial}, {link.samples_in} readings."
+            if link.has_pressure:
+                paw = link.last_paw
+                fstate += f" Airway pressure {paw:.1f} cmH2O (recorded as v2)." if paw == paw else " Airway pressure: no reading."
         self.fc_state.setText(fstate)
         if force:
             self._refresh_ports()

@@ -366,3 +366,82 @@ def test_update_in_the_standalone_app_downloads_and_installs_now(tmp_path, monke
     monkeypatch.setattr(updater, "install_staged", lambda **k: None)
     monkeypatch.setattr(updater, "read_state", lambda folder=None: {"last_error": "boom"})
     assert m.update() == 1 and "boom" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------ when the app closes
+
+
+def test_closing_checks_downloads_and_installs_at_once(tmp_path):
+    # Linux build: a folder; the check is forced (not once a day) and the new version is in place at once
+    app = tmp_path / "app" / "CO2-Response"
+    app.mkdir(parents=True)
+    (app / "CO2-Response").write_bytes(b"old")
+    payload = tarball({"CO2-Response/CO2-Response": b"new"})
+    net = Net(release(payload=payload), payload)
+    updater._write_state(tmp_path / "updates", {"last_check": 10**12})  # checked "just now": closing still checks
+    seen = []
+    msg = updater.update_now(
+        "0.7.0",
+        folder=tmp_path / "updates",
+        platform="linux",
+        executable=str(app / "CO2-Response"),
+        get_json=net.get_json,
+        open_url=net.open_url,
+        progress=lambda done, total: seen.append((done, total)),
+    )
+    assert msg.startswith("Updated to v0.8.0") and (app / "CO2-Response").read_bytes() == b"new"
+    assert seen and seen[-1] == (len(payload), len(payload))
+    assert updater.staged_update(tmp_path / "updates") is None
+
+
+def test_closing_when_up_to_date_offline_or_cancelled_changes_nothing(tmp_path):
+    exe = tmp_path / "CO2-Response.exe"
+    exe.write_bytes(b"old")
+    kw = dict(folder=tmp_path / "updates", platform="win32", executable=str(exe))
+    up = Net(release(tag="v0.7.0", asset="CO2-Response.exe"))
+    assert updater.update_now("0.7.0", get_json=up.get_json, open_url=up.open_url, **kw) == ""
+    off = Net(OSError("no network"))
+    assert "Could not check" in updater.update_now("0.7.0", get_json=off.get_json, open_url=off.open_url, **kw)
+
+    def cancel(done, total):
+        raise UpdateError("cancelled")
+
+    new = Net(release(asset="CO2-Response.exe", payload=b"new"), b"new")
+    msg = updater.update_now("0.7.0", get_json=new.get_json, open_url=new.open_url, progress=cancel, **kw)
+    assert "cancelled" in msg and exe.read_bytes() == b"old"
+    assert not list((tmp_path / "updates").rglob("*.part")) and updater.staged_update(tmp_path / "updates") is None
+
+
+def test_the_window_at_close_runs_the_update_and_says_what_happened(monkeypatch, capsys):
+    pytest.importorskip("PySide6.QtWidgets")
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QApplication
+
+    from co2response.ui.app import update_on_close
+
+    app = QApplication.instance() or QApplication([])
+    engine = SimpleNamespace(settings=SimpleNamespace(auto_update=True))
+    # a source install never updates itself at close
+    assert update_on_close(app, engine) == ""
+
+    calls = []
+
+    def fake_update_now(progress=None, installing=None):
+        progress(50, 100)
+        progress(100, 100)
+        installing()
+        calls.append("installed")
+        return "Updated to v9.9.9. It runs the next time CO2-Response starts; the previous version is kept beside it (.old)."
+
+    monkeypatch.setattr(updater, "is_frozen", lambda: True)
+    monkeypatch.setattr(updater, "update_now", fake_update_now)
+    msg = update_on_close(app, engine)
+    assert msg.startswith("Updated to v9.9.9") and calls == ["installed"]
+    assert "Updated to v9.9.9" in capsys.readouterr().out
+    # turned off in the settings, or by CO2R_NO_UPDATE: nothing at all
+    engine.settings.auto_update = False
+    assert update_on_close(app, engine) == ""
+    engine.settings.auto_update = True
+    monkeypatch.setenv("CO2R_NO_UPDATE", "1")
+    assert update_on_close(app, engine) == ""

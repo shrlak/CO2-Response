@@ -5,7 +5,7 @@
     "railLowV": -9999.0,
     "railHighV": 9999.0,
     "railToleranceV": 0.5,
-    "note": "The Uno R4 board with digital sensors sends engineering units, not volts: value 0 is CO2 in % (GSS SprintIR-R-20, UART, 50 readings/s) and value 1 is flow in L/min (Sensirion SFM3300-250-D, I2C 0x40, +/-250 L/min). The firmware sends 9999 for a sensor that is not answering, which the rail check below turns into '---' and a technical alarm."
+    "note": "The Uno R4 board with digital sensors sends engineering units, not volts: value 0 is CO2 in % (GSS SprintIR-R-20, UART, 50 readings/s) and value 1 is flow in L/min (Sensirion SFM3300-250-D, +/-250 L/min, through Sensirion's evaluation cable or on I2C 0x40); with the evaluation cable, value 2 is the airway pressure in cmH2O from the pressure sensor in its clip-on cap (recorded, not processed). The firmware sends 9999 for a sensor that is not answering, which the rail check below turns into '---' and a technical alarm."
   },
   "channels": {
     "co2": {

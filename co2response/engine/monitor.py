@@ -1941,9 +1941,14 @@ class MonitorEngine:
                     pass
             if m.info is not None and had is None:
                 i = m.info
-                self._add_log(f"Flow cable: {i.sensor}, serial {i.serial} ({i.mode})")
-                self.recorder.event(self.clock(), f"FLOW_SENSOR {i.sensor} SN={i.serial}")
+                ps = "" if i.pressure == "none" else f"; airway pressure ({i.pressure}) recorded as v2, cmH2O"
+                self._add_log(f"Flow cable: {i.sensor}, serial {i.serial} ({i.mode}){ps}")
+                self.recorder.event(self.clock(), self._flow_sensor_event(i))
         return m.board_items(items)
+
+    @staticmethod
+    def _flow_sensor_event(i) -> str:
+        return f"FLOW_SENSOR {i.sensor} SN={i.serial} PRESSURE={i.pressure}{'' if i.pressure == 'none' else ' v2=cmH2O'}"
 
     @property
     def flow_cable(self) -> FlowMerge | None:
@@ -2143,6 +2148,10 @@ class MonitorEngine:
         if src is not None and src.kind in ("serial", "bridge"):
             for text in self.stale_calibrations(now):
                 self.recorder.event(now, f"CALIBRATION_STALE {text}")
+        fm = self._flow_merge
+        if fm is not None and fm.info is not None:
+            # where the flow (and the airway pressure in v2) of this recording come from
+            self.recorder.event(now, self._flow_sensor_event(fm.info))
         self.library_changed()
         return rec
 

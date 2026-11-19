@@ -185,6 +185,8 @@ text(130, 166, "C3", 12, weight="bold")
 text(130, 180, "evaluation cable → laptop USB", 10, weight="bold")
 text(130, 194, "NOT through the isolator:", 10, weight="bold", fill="#c0392b")
 text(130, 207, "laptop on battery with a subject", 10, fill="#c0392b")
+text(130, 222, "its cap's pressure port: short tube to a stopcock", 10, fill="#444")
+text(130, 235, "at the sample port (airway pressure, recorded as v2)", 10, fill="#444")
 
 # ------------------------------------------------------------------ SprintIR-R and the level shifter (top middle)
 A1, A2, LG, LV = TX["D1/TX"], TX["D0/RX"], TX["D0/RX"] + 22, TX["D0/RX"] + 66

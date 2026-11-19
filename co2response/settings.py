@@ -306,8 +306,9 @@ class Settings:
     auto_reconnect: bool = True
     #: start recording as soon as an Arduino or bridge connects
     auto_record: bool = False
-    #: the standalone app downloads new releases in the background and installs them the
-    #: next time it starts (never during a recording). No effect on pip/source installs.
+    #: the standalone app checks for a new release every time it is closed (and once a day
+    #: while it runs), downloads it and installs it, so the next start runs it (never during
+    #: a recording). No effect on pip/source installs.
     auto_update: bool = True
     sim: SimSettings = field(default_factory=SimSettings)
     #: folder for session files; empty = the default (Documents/CO2-Response/sessions)

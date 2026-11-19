@@ -61,10 +61,19 @@ def test_flow_product_and_scaling():
     assert product_name(((0x18CEB << 8)).to_bytes(4, "little")) == "SFM3400-D"
 
 
-def packet(slm: float, pressure: bool = True) -> bytes:
+#: the evaluation cable's pressure sensor: AMS5915_0200_D_B, -200..+200 mbar over counts 1638..14745
+PRESSURE_INFO = bytes([12]) + b"".join(v.to_bytes(2, "little", signed=True) for v in (-200, 200, 1638, 14745))
+
+
+def counts(cmh2o: float) -> int:
+    mbar = cmh2o / 1.019716
+    return round((mbar + 200) * (14745 - 1638) / 400 + 1638)
+
+
+def packet(slm: float, pressure: bool = True, cmh2o: float = 0.0) -> bytes:
     p = int(round(slm * 1000)).to_bytes(4, "little", signed=True)
     if pressure:
-        p += (8192).to_bytes(2, "little")
+        p += counts(cmh2o).to_bytes(2, "little")
     return p + b"\xff\x03"
 
 
@@ -78,11 +87,25 @@ def test_stream_decoder_finds_the_packets_and_resyncs(pressure):
         out += d.push(data[i : i + 5])
     assert d.length == (8 if pressure else 6)
     # the first packets are used to find the length; every one after comes out
-    assert out == pytest.approx(flows[len(flows) - len(out) :]) and len(out) >= 3
+    assert [f for f, _ in out] == pytest.approx(flows[len(flows) - len(out) :]) and len(out) >= 3
+    assert all((raw is not None) == pressure for _, raw in out)
     # a dropped byte: it finds its way back
     more = packet(1.0, pressure)[1:] + b"".join(packet(f, pressure) for f in (2.0, 3.0, 4.0, 5.0))
     out2 = d.push(more)
-    assert out2[-1] == pytest.approx(5.0) and d.resyncs >= 1
+    assert out2[-1][0] == pytest.approx(5.0) and d.resyncs >= 1
+
+
+def test_pressure_counts_become_cmh2o():
+    from co2response.sources.flow_cable import PressureScale, pressure_scale
+
+    ps = pressure_scale(PRESSURE_INFO)
+    assert ps is not None and ps.name == "AMS5915_0200_D_B" and (ps.pmin, ps.pmax, ps.dmin, ps.dmax) == (-200, 200, 1638, 14745)
+    assert ps.cmh2o(counts(0.0)) == pytest.approx(0.0, abs=0.04)  # one count is 0.03 mbar
+    assert ps.cmh2o(counts(10.0)) == pytest.approx(10.0, abs=0.04)
+    assert ps.cmh2o(counts(-5.0)) == pytest.approx(-5.0, abs=0.04)
+    assert ps.cmh2o(14745) == pytest.approx(200 * 1.019716)
+    assert pressure_scale(bytes(9)) is None  # type 0: no pressure sensor in the cap
+    assert pressure_scale(bytes([12]) + bytes(8)) == PressureScale("AMS5915_0200_D_B")  # a nonsense range: the datasheet's
 
 
 # ---------- a simulated cable
@@ -91,9 +114,11 @@ def test_stream_decoder_finds_the_packets_and_resyncs(pressure):
 class FakeCable:
     """The evaluation cable at the other end of a serial port."""
 
-    def __init__(self, stream: bool = True, flow=lambda t: 20 * math.sin(2 * math.pi * t / 4)) -> None:
+    def __init__(self, stream: bool = True, flow=lambda t: 20 * math.sin(2 * math.pi * t / 4), paw=lambda t: 3.0, pressure: bool = True) -> None:
         self.stream_ok = stream
         self.flow = flow
+        self.paw = paw
+        self.pressure = pressure
         self.out = bytearray()
         self.streaming = False
         self.t0 = time.monotonic()
@@ -117,6 +142,12 @@ class FakeCable:
                     self.out += frame(10, ((0x18ABD << 8) | 0x01).to_bytes(4, "little"))
                 elif fn == 15:
                     self.out += frame(15, (123456).to_bytes(4, "little"))
+                elif fn == 6:
+                    self.out += frame(6, PRESSURE_INFO if self.pressure else bytes(9))
+                elif fn == 9:
+                    t = time.monotonic() - self.t0
+                    f = int(self.flow(t) * 1000)
+                    self.out += frame(9, f.to_bytes(4, "little", signed=True) + counts(self.paw(t)).to_bytes(2, "little"))
                 elif fn == 16:
                     f = int(self.flow(time.monotonic() - self.t0) * 1000)
                     self.out += frame(16, f.to_bytes(4, "little", signed=True))
@@ -130,7 +161,8 @@ class FakeCable:
     def _produce(self) -> None:
         now = time.monotonic()
         while self.streaming and self.next_packet <= now:
-            self.out += packet(self.flow(self.next_packet - self.t0))
+            t = self.next_packet - self.t0
+            self.out += packet(self.flow(t), self.pressure, self.paw(t))
             self.next_packet += 0.002
 
     @property
@@ -183,8 +215,10 @@ def test_the_cable_end_to_end(stream):
     infos = [i for i in items if isinstance(i, CableInfo)]
     samples = [i for i in items if isinstance(i, FlowSample)]
     assert infos and infos[0].sensor == "SFM3300-D" and infos[0].serial == "123456"
-    assert infos[0].mode == ("stream" if stream else "poll")
+    assert infos[0].mode == ("stream" if stream else "poll") and infos[0].pressure == "AMS5915_0200_D_B"
     assert len(samples) > 20
+    assert all(s.paw == pytest.approx(3.0, abs=0.05) for s in samples)  # the airway pressure, cmH2O
+    assert (9 if not stream else 30) in cable.asked
     assert all(-20.5 <= s.slm <= 20.5 for s in samples)
     assert all(b.t >= a.t for a, b in zip(samples, samples[1:]))
     assert cable.closed
@@ -203,7 +237,8 @@ def test_a_silent_port_is_a_readable_error():
 def test_bench_check_prints_the_flow():
     lines: list[str] = []
     assert bench_check("FAKE", 1.2, log=lines.append, opener=lambda _p: FakeCable()) == 0
-    assert any("SFM3300-D" in s for s in lines) and any("L/min" in s for s in lines)
+    assert any("SFM3300-D" in s and "AMS5915_0200_D_B" in s for s in lines)
+    assert any("L/min" in s and "cmH2O" in s for s in lines)
 
 
 # ---------- merging into the board's lines
@@ -226,7 +261,7 @@ def test_merge_puts_the_mean_flow_of_each_interval_into_the_lines():
     assert isinstance(info, InfoLine) and info.fields["FLOW"] == "SFM_CABLE"
     for k in range(50):  # 0.5 s of 100 Hz lines and 500 Hz cable samples
         clk.t = 100.0 + k * 0.01
-        m.cable_items([FlowSample(clk.t - 0.01 + j * 0.002, 10.0 + k) for j in range(1, 6)])
+        m.cable_items([FlowSample(clk.t - 0.01 + j * 0.002, 10.0 + k, 2.0 + 0.1 * k) for j in range(1, 6)])
         out += m.board_items([format_data_line(k, 5000 + k * 10, [4.5, NOT_ANSWERING])])
     lines = [p for p in map(parse_line, out[1:]) if isinstance(p, DataLine)]
     assert len(lines) >= 45
@@ -234,6 +269,8 @@ def test_merge_puts_the_mean_flow_of_each_interval_into_the_lines():
     for p in lines[1:]:
         assert p.volts[0] == pytest.approx(4.5)
         assert p.volts[1] == pytest.approx(10.0 + p.seq, abs=0.01)
+        assert p.volts[2] == pytest.approx(2.0 + 0.1 * p.seq, abs=0.001)  # the airway pressure rides along as v2
+    assert m.last_paw == pytest.approx(2.0 + 0.1 * 49)
 
 
 def test_merge_sign_and_not_answering():
@@ -322,7 +359,19 @@ def test_the_engine_takes_the_flow_from_the_cable(tmp_path, monkeypatch):
         snap = e.snapshot()
         assert snap.numbers.flow == pytest.approx(-15.0, abs=0.01)  # sign -1 applied
         assert snap.info.get("FLOW") == "SFM_CABLE"
-        assert any("SFM3300-D" in x.text for x in e.log)
+        assert any("SFM3300-D" in x.text and "AMS5915_0200_D_B" in x.text for x in e.log)
+        # the airway pressure is recorded with every sample, in the session file's v2 column
+        assert e.start_recording() is not None
+        assert run_real(e, 3, lambda: e.recorder.rows > 150)
+        res = e.stop_recording()
+        assert res.path is not None
+        from co2response.storage.session_file import read_session
+
+        sess = read_session(str(res.path))
+        assert sess.n > 150
+        assert float(abs(sess.v2[10:] - 3.0).max()) < 0.05  # cmH2O
+        assert float(abs(sess.flow_lpm[10:] + 15.0).max()) < 0.05
+        assert "PRESSURE=AMS5915_0200_D_B v2=cmH2O" in res.path.read_text()
     finally:
         alive = False
         e.disconnect()

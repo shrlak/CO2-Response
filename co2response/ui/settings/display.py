@@ -72,7 +72,7 @@ class DisplayPage(Page):
                 "autoupdate",
                 "Update automatically",
                 hbox(self.autoupdate, button("Check now", self._check_now, small=True)),
-                hint=f"This is version {__version__}. A newer release is downloaded in the background (checked once a day) and installed the next time the app is started, never during a recording; the previous version is kept beside it. Set CO2R_NO_UPDATE=1 to turn this off for a computer that must never change.",
+                hint=f"This is version {__version__}. Every time the app is closed it checks for a newer release, downloads it and installs it, so the next start runs it (Skip in the small window stops it). While it runs it also checks once a day in the background; nothing changes during a recording, and the previous version is kept beside it. Set CO2R_NO_UPDATE=1 to turn this off for a computer that must never change.",
             )
             lay.addWidget(u)
         lay.addStretch(1)

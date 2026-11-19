@@ -10,16 +10,24 @@ protocol is Nicolay's "flow meter connector with pressure sensor" protocol
 - 115200 baud, 8 data bits, no parity, 1 stop bit; the master asks, the cable answers.
 - A frame is ``address, function, n, data[n], crc`` (address 1 by default), with data
   low byte first and an 8-bit CRC (polynomial 0x31, initial value 0, the SFM3000's).
-- Function 5 is a test (answer ``55 AA``), 10 the sensor's product identifier, 15 its
-  serial number, 16 the flow in milli-standard-litres a minute (the cable applies the
+- Function 5 is a test (answer ``55 AA``), 6 describes the cap's pressure sensor (type,
+  range, counts), 9 gives flow and pressure together, 10 the sensor's product identifier,
+  15 its serial number, 16 the flow in milli-standard-litres a minute (the cable applies the
   sensor's own offset and scale, so any SFM3x00 reads correctly), and 30 starts a
   continuous stream: ``flow (int32, mslm), [pressure (int16)], 0xFF, 0x03`` per packet.
+
+The clip-on cap of the evaluation cable also holds a pressure sensor (AMS 5915-0200-D-B,
++-200 mbar) with a luer port: with a short tube from that port to the breathing circuit
+it measures the airway pressure. Its raw counts are turned into cmH2O with the range the
+cable reports (function 6), and recorded with every sample as the data line's third value
+(the session file's ``v2`` column).
 
 Three parts, as for the Capnostream (capnostream.py):
 
 - ``FlowCableSource`` opens the cable, checks it answers, and streams the flow (or polls
   function 16 if the stream does not start), as ``FlowSample`` items.
-- ``FlowMerge`` puts that flow into the flow value of the Arduino's data lines: each line
+- ``FlowMerge`` puts that flow into the flow value of the Arduino's data lines (and the
+  airway pressure, in cmH2O, into a third value when the cap has a pressure sensor): each line
   waits (at most ``HOLD_MAX_S``) for the flow of its moment, and gets the mean of the
   cable's samples since the previous line, the same anti-aliasing average the firmware
   used to take. With no flow from the cable for ``FLOW_TIMEOUT_S`` the flow is sent as
@@ -51,6 +59,8 @@ FLOW_TIMEOUT_S = 0.5
 HOLD_MAX_S = 0.3
 
 FN_TEST = 5
+FN_PRESSURE_INFO = 6
+FN_FLOW_PRESSURE = 9
 FN_PRODUCT = 10
 FN_SERIAL = 15
 FN_FLOW = 16
@@ -65,6 +75,17 @@ PRODUCTS = {
     0x18CEB: "SFM3400-D",
     0x40501: "SFM3304-D",
 }
+
+#: the cap's pressure sensor types (function 6's first byte)
+PRESSURE_TYPES = [
+    "NONE", "AMS5915_0005_D", "AMS5915_0005_D_B", "AMS5915_0010_D", "AMS5915_0010_D_B", "AMS5915_0020_D",
+    "AMS5915_0020_D_B", "AMS5915_0050_D", "AMS5915_0050_D_B", "AMS5915_0100_D", "AMS5915_0100_D_B",
+    "AMS5915_0200_D", "AMS5915_0200_D_B", "AMS5915_0350_D", "AMS5915_0350_D_B", "AMS5915_1000_D",
+    "AMS5915_1000_D_B", "AMS5915_2000_D", "AMS5915_4000_D", "AMS5915_7000_D", "AMS5915_10000_D",
+    "AMS5915_1000_A", "AMS5915_1200_B",
+]  # fmt: skip
+#: 1 mbar in cmH2O
+MBAR_TO_CMH2O = 1.019716
 
 #: a frame's exception codes (the answer's function code has bit 7 set)
 EXCEPTIONS = {
@@ -131,11 +152,49 @@ def flow_slm(data: bytes) -> float:
 
 
 @dataclass(frozen=True)
+class PressureScale:
+    """The cap's pressure sensor and how its counts become pressure (AMS 5915 datasheet):
+    p = (counts - dmin) * (pmax - pmin) / (dmax - dmin) + pmin, in mbar."""
+
+    name: str
+    pmin: float = -200.0
+    pmax: float = 200.0
+    dmin: int = 1638
+    dmax: int = 14745
+
+    def cmh2o(self, raw: int) -> float:
+        counts = raw & 0x3FFF  # 14 bits; the 2 higher bits are always 0
+        if self.dmax == self.dmin:
+            return math.nan
+        mbar = (counts - self.dmin) * (self.pmax - self.pmin) / (self.dmax - self.dmin) + self.pmin
+        return mbar * MBAR_TO_CMH2O
+
+
+def pressure_scale(data: bytes) -> PressureScale | None:
+    """Function 6's answer (type, min, max, counts at min and max); None without a sensor."""
+    if len(data) < 9 or data[0] == 0:
+        return None
+    name = PRESSURE_TYPES[data[0]] if data[0] < len(PRESSURE_TYPES) else f"type {data[0]}"
+
+    def i16(k: int) -> int:
+        return int.from_bytes(data[k : k + 2], "little", signed=True)
+
+    pmin, pmax, dmin, dmax = i16(1), i16(3), i16(5), i16(7)
+    if pmax <= pmin:
+        return PressureScale(name)  # implausible range: the datasheet's for the cable's sensor
+    if not 0 <= dmin < dmax <= 0x3FFF:
+        dmin, dmax = 1638, 14745
+    return PressureScale(name, float(pmin), float(pmax), dmin, dmax)
+
+
+@dataclass(frozen=True)
 class FlowSample:
-    """One flow reading from the cable: computer time (s) and standard L/min."""
+    """One reading from the cable: computer time (s), standard L/min, and the airway
+    pressure in cmH2O (NaN without a pressure sensor)."""
 
     t: float
     slm: float
+    paw: float = math.nan
 
 
 @dataclass(frozen=True)
@@ -145,6 +204,7 @@ class CableInfo:
     sensor: str
     serial: str
     mode: str  # 'stream' or 'poll'
+    pressure: str = "none"  # the cap's pressure sensor, or "none"
 
 
 class StreamDecoder:
@@ -168,9 +228,10 @@ class StreamDecoder:
         # flow is within +-2,000,000 mslm, so its top byte is 00 or FF
         return pkt[3] in (0x00, 0xFF)
 
-    def push(self, data: bytes) -> list[float]:
+    def push(self, data: bytes) -> list[tuple[float, int | None]]:
+        """(flow in standard L/min, raw pressure counts or None) for each whole packet."""
         self.buf += data
-        out: list[float] = []
+        out: list[tuple[float, int | None]] = []
         while True:
             if self.length is None:
                 if not self._sync():
@@ -189,7 +250,8 @@ class StreamDecoder:
                 continue
             del self.buf[:n]
             self.packets += 1
-            out.append(flow_slm(bytes(pkt[:4])))
+            raw = int.from_bytes(bytes(pkt[4:6]), "little") if n == 8 else None
+            out.append((flow_slm(bytes(pkt[:4])), raw))
 
     def _sync(self) -> bool:
         b = self.buf
@@ -219,6 +281,7 @@ class FlowCableSource(ThreadedSource):
         self._ser = None
         self._thread: threading.Thread | None = None
         self.info: CableInfo | None = None
+        self.pressure: PressureScale | None = None
 
     # ---------- talking to the cable
 
@@ -271,6 +334,10 @@ class FlowCableSource(ThreadedSource):
                 serial_no = str(int.from_bytes(self._ask(FN_SERIAL)[:8], "little"))
             except FrameError:
                 pass
+            try:
+                self.pressure = pressure_scale(self._ask(FN_PRESSURE_INFO))
+            except FrameError:
+                self.pressure = None
         except FrameError as e:
             self._close()
             raise RuntimeError(f"The flow cable on {self.port} does not answer ({e}). Check that the sensor is clipped in and this is the cable's port.") from e
@@ -316,26 +383,30 @@ class FlowCableSource(ThreadedSource):
                 continue
             if not announced:
                 announced = True
-                self.info = CableInfo(self._sensor, self._serial, "stream")
+                self.info = CableInfo(self._sensor, self._serial, "stream", self.pressure.name if self.pressure else "none")
                 self._q.put(self.info)  # type: ignore[arg-type]
             if last_t is not None and len(flows):
                 dt += 0.05 * ((now - last_t) / len(flows) - dt)
                 dt = min(max(dt, 0.0002), 0.05)
             last_t = now
             k = len(flows)
-            for i, f in enumerate(flows):  # spread a burst evenly back from its arrival
-                self._q.put(FlowSample(now - (k - 1 - i) * dt, f))  # type: ignore[arg-type]
+            ps = self.pressure
+            for i, (f, raw) in enumerate(flows):  # spread a burst evenly back from its arrival
+                paw = ps.cmh2o(raw) if ps is not None and raw is not None else math.nan
+                self._q.put(FlowSample(now - (k - 1 - i) * dt, f, paw))  # type: ignore[arg-type]
         return "stream"
 
     def _poll(self, ser) -> None:
-        self.info = CableInfo(self._sensor, self._serial, "poll")
+        ps = self.pressure
+        self.info = CableInfo(self._sensor, self._serial, "poll", ps.name if ps else "none")
         self._q.put(self.info)  # type: ignore[arg-type]
         while not self._closing:
             try:
-                data = self._ask(FN_FLOW, timeout=0.1)
+                data = self._ask(FN_FLOW_PRESSURE if ps is not None else FN_FLOW, timeout=0.1)
             except FrameError:
                 continue
-            self._q.put(FlowSample(time.monotonic(), flow_slm(data)))  # type: ignore[arg-type]
+            paw = ps.cmh2o(int.from_bytes(data[4:6], "little")) if ps is not None and len(data) >= 6 else math.nan
+            self._q.put(FlowSample(time.monotonic(), flow_slm(data), paw))  # type: ignore[arg-type]
             time.sleep(0.002)
 
     def _close(self) -> None:
@@ -381,6 +452,8 @@ class FlowMerge:
         self.clock = clock
         self.sign = -1 if sign < 0 else 1
         self.samples: collections.deque[tuple[float, float]] = collections.deque(maxlen=4000)
+        #: (time, airway pressure cmH2O), when the cap has a pressure sensor
+        self.paw: collections.deque[tuple[float, float]] = collections.deque(maxlen=4000)
         self._held: collections.deque[_Held] = collections.deque()
         self._offset: float | None = None
         self._offset_at = 0.0
@@ -396,15 +469,34 @@ class FlowMerge:
                 if math.isfinite(item.slm):
                     self.samples.append((item.t, self.sign * item.slm))
                     self.samples_in += 1
+                if math.isfinite(item.paw):
+                    self.paw.append((item.t, item.paw))
             elif isinstance(item, CableInfo):
                 self.info = item
             elif isinstance(item, StatusEvent):
                 events.append(item)
         return events
 
+    @property
+    def has_pressure(self) -> bool:
+        return (self.info is not None and self.info.pressure != "none") or bool(self.paw)
+
+    @property
+    def last_paw(self) -> float:
+        """The latest airway pressure, cmH2O (NaN with none in the last 0.5 s)."""
+        if not self.paw or self.clock() - self.paw[-1][0] > FLOW_TIMEOUT_S:
+            return math.nan
+        return self.paw[-1][1]
+
     def flow_between(self, t0: float | None, t1: float) -> float:
         """The mean flow of the samples in (t0, t1], or the nearest one; NaN with none recent."""
-        s = self.samples
+        return self._mean_between(self.samples, t0, t1)
+
+    def paw_between(self, t0: float | None, t1: float) -> float:
+        """The same for the airway pressure."""
+        return self._mean_between(self.paw, t0, t1)
+
+    def _mean_between(self, s: collections.deque[tuple[float, float]], t0: float | None, t1: float) -> float:
         if not s or self.clock() - s[-1][0] > FLOW_TIMEOUT_S or t1 - s[-1][0] > FLOW_TIMEOUT_S:
             return math.nan
         lo = t1 - 0.05 if t0 is None or t1 - t0 > 0.05 else t0
@@ -464,9 +556,14 @@ class FlowMerge:
         if not isinstance(p, DataLine) or len(p.volts) < 2:
             return h.line
         f = self.flow_between(self._prev_t, h.t)
+        paw = self.paw_between(self._prev_t, h.t)
         self._prev_t = h.t
         values = list(p.volts)
         values[1] = f if math.isfinite(f) else NOT_ANSWERING
+        if self.has_pressure:
+            while len(values) < 3:
+                values.append(NOT_ANSWERING)
+            values[2] = paw if math.isfinite(paw) else NOT_ANSWERING
         return format_data_line(p.seq, p.t_ms, values)
 
     def _info_line(self, line: str) -> str:
@@ -481,7 +578,8 @@ class FlowMerge:
 
 
 def bench_check(port: str, seconds: float = 10, log=print, opener: Callable[[str], object] | None = None) -> int:
-    """Read the cable on its own and print the flow twice a second. Returns 0 if flow came."""
+    """Read the cable on its own and print the flow (and the airway pressure) twice a
+    second. Returns 0 if flow came."""
     src = FlowCableSource(port, opener=opener)
     try:
         src.start()
@@ -492,22 +590,27 @@ def bench_check(port: str, seconds: float = 10, log=print, opener: Callable[[str
     try:
         end = time.monotonic() + seconds
         window: list[float] = []
+        pw: list[float] = []
         next_print = time.monotonic() + 0.5
         while time.monotonic() < end:
             for item in src.poll():
                 if isinstance(item, CableInfo):
-                    log(f"Cable answers: {item.sensor}, serial {item.serial}, {item.mode} mode")
+                    ps = "" if item.pressure == "none" else f"; pressure sensor {item.pressure}"
+                    log(f"Cable answers: {item.sensor}, serial {item.serial}, {item.mode} mode{ps}")
                 elif isinstance(item, FlowSample):
                     n += 1
                     window.append(item.slm)
+                    if math.isfinite(item.paw):
+                        pw.append(item.paw)
                 elif isinstance(item, StatusEvent):
                     log(item.detail)
                     return 1
             if time.monotonic() >= next_print:
                 next_print += 0.5
                 if window:
-                    log(f"flow {sum(window) / len(window):8.2f} L/min   ({len(window)} readings)")
-                    window = []
+                    paw = f"   pressure {sum(pw) / len(pw):7.2f} cmH2O" if pw else ""
+                    log(f"flow {sum(window) / len(window):8.2f} L/min{paw}   ({len(window)} readings)")
+                    window, pw = [], []
             time.sleep(0.02)
     finally:
         src.stop()

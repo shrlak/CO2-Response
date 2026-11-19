@@ -10,12 +10,14 @@ Releases of this project, the same files that are offered for download:
 Two steps, kept apart so that an update can never change the program in the middle of
 a study:
 
-1. **Check and download** (in the background, while the app runs, at most once a day):
+1. **Check and download** (in the background, while the app runs, at most once a day;
+   and every time the app is closed, see ``update_now``):
    ask GitHub for the latest release; if it is newer than this version, download the
    file for this computer, check its size and SHA-256 against what GitHub lists, and keep
    it in the app's data folder (``updates/``). Nothing about the subject or the study is
    sent; the request is a plain GET of the release list.
-2. **Install** (only when the app *starts*, before any window or recording exists): swap
+2. **Install** (when the app *starts*, before any window or recording exists, or when it
+   *closes*, after the window and any recording are gone): swap
    the downloaded version into place, keep the previous one beside it (``.old``) so it
    can be put back, and start the new one. If anything goes wrong the previous version
    stays in place and runs, and the reason is kept for the next check.
@@ -217,6 +219,7 @@ def check_and_stage(
     get_json: GetJson = default_get_json,
     open_url: OpenUrl = default_open_url,
     now: Callable[[], float] = time.time,
+    progress: Callable[[int, int], None] | None = None,
 ) -> str:
     """Look for a newer release and, if there is one, download it ready to install.
 
@@ -247,7 +250,7 @@ def check_and_stage(
         return f"Update {info.tag} is downloaded and installs the next time the app starts."
     try:
         dest = folder / info.tag / info.asset
-        download(info, dest, open_url)
+        download(info, dest, open_url, progress)
     except UpdateError as e:
         state["last_error"] = f"Update {info.tag} was not installed: {e}"
         _write_state(folder, state)
@@ -407,6 +410,37 @@ def install_staged(
     state["last_update"] = {"from": current, "to": staged["tag"], "at": time.time(), "backup": str(backup)}
     _write_state(folder, state)
     return str(staged["tag"])
+
+
+def update_now(
+    current: str = __version__,
+    *,
+    folder: Path | None = None,
+    platform: str = sys.platform,
+    executable: str | None = None,
+    get_json: GetJson = default_get_json,
+    open_url: OpenUrl = default_open_url,
+    run: Callable = subprocess.run,
+    progress: Callable[[int, int], None] | None = None,
+    installing: Callable[[], None] | None = None,
+) -> str:
+    """When the app closes: check for a newer release now (not once a day), download it and
+    install it, so the next start runs it. ``progress(done, total)`` is called while it
+    downloads and may raise UpdateError to cancel. Returns one line saying what happened
+    (empty when it was up to date); never raises, and an update that fails leaves this
+    version in place. ``installing()`` is called just before files are swapped: from then
+    on the caller must let it finish."""
+    folder = folder or updates_dir()
+    msg = check_and_stage(current, folder=folder, force=True, platform=platform, get_json=get_json, open_url=open_url, progress=progress)
+    if installing is not None and staged_update(folder) is not None:
+        installing()
+    tag = install_staged(folder=folder, platform=platform, executable=executable, current=current, run=run)
+    if tag:
+        return f"Updated to {tag}. It runs the next time CO2-Response starts; the previous version is kept beside it (.old)."
+    err = _read_state(folder).get("last_error")
+    if err:
+        return str(err)
+    return "" if msg.endswith("is up to date.") else msg
 
 
 def relaunch(target: Path, args: list[str], platform: str = sys.platform) -> int:
