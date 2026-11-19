@@ -15,6 +15,19 @@ os.environ.setdefault("CO2R_HARDWARE", "analog")
 from co2response.channels import DEFAULT_CHANNELS  # noqa: E402
 from co2response.sim.core import Encoders  # noqa: E402
 
+#: a test that runs longer than this is hung: print every thread's stack and end the run,
+#: so CI fails with a traceback instead of stalling until the job's own time limit
+HUNG_TEST_S = 600
+
+
+@pytest.fixture(autouse=True)
+def _hang_watchdog():
+    import faulthandler
+
+    faulthandler.dump_traceback_later(HUNG_TEST_S, exit=True)
+    yield
+    faulthandler.cancel_dump_traceback_later()
+
 
 def _lin(cid: str):
     cal = DEFAULT_CHANNELS["channels"][cid]["calibration"]

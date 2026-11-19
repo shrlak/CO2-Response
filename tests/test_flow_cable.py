@@ -304,6 +304,7 @@ def test_settings_are_kept_sane():
 
 @pytest.mark.skipif(__import__("sys").platform == "win32", reason="needs a pseudo-terminal")
 def test_the_engine_takes_the_flow_from_the_cable(tmp_path, monkeypatch):
+    import faulthandler
     import os
     import pty
     import select
@@ -317,6 +318,8 @@ def test_the_engine_takes_the_flow_from_the_cable(tmp_path, monkeypatch):
     from co2response.settings import SettingsStore
     from co2response.sources.serial_source import PortInfo
 
+    # a hang here must fail the run with a traceback, not stall CI for hours
+    faulthandler.dump_traceback_later(90, exit=True)  # (conftest re-arms its own watchdog for the next test)
     master, slave = pty.openpty()
     tty.setraw(slave)
     os.set_blocking(master, False)
@@ -391,8 +394,11 @@ def test_the_engine_takes_the_flow_from_the_cable(tmp_path, monkeypatch):
         assert float(abs(sess.flow_lpm[10:] + 15.0).max()) < 0.05
         assert "PRESSURE=AMS5915_0200_D_B v2=cmH2O" in res.path.read_text()
     finally:
-        alive = False
+        # disconnect while the board still reads: on macOS, closing a tty with unsent
+        # output (the app's STOP) waits until the other end has read it
         e.disconnect()
+        alive = False
         th.join(1)
         os.close(master)
         os.close(slave)
+        faulthandler.cancel_dump_traceback_later()
