@@ -306,6 +306,7 @@ def test_settings_are_kept_sane():
 def test_the_engine_takes_the_flow_from_the_cable(tmp_path, monkeypatch):
     import os
     import pty
+    import select
     import tty
 
     from test_engine import run_real
@@ -323,24 +324,41 @@ def test_the_engine_takes_the_flow_from_the_cable(tmp_path, monkeypatch):
     alive = True
     INFO_R4 = b"I,FW,2.2.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,CABLE,CH,2,RATE,100\n"
 
+    def send(data: bytes) -> None:
+        """Write a whole line, or drop it when the pty is full (as a UART overrun loses
+        data). Never give up: macOS's small pty buffer fills while the engine is busy, and
+        a board that stopped reading would leave the app's next command blocked."""
+        try:
+            n = os.write(master, data)
+        except BlockingIOError:
+            return
+        except OSError:
+            return
+        if n < len(data):
+            try:
+                select.select([], [master], [], 0.05)
+                os.write(master, data[n:])
+            except OSError:
+                pass
+
     def board() -> None:
         """The Uno R4 board without a flow sensor: CO2 and a flow of 9999."""
-        os.write(master, INFO_R4)
+        send(INFO_R4)
         t0 = time.monotonic()
         seq = 0
         while alive:
             due = int((time.monotonic() - t0) * 100)
             while seq < due:
-                try:
-                    os.write(master, (format_data_line(seq, seq * 10, [5.0, NOT_ANSWERING]) + "\n").encode())
-                except OSError:
-                    return
+                send((format_data_line(seq, seq * 10, [5.0, NOT_ANSWERING]) + "\n").encode())
                 seq += 1
             try:
-                if b"INFO" in os.read(master, 1024):  # the app's commands
-                    os.write(master, INFO_R4)
-            except OSError:
+                if b"INFO" in os.read(master, 4096):  # the app's commands: always read them
+                    send(INFO_R4)
+            except BlockingIOError:
                 pass
+            except OSError:
+                if not alive:
+                    return
             time.sleep(0.005)
 
     th = threading.Thread(target=board, daemon=True)
