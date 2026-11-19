@@ -256,6 +256,10 @@ Firmware: `firmware/CO2ResponseR4/` (Arduino IDE, board "Arduino UNO R4 Minima",
 
 ![Every wire, cable, plug and tube of the Uno R4 board, numbered](docs/images/connections-r4.svg)
 
+**On a full breadboard, hole by hole.** Every part in its holes, both pairs of power rails (top: +5V_EXT and GND; bottom: GND and +5V), and every wire from one named hole or pin to the next, each with its own number and colour. The hole-by-hole lists are in [docs/wiring.md](docs/wiring.md#on-the-breadboard-hole-by-hole). Redraw it with `python scripts/draw_breadboard.py`.
+
+![The Uno R4 build on a full-size breadboard, every wire numbered from hole to hole](docs/images/breadboard-r4.svg)
+
 **Overview.** The same system as blocks: the electrical wiring on top, the gas path below.
 
 ![Overview of the wiring and the gas path](docs/images/wiring-r4.svg)
@@ -264,7 +268,7 @@ Firmware: `firmware/CO2ResponseR4/` (Arduino IDE, board "Arduino UNO R4 Minima",
 
 | Part (purchase list) | Its job | What it connects to |
 | --- | --- | --- |
-| Arduino UNO R4 Minima (ABX00080) | Reads both sensors, drives the pump, watches the valve switch, sends 100 lines a second to the laptop, lights its LED for alarms | USB-C to the isolator (C2); headers to the breadboard and sensors (W1–W26) |
+| Arduino UNO R4 Minima (ABX00080) | Reads both sensors, drives the pump, watches the valve switch, sends 100 lines a second to the laptop, lights its LED for alarms | USB-C to the isolator (C2); headers to the breadboard and sensors (W1–W29) |
 | Adafruit 2107 USB isolator (ADuM4160 + ADuM5000) | Keeps the laptop and mains electrically apart from everything on the subject's side | Laptop → its Micro-B (C1); its USB-A socket → the Uno (C2). Its isolated 5 V supply gives up to **100 mA**: the Uno and the SFM3300 only |
 | Sensirion SFM3300-250-D | Flow, ±250 L/min, a new value every 0.5 ms; breaths, VT, MV and RR all come from it | I2C to SDA/SCL (W4, W5), GND (W6), VDD from the +5V rail (W7) |
 | GSS SprintIR-R-20 (from CO2meter) | CO2, 0–20 %, 50 readings a second, sidestream (the sample line runs through its flow adaptor) | UART through the level shifter (W10–W14), VDD from the +5V_EXT rail (W15) |
@@ -354,6 +358,9 @@ Arduino headers and breadboard holes are both sockets, so use **male-to-male** j
 | W24 | Arduino **D8** | Active buzzer + (buzzer − to GND rail) | | Optional. If the buzzer takes more than 8 mA, drive it through Q2 like the pump |
 | W25 | Arduino **D2** | Push button, other side to GND rail | | Optional: stop / marker |
 | W26 | Arduino **D9** | Q2 gate (220 Ω in series, 100 kΩ to GND); Q2 drain → one SFM3300 heater pad, the other pad → +5V_EXT | | Optional: the sensor's heater against condensation. Set `HEATER_PIN 9` (it runs at `HEATER_DUTY 128`, about 0.25 W) |
+| W27 | Top **−** rail | Bottom **−** rail | black | Joins the breadboard's two GND rails; the pump's current returns through it |
+| W28 | Buzzer **−** | GND rail | black | Optional, with W24 |
+| W29 | Push button, other side | GND rail | black | Optional, with W25 |
 
 #### The small parts
 
@@ -386,7 +393,7 @@ The pump draws its sample on the subject's side of the flow sensor, so the SFM33
 #### Building it, in order
 
 1. Push the level shifter (with its headers soldered on), the barrel jack, Q1, R1, R2 and D1 into the breadboard.
-2. Wire the rails: W22, W23 (barrel jack), then W1, W2 (Arduino power header). Join the breadboard's two GND rails if it has two.
+2. Wire the rails: W22, W23 (barrel jack), then W1, W2 (Arduino power header), then W27 to join the two GND rails. Hole by hole: [the breadboard diagram](docs/images/breadboard-r4.svg).
 3. Wire the flow sensor: W4–W7.
 4. Wire the CO2 sensor through the shifter: W3, W8–W15.
 5. Wire the pump: W16–W19, with D1 across the pump, band to +.
