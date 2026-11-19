@@ -256,9 +256,9 @@ Firmware: `firmware/CO2ResponseR4/` (Arduino IDE, board "Arduino UNO R4 Minima",
 
 ![Every wire, cable, plug and tube of the Uno R4 board, numbered](docs/images/connections-r4.svg)
 
-**On a full breadboard, hole by hole.** Every part in its holes, both pairs of power rails (top: +5V_EXT and GND; bottom: GND and +5V), and every wire from one named hole or pin to the next, each with its own number and colour. The hole-by-hole lists are in [docs/wiring.md](docs/wiring.md#on-the-breadboard-hole-by-hole). Redraw it with `python scripts/draw_breadboard.py`.
+**On a half-size breadboard, hole by hole.** A 30-row board (rows 1–30, columns a–j) with every part in its holes, both pairs of power rails (a side: +5V_EXT and GND; j side: GND and +5V), and every wire from one named hole or pin to the next, each with its own number and colour. The hole-by-hole lists are in [docs/wiring.md](docs/wiring.md#on-the-breadboard-hole-by-hole). Redraw it with `python scripts/draw_breadboard.py`.
 
-![The Uno R4 build on a full-size breadboard, every wire numbered from hole to hole](docs/images/breadboard-r4.svg)
+![The Uno R4 build on a half-size breadboard, every wire numbered from hole to hole](docs/images/breadboard-r4.svg)
 
 **Overview.** The same system as blocks: the electrical wiring on top, the gas path below.
 

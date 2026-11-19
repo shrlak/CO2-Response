@@ -19,62 +19,64 @@ The picture above shows the Arduino's two headers as they sit on the board (top 
 
 ### On the breadboard, hole by hole
 
-![The whole build on a full-size breadboard: every part in its holes, both pairs of power rails, and every wire numbered from hole to hole](images/breadboard-r4.svg)
+![The whole build on a half-size breadboard: every part in its holes, both pairs of power rails, and every wire numbered from hole to hole](images/breadboard-r4.svg)
 
-A full-size (830-point) breadboard: columns 1–63, rows a–e above the centre channel and f–j below it. The five holes of one column on one side of the channel (a12–e12) are joined inside the board; the channel separates them from f12–j12. Each power rail is one long strip. `scripts/draw_breadboard.py` redraws it.
+A half-size (400-point) breadboard: rows 1–30, columns a–e on one side of the centre channel and f–j on the other, and a pair of power rails down each long edge. A hole is its column letter plus its row number: **j12** is column j, row 12. The five holes a12–e12 are joined inside the board; the channel separates them from f12–j12. Each rail runs the full length of the board. The drawing has the board on its side (row 1 on the left); turn it so row 1 is at the top and it matches an upright board. `scripts/draw_breadboard.py` redraws it.
+
+The rails are named by the side they sit on: the **a side** (next to column a) or the **j side** (next to column j).
 
 | Rail | Supply | Fed by | Feeds |
 | --- | --- | --- | --- |
-| Top **+** (outer, red line) | **+5V_EXT** (orange wires) | W22 from J1's end pin | W15 SprintIR-R VDD, W19 pump + |
-| Top **−** (inner, blue line) | **GND** (black wires) | W23 from J1's middle pin | W29 button (optional); joined to the bottom − rail by W27 |
-| Bottom **−** (inner, blue line) | **GND** (black wires) | W2 from the Arduino's GND | W9 shifter, W17 Q1 source, R2, W21 reed switch, W28 buzzer (optional) |
-| Bottom **+** (outer, red line) | **+5V** (red wires) | W1 from the Arduino's 5V | W7 SFM3300 VDD, W8 shifter HV |
+| **+** rail, a side (red line) | **+5V_EXT** (orange wires) | W22 from J1's end pin | W15 SprintIR-R VDD, W19 pump + |
+| **−** rail, a side (blue line) | **GND** (black wires) | W23 from J1's middle pin | W29 button (optional); joined to the j-side − rail by W27 |
+| **−** rail, j side (blue line) | **GND** (black wires) | W2 from the Arduino's GND | W9 shifter, W17 Q1 source, R2, W21 reed switch, W28 buzzer (optional) |
+| **+** rail, j side (red line) | **+5V** (red wires) | W1 from the Arduino's 5V | W7 SFM3300 VDD, W8 shifter HV |
 
-The two + rails carry different supplies: **never join them**. If the red and blue lines on your board break in the middle, each rail is two halves: bridge each break with a short jumper of the same colour.
+The two + rails carry different supplies: **never join them**. Any hole of a rail will do; "by row 4" below is only where the drawing puts the wire end.
 
 | Part | Holes |
 | --- | --- |
-| J1 barrel jack | Pins in c3 (end pin, +), c5 (middle pin, −), c7 (side pin, unused). Check with a meter that the plug's centre reaches c3 |
-| Q1 IRLZ44N | f12 gate, f13 drain, f14 source; its printed side towards row j |
-| R1 220 Ω | h8 to h12 |
-| R2 100 kΩ | i12 to the bottom − rail |
-| U1 level shifter | A side in d40–d45 (A1, A2, LV, GND, A3, A4), B side in g40–g45 (B1, B2, HV, GND, B3, B4), straddling the channel. Check the names printed on your board and keep each wire on the column of the named pin |
-| Reed switch leads | g27 and g29, either way round |
-| Buzzer (optional) | + in g20, − in g23 |
-| Button (optional) | e33, e35, f33, f35, straddling the channel; wired on diagonal legs (j33, a35), which works whichever way it is turned |
+| J1 barrel jack | Pins in c3 (end pin, +), c5 (middle pin, −), c7 (side pin, unused). Check with a meter that the plug's centre reaches row 3 |
+| Q1 IRLZ44N | f7 gate, f8 drain, f9 source; its printed side towards column j |
+| R1 220 Ω | h3 to h7 |
+| R2 100 kΩ | i7 to the j-side − rail |
+| U1 level shifter | A side in d23–d28 (A1, A2, LV, GND, A3, A4), B side in g23–g28 (B1, B2, HV, GND, B3, B4), straddling the channel. Check the names printed on your board and keep each wire in the row of the named pin |
+| Reed switch leads | g15 and g17, either way round |
+| Buzzer (optional) | + in g11, − in g14 |
+| Button (optional) | e19, e21, f19, f21, straddling the channel; wired on diagonal legs (j19, a21), which works whichever way it is turned |
 
 | # | From (hole or pin) | To (hole or pin) | Colour |
 | --- | --- | --- | --- |
-| W1 | Arduino 5V | Bottom + rail, col 48 | red |
-| W2 | Arduino GND (power header) | Bottom − rail, col 47 | black |
-| W3 | Arduino 3V3 | b42 (shifter LV) | purple |
+| W1 | Arduino 5V | + rail, j side (by row 30) | red |
+| W2 | Arduino GND (power header) | − rail, j side (by row 30) | black |
+| W3 | Arduino 3V3 | b25 (shifter LV) | purple |
 | W4 | Arduino SCL | SFM3300 SCL (off the board) | yellow |
 | W5 | Arduino SDA | SFM3300 SDA (off the board) | blue |
 | W6 | Arduino GND (top header) | SFM3300 GND (off the board) | black |
-| W7 | Bottom + rail, col 3 | SFM3300 VDD | red |
-| W8 | Bottom + rail, col 43 | j42 (shifter HV) | red |
-| W9 | Bottom − rail, col 45 | j43 (shifter GND, 5 V side) | black |
-| W10 | Arduino D1/TX | j40 (shifter B1) | green |
-| W11 | Arduino D0/RX | j41 (shifter B2) | cyan |
-| W12 | a40 (shifter A1) | SprintIR-R pin 1 Rx_In | green |
-| W13 | a41 (shifter A2) | SprintIR-R pin 2 Tx_Out | cyan |
-| W14 | a43 (shifter GND, 3 V side) | SprintIR-R pin 3 GND | black |
-| W15 | Top + rail, col 45 | SprintIR-R pin 4 VDD | orange |
-| W16 | Arduino D10 | j8 (R1, then Q1's gate) | pink |
-| W17 | j14 (Q1 source) | Bottom − rail, col 15 | black |
-| W18 | Pump − contact | g13 (Q1 drain) | brown |
-| W19 | Pump + contact | Top + rail, col 21 | orange |
-| W20 | Arduino D3 | j27 (reed lead) | grey |
-| W21 | j29 (other reed lead) | Bottom − rail, col 30 | grey |
-| W22 | a3 (J1 end pin, +) | Top + rail, col 4 | orange |
-| W23 | a5 (J1 middle pin, −) | Top − rail, col 6 | black |
-| W24 | Arduino D8 | j20 (buzzer +) | optional |
-| W25 | Arduino D2 | j33 (button) | optional |
-| W27 | Top − rail, col 3 | Bottom − rail, col 3 | black |
-| W28 | j23 (buzzer −) | Bottom − rail, col 24 | black, optional |
-| W29 | a35 (button, diagonal leg) | Top − rail, col 36 | black, optional |
+| W7 | + rail, j side (by row 2) | SFM3300 VDD | red |
+| W8 | + rail, j side (by row 26) | j25 (shifter HV) | red |
+| W9 | − rail, j side (by row 28) | j26 (shifter GND, 5 V side) | black |
+| W10 | Arduino D1/TX | j23 (shifter B1) | green |
+| W11 | Arduino D0/RX | j24 (shifter B2) | cyan |
+| W12 | a23 (shifter A1) | SprintIR-R pin 1 Rx_In | green |
+| W13 | a24 (shifter A2) | SprintIR-R pin 2 Tx_Out | cyan |
+| W14 | a26 (shifter GND, 3 V side) | SprintIR-R pin 3 GND | black |
+| W15 | + rail, a side (by row 28) | SprintIR-R pin 4 VDD | orange |
+| W16 | Arduino D10 | j3 (R1, then Q1's gate) | pink |
+| W17 | j9 (Q1 source) | − rail, j side (by row 10) | black |
+| W18 | Pump − contact | g8 (Q1 drain) | brown |
+| W19 | Pump + contact | + rail, a side (by row 10) | orange |
+| W20 | Arduino D3 | j15 (reed lead) | grey |
+| W21 | j17 (other reed lead) | − rail, j side (by row 18) | grey |
+| W22 | a3 (J1 end pin, +) | + rail, a side (by row 4) | orange |
+| W23 | a5 (J1 middle pin, −) | − rail, a side (by row 6) | black |
+| W24 | Arduino D8 | j11 (buzzer +) | optional |
+| W25 | Arduino D2 | j19 (button) | optional |
+| W27 | − rail, a side (by row 2) | − rail, j side (by row 2) | black |
+| W28 | j14 (buzzer −) | − rail, j side (by row 14) | black, optional |
+| W29 | a21 (button, diagonal leg) | − rail, a side (by row 22) | black, optional |
 
-The column numbers are a suggestion: any free column works as long as every wire that should meet lands in the same column (same side of the channel) or the same rail.
+The rows are a suggestion: any free row works as long as every wire that should meet lands in the same row on the same side of the channel, or on the same rail.
 
 **Cables and plugs**
 
