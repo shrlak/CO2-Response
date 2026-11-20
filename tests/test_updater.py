@@ -10,6 +10,7 @@ import io
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -209,6 +210,7 @@ def link_adder(name, target, kind=tarfile.SYMTYPE):
     return add
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="the Linux app is only installed on Linux; Windows needs admin rights to make symlinks")
 def test_links_inside_the_app_are_kept(tmp_path):
     # PyInstaller's Linux build links its Qt libraries within the app folder
     app = tmp_path / "opt" / "CO2-Response"
