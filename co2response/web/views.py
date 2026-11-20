@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import js
 
+from .. import firmware
 from ..engine.monitor import Snapshot
 from ..forms import ALARM_FIELDS
 from ..processing.co2 import mmhg_to_pct
@@ -104,6 +105,7 @@ def header_html(s: Snapshot) -> str:
     return (
         f'<span class="hgroup">Study <b>{esc(s.settings.study_code or "—")}</b></span>'
         f'<span class="hgroup" title="{esc(s.status_detail)}"><span class="dot {s.status}"></span><b>{status}</b>{extra}</span>'
+        f'<span class="hgroup version" title="{esc(firmware.version_line(s.info))}">{esc(firmware.short_version(s.info))}</span>'
         f'<span class="hspacer"></span>{rec}<span class="pill {pill[0]}">{pill[1]}</span>{runtime}<span class="clock">{hms(s.now)}</span>'
         '<button type="button" class="fullscreen" data-act="fullscreen" title="Full screen (F); Esc leaves it" aria-label="Full screen">⛶</button>'
     )
