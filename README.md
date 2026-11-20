@@ -1185,7 +1185,7 @@ These are the values the app uses until the [open questions](docs/open-questions
   - keyed on EtCO2 per breath
   - rebreathing time limit 5 min
 - **Response analysis:**
-  - The first 30 s of rebreathing are left out of the fit.
+  - Fit window: the first 30 s of rebreathing are left out of the fit.
   - The first 4 breaths / 15 s are a calibration: watched, not fitted.
   - The baseline is "steady" at 6 or more breaths in a minute with EtCO2 SD ≤ 1.5 mmHg and MV variation ≤ 20 %.
 
