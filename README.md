@@ -398,7 +398,7 @@ Arduino headers and breadboard holes are both sockets, so use **male-to-male** j
 | # | Part | Connects | Notes |
 | --- | --- | --- | --- |
 | — | Mouthpiece | Subject → sample port | From the mentors |
-| — | Sample port | Between the mouthpiece and the SFM3300's **male** end | A luer fitting (male luer adapters are in the budget request), as close to the mouth as possible |
+| — | Sample port | Between the mouthpiece and the SFM3300's **male** end | The printed sample-port tee (P01) with a male luer-to-barb adapter in its side port, as close to the mouth as possible. Every printed part, and where it goes: [hardware/3d-prints](hardware/3d-prints/README.md) |
 | — | SFM3300-250-D | **Male** end (22 mm outside, 15 mm inside) towards the subject; **female** end (22 mm socket) towards the valve | Positive flow runs female → male, so inspiration reads positive. Mounted the other way, set **Flow direction** to **Reversed** (Settings > Connection > Flow sensor cable) |
 | — | ½" Sch 40 PVC pipe | Into the SFM3300's 22 mm socket | The pipe is 21.3 mm across: wrap tape until it seals |
 | — | ¾×½" reducer bushing + ¾" S×FPT adapter | Pipe → valve | PTFE tape on every thread |

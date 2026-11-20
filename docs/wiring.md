@@ -207,7 +207,7 @@ flowchart LR
 
 - **Sample port between the mouthpiece and the flow sensor**, as close to the mouth as possible, so the CO2 is the subject's breath and not the circuit's.
 - **Flow direction:** the SFM3300's positive flow runs from its 22 mm **female** end to its 22 mm **male** end (datasheet 4.1). Put the **male** end (15 mm female inside) towards the subject and the **female** end towards the valve, and inspiration reads positive. Mounted the other way, set **Flow direction** to **Reversed** in **Settings > Connection > Flow sensor cable**.
-- **Fitting the pipe:** the female end is a 22 mm socket; ½" Sch 40 PVC is 21.3 mm across, so wrap it with tape until it seals.
+- **Fitting the pipe:** the female end is a 22 mm socket; ½" Sch 40 PVC is 21.3 mm across, so wrap it with tape until it seals, or use the printed adapter P02, which goes from the 22 mm socket straight into the reducer bushing. The printed sample-port tee, bag adapter, reed-switch and magnet holders and the electronics tray are in [hardware/3d-prints](../hardware/3d-prints/README.md).
 - **Pump exhaust back into the valve's bag side**, so the closed rebreathing circuit keeps its gas and its CO2.
 
 ### Setting the sample flow, and zeroing the flow sensor
