@@ -24,6 +24,12 @@
 // buzzer when the app asks ("ALARM 0|1|2"), and sounds them by itself if the app's
 // heartbeat stops.
 //
+// Robustness: the CO2 sensor is sent its set-up again while it is not answering (it is often
+// unpowered when the board starts); a data line that does not fit in the USB buffer is skipped
+// (the sequence number shows the gap) rather than stalling the loop; and the microcontroller's
+// own watchdog restarts the board if the loop stops, after which the board says RST,WDT and
+// arms the host watchdog, so the buzzer sounds unless the app is sending heartbeats.
+//
 // RESEARCH USE ONLY. Not a medical device.
 
 #include <Arduino.h>
@@ -33,6 +39,17 @@
 #include "line_format.h"
 #include "sensirion.h"
 #include "sprintir.h"
+
+#if PUMP_PWM_HZ > 0
+#include <pwm.h>
+static PwmOut pumpPwm(PUMP_PIN);
+static bool pumpPwmRunning = false;
+#endif
+#if MCU_WATCHDOG_MS > 0
+#include <WDT.h>
+static bool mcuWatchdogOn = false;
+#endif
+static bool resetByWatchdog = false;  // the last restart was the microcontroller's watchdog
 
 #if SERVO_PIN >= 0
 #include <Servo.h>
@@ -56,6 +73,10 @@ static uint32_t nextSfmReadUs = 0;
 #endif
 static uint8_t pumpDuty = PUMP_DUTY;
 static bool pumpOn = false;
+#if CO2_REINIT_MS > 0
+static uint32_t lastCo2InitMs = 0;
+static bool co2RestartSent = false;  // E,CO2_RESTART already sent for this outage
+#endif
 
 static char cmd[32];
 static uint8_t cmdLen = 0;
@@ -76,7 +97,27 @@ static bool valveToBag = false;
 
 static void setPump(bool on) {
   pumpOn = on;
+#if PUMP_PWM_HZ > 0
+  if (on && pumpDuty > 0) {
+    float pct = pumpDuty * 100.0f / 255.0f;
+    if (pumpPwmRunning) {
+      pumpPwm.pulse_perc(pct);
+    } else {
+      pumpPwmRunning = pumpPwm.begin((float)PUMP_PWM_HZ, pct);
+      if (!pumpPwmRunning) analogWrite(PUMP_PIN, pumpDuty);  // no timer for it: the default PWM
+    }
+    return;
+  }
+  // off: the pin held LOW (as a GPIO), not a 0 % PWM
+  if (pumpPwmRunning) {
+    pumpPwm.end();
+    pumpPwmRunning = false;
+  }
+  pinMode(PUMP_PIN, OUTPUT);
+  digitalWrite(PUMP_PIN, LOW);
+#else
   analogWrite(PUMP_PIN, on ? pumpDuty : 0);
+#endif
 }
 
 static void setValve(bool toBag) {
@@ -106,10 +147,21 @@ static void sendInfo() {
   Serial.print(co2Sensor.multiplier());
   Serial.print(F(",PUMP_DUTY,"));
   Serial.print(pumpDuty);
+#if PUMP_PWM_HZ > 0
+  Serial.print(F(",PUMP_HZ,"));
+  Serial.print(PUMP_PWM_HZ);
+#endif
 #if WATCHDOG_TIMEOUT_MS > 0
   Serial.print(F(",WD,"));
   Serial.print(WATCHDOG_TIMEOUT_MS);
 #endif
+#if MCU_WATCHDOG_MS > 0
+  if (mcuWatchdogOn) {
+    Serial.print(F(",WDT,"));
+    Serial.print(WDT.getTimeout());
+  }
+#endif
+  if (resetByWatchdog) Serial.print(F(",RST,WDT"));
 #if SERVO_PIN >= 0
   Serial.print(F(",VALVE,1"));
 #endif
@@ -177,6 +229,32 @@ static void serviceInputs() {
     if (!first || atBag) Serial.println(atBag ? F("A,REED,1") : F("A,REED,0"));
   }
 #endif
+}
+
+// While the CO2 sensor is not answering, send it its set-up again every CO2_REINIT_MS.
+static void serviceCo2() {
+#if CO2_REINIT_MS > 0
+  uint32_t now = millis();
+  if (!isnan(co2Sensor.percent())) {
+    co2RestartSent = false;
+    return;
+  }
+  if (now - lastCo2InitMs < CO2_REINIT_MS) return;
+  lastCo2InitMs = now;
+  co2Sensor.configure();
+  // once per outage of a sensor that had answered (at start-up the 9999s already say it)
+  if (!co2RestartSent && co2Sensor.everAnswered()) {
+    co2RestartSent = true;
+    Serial.println(F("E,CO2_RESTART"));
+  }
+#endif
+}
+
+// Was the last restart the microcontroller's watchdog? Reads and clears the RA4M1's flag.
+static bool takeWatchdogResetFlag() {
+  bool wdt = (R_SYSTEM->RSTSR1 & R_SYSTEM_RSTSR1_WDTRF_Msk) != 0;
+  if (wdt) R_SYSTEM->RSTSR1 = (uint16_t)(R_SYSTEM->RSTSR1 & ~R_SYSTEM_RSTSR1_WDTRF_Msk);  // write 0 to clear
+  return wdt;
 }
 
 static void setRate(uint16_t hz) {
@@ -269,6 +347,7 @@ static void pollSerial() {
 }
 
 void setup() {
+  resetByWatchdog = takeWatchdogResetFlag();
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 #if REED_PIN >= 0
   pinMode(REED_PIN, INPUT_PULLUP);
@@ -289,16 +368,33 @@ void setup() {
   setPump(streaming);
   Serial.begin(BAUD_RATE);
   co2Sensor.begin();
+#if CO2_REINIT_MS > 0
+  lastCo2InitMs = millis();
+#endif
 #if FLOW_ON_ARDUINO
   if (!flowSensor.begin()) Serial.println(F("E,FLOW_NOT_FOUND"));
+#endif
+#if WATCHDOG_TIMEOUT_MS > 0
+  if (resetByWatchdog) {
+    // the firmware had stopped, perhaps mid-test: unless heartbeats arrive, sound the buzzer
+    wdArmed = true;
+    lastHbMs = millis();
+  }
+#endif
+#if MCU_WATCHDOG_MS > 0
+  mcuWatchdogOn = WDT.begin(MCU_WATCHDOG_MS) != 0;
 #endif
   sendInfo();
   setRate(rateHz);
 }
 
 void loop() {
+#if MCU_WATCHDOG_MS > 0
+  if (mcuWatchdogOn) WDT.refresh();
+#endif
   pollSerial();
   co2Sensor.poll();
+  serviceCo2();
   serviceInputs();
   serviceOutputs();
 
@@ -338,7 +434,9 @@ void loop() {
     char line[64];
     int len = formatDataLine(line, seq, millis(), v, 2);
     line[len++] = '\n';
-    Serial.write((const uint8_t*)line, len);
+    // Never wait for the computer: a host that stops reading would stall the loop (and the
+    // buzzer with it). A line that does not fit is skipped, and seq still counts it.
+    if (Serial.availableForWrite() >= len) Serial.write((const uint8_t*)line, len);
   }
   seq++;
 }

@@ -163,6 +163,31 @@ def test_button_reed_switch_and_alarm_output(tmp_path):
 # ---------- the waveforms
 
 
+def test_a_board_restarted_by_its_watchdog_is_reported(tmp_path):
+    e = digital_engine(tmp_path)
+    e.connect("simulator")
+    run(e, 2)
+    assert not e.alarms.is_active("boardRestart")
+    info = "I,FW,2.3.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,CABLE,CH,2,RATE,100,PUMP_HZ,490,WD,3000,WDT,2000"
+    e._on_line(info)
+    run(e, 1)
+    assert not e.alarms.is_active("boardRestart")
+    e._on_line(info + ",RST,WDT")
+    e._on_line(info + ",RST,WDT")  # the info line comes again (INFO): reported once
+    run(e, 1)
+    assert e.alarms.is_active("boardRestart")
+    assert sum("watchdog reset it" in x.text for x in e.log) == 1
+    # the board's other new message is logged like any device error
+    e._on_line("E,CO2_RESTART")
+    assert any("CO2_RESTART" in x.text for x in e.log)
+    # a deliberate disconnect is not a fault, and a new connection starts clean
+    e.disconnect()
+    assert not e.alarms.is_active("boardRestart")
+    e.connect("simulator")
+    run(e, 2)
+    assert not e.alarms.is_active("boardRestart")
+
+
 def test_the_sweep_gets_one_sample_in_speed_so_it_moves_at_the_real_time_pace(tmp_path):
     e = digital_engine(tmp_path)
     e.update_settings(sim=e.settings.sim.__class__(speed=10))
@@ -408,6 +433,12 @@ def test_r4_firmware_matches_the_wiring():
     # the info line tells the app which board it is
     assert "UNITS,1" in ino and "A,BUTTON" in ino and "A,REED,1" in ino and "ALARM" in ino
     assert "CO2,SPRINTIR-R,FLOW,SFM3300" in ino and "CO2ZERO AIR" in ino and "PUMP_DUTY" in ino
+    # robustness: the CO2 sensor is set up again while it is silent, a data line never waits for
+    # the computer, and the microcontroller's own watchdog restarts a stopped loop and says so
+    assert "co2Sensor.configure()" in ino and "E,CO2_RESTART" in ino
+    assert "availableForWrite() >= len" in ino
+    assert "WDT.begin(MCU_WATCHDOG_MS)" in ino and "WDT.refresh()" in ino and ",RST,WDT" in ino
+    assert "#define MCU_WATCHDOG_MS 2000" in cfg and "#define CO2_REINIT_MS 2000" in cfg and "#define PUMP_PWM_HZ 490" in cfg
     assert Path(ROOT / "firmware" / "r4" / "platformio.ini").exists()
 
 

@@ -95,7 +95,7 @@ MAX_TRACE = 4 * 3600 * 2  # 4 h at 2 Hz
 MAX_WAVE = 6000
 #: no "Capnostream not answering" alarm before its first CO2 for this long after connecting (ms)
 CAPNO_WARMUP_MS = 45_000
-TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "dropped", "checksum", "noisyBreaths", "leak", "calibration", "testTime", "spo2NoSignal")
+TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "boardRestart", "dropped", "checksum", "noisyBreaths", "leak", "calibration", "testTime", "spo2NoSignal")
 #: the alarms that turn the valve back to room air when the app switches the valve
 AUTO_STOP = {"co2Stop": "stop limit", "apnea": "apnea", "spo2Low": "low SpO2"}
 #: breaths compared for the inspired-against-expired volume check
@@ -493,6 +493,8 @@ class MonitorEngine:
         #: the reason a Python DAQ driver gives after ADC_NOT_FOUND (co2r-daq)
         self._adc_detail: str | None = None
         self._adc_error_count = 0
+        #: the board said RST,WDT: its own watchdog restarted it since it was powered up
+        self._board_restarted = False
         self._status = "idle"
         self._status_detail = ""
         self._seq = SeqTracker()
@@ -971,6 +973,7 @@ class MonitorEngine:
         self._i2c_scan = None
         self._adc_detail = None
         self._adc_error_count = 0
+        self._board_restarted = False
         self._status = "connecting"
         self._status_detail = ""
         try:
@@ -1333,6 +1336,11 @@ class MonitorEngine:
                 return
             prev_rate = self._rate()
             self._info = {**(self._info or {}), **p.fields}
+            if p.fields.get("RST") == "WDT" and not self._board_restarted:
+                # the Uno R4's own watchdog restarted it: its firmware had stopped running
+                self._board_restarted = True
+                self._add_log("The board restarted itself: its firmware had stopped and the microcontroller's watchdog reset it. Readings are missing around the restart", "error")
+                self.recorder.event(now, "DEVICE_ERROR WDT_RESET")
             if self._rate() != prev_rate:
                 self.pipeline.set_options(self._processing_options())
             if self.pipeline.channels is not self.effective_channels:
@@ -1581,6 +1589,7 @@ class MonitorEngine:
             self._bad_times.popleft()
         nb = len(self._bad_times)
         a.set_condition("checksum", connected and nb > 0, now, "advisory", f"{nb} corrupt line{'' if nb == 1 else 's'} in the last minute")
+        a.set_condition("boardRestart", connected and self._board_restarted, now, "advisory", "The board restarted itself (firmware watchdog): readings are missing around the restart")
 
         bad = sum(1 for q in self._recent_quality if q in ("noisy", "artifact"))
         noisy = connected and (bad >= 3 or (a.is_active("noisyBreaths") and bad > 1))
