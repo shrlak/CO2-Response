@@ -104,7 +104,12 @@ jobs:
           case "$RUNNER_OS" in
             Windows) cp dist/CO2-Response.exe out/CO2-Response.exe ;;
             macOS) ditto -c -k --keepParent dist/CO2-Response.app "out/CO2-Response-${{ matrix.arch }}.zip" ;;
-            *) tar czf out/CO2-Response-Linux.tar.gz -C dist CO2-Response ;;
+            # Linux: links (PyInstaller links its Qt libraries inside the folder) are stored as
+            # plain files, because the updater in 0.9.0 and earlier refuses any link and could
+            # never install the update otherwise
+            *) tar --dereference --hard-dereference -czf out/CO2-Response-Linux.tar.gz -C dist CO2-Response
+               links=$(tar -tvzf out/CO2-Response-Linux.tar.gz | grep -c '^[lh]' || true)
+               test "$links" = 0 || { echo "::error::$links links in the Linux app archive"; exit 1; } ;;
           esac
           ls -l out
       - uses: actions/upload-artifact@v6

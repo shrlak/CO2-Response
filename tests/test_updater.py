@@ -10,6 +10,7 @@ import io
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -199,7 +200,31 @@ def test_linux_swaps_the_folder(tmp_path):
     assert sorted(p.name for p in (tmp_path / "opt").iterdir()) == ["CO2-Response", "CO2-Response.old"]  # no work folders left
 
 
-@pytest.mark.parametrize("bad", ["traversal", "symlink", "no-program"])
+def link_adder(name, target, kind=tarfile.SYMTYPE):
+    def add(t):
+        ti = tarfile.TarInfo(name)
+        ti.type = kind
+        ti.linkname = target
+        t.addfile(ti)
+
+    return add
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the Linux app is only installed on Linux; Windows needs admin rights to make symlinks")
+def test_links_inside_the_app_are_kept(tmp_path):
+    # PyInstaller's Linux build links its Qt libraries within the app folder
+    app = tmp_path / "opt" / "CO2-Response"
+    app.mkdir(parents=True)
+    (app / "CO2-Response").write_bytes(b"old program")
+    files = {"CO2-Response/CO2-Response": b"new program", "CO2-Response/_internal/PySide6/Qt/lib/libQt6Core.so.6": b"qt core"}
+    data = tarball(files, link_adder("CO2-Response/_internal/libQt6Core.so.6", "PySide6/Qt/lib/libQt6Core.so.6"))
+    stage(tmp_path, "v0.8.0", data, "CO2-Response-Linux.tar.gz")
+    assert updater.install_staged(folder=tmp_path / "updates", platform="linux", executable=str(app / "CO2-Response"), current="0.7.0") == "v0.8.0"
+    lib = app / "_internal" / "libQt6Core.so.6"
+    assert lib.is_symlink() and lib.read_bytes() == b"qt core"
+
+
+@pytest.mark.parametrize("bad", ["traversal", "symlink", "symlink-up", "hardlink-up", "no-program"])
 def test_a_bad_archive_is_refused_and_nothing_changes(tmp_path, bad):
     app = tmp_path / "opt" / "CO2-Response"
     app.mkdir(parents=True)
@@ -207,14 +232,11 @@ def test_a_bad_archive_is_refused_and_nothing_changes(tmp_path, bad):
     if bad == "traversal":
         data = tarball({"CO2-Response/CO2-Response": b"x", "../evil.txt": b"evil"})
     elif bad == "symlink":
-
-        def link(t):
-            ti = tarfile.TarInfo("CO2-Response/link")
-            ti.type = tarfile.SYMTYPE
-            ti.linkname = "/etc/passwd"
-            t.addfile(ti)
-
-        data = tarball({"CO2-Response/CO2-Response": b"x"}, link)
+        data = tarball({"CO2-Response/CO2-Response": b"x"}, link_adder("CO2-Response/link", "/etc/passwd"))
+    elif bad == "symlink-up":
+        data = tarball({"CO2-Response/CO2-Response": b"x"}, link_adder("CO2-Response/link", "../../../etc/passwd"))
+    elif bad == "hardlink-up":
+        data = tarball({"CO2-Response/CO2-Response": b"x"}, link_adder("CO2-Response/link", "../evil", tarfile.LNKTYPE))
     else:
         data = tarball({"CO2-Response/readme.txt": b"x"})
     stage(tmp_path, "v0.8.0", data, "CO2-Response-Linux.tar.gz")
