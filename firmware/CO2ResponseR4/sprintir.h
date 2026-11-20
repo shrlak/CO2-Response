@@ -11,11 +11,20 @@ class SprintIR {
   void begin() {
     port_.begin(CO2_BAUD);
     delay(50);
+    configure();
+  }
+
+  // The set-up commands. Sent at start-up, and again while the sensor is not answering
+  // (it may have been unpowered at start-up, or restarted by a dip in its supply).
+  void configure() {
     port_.print(F("K 1\r\n"));  // streaming mode
     // one field: the CO2 value the app uses (the datasheet allows two at most at 50 Hz)
     port_.print(CO2_USE_FILTERED ? F("M 4\r\n") : F("M 2\r\n"));
     port_.print(F(".\r\n"));    // ask for the ppm multiplier
   }
+
+  // true once the sensor has sent at least one reading since start-up
+  bool everAnswered() const { return lastMs_ != 0; }
 
   // Zero the sensor: in fresh air (it takes the air as 400 ppm) or in nitrogen (0 ppm).
   // Have the sample line in that gas, with the pump running, for a minute first.

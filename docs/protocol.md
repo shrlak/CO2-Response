@@ -99,8 +99,8 @@ The app sends `INFO` then `START` after opening the port. Opening the port reset
 The board in the wiring diagram (`firmware/CO2ResponseR4/`, [wiring.md](wiring.md#uno-r4-board-digital-sensors))
 uses the same lines, checksums, sequence numbers, heartbeat and commands, with these differences:
 
-- **Info line:** `I,FW,2.2.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,CABLE,CH,2,RATE,100,BAUD,115200,CO2_MULT,10,PUMP_DUTY,140,WD,3000,REED,1,ALARM,1,PUMP,1`
-  (`FLOW,CABLE`: the flow sensor is read by the app through Sensirion's evaluation cable, `FLOW_ON_ARDUINO 0`, this build. With `FLOW_ON_ARDUINO 1` it is `FLOW,SFM3300,...,ADDR,0x40,SFM_SN,<serial>` instead; `VALVE,1` too when a valve servo is fitted; `SFM_SN` only when the flow sensor gave its serial number; `HEAT,1` only for a flow sensor with a heater). `UNITS,1` tells the app the values are engineering
+- **Info line:** `I,FW,2.3.0,BOARD,UNO_R4,UNITS,1,CO2,SPRINTIR-R,FLOW,CABLE,CH,2,RATE,100,BAUD,115200,CO2_MULT,10,PUMP_DUTY,140,PUMP_HZ,490,WD,3000,WDT,2796,REED,1,ALARM,1,PUMP,1`
+  (`FLOW,CABLE`: the flow sensor is read by the app through Sensirion's evaluation cable, `FLOW_ON_ARDUINO 0`, this build. With `FLOW_ON_ARDUINO 1` it is `FLOW,SFM3300,...,ADDR,0x40,SFM_SN,<serial>` instead; `VALVE,1` too when a valve servo is fitted; `SFM_SN` only when the flow sensor gave its serial number; `HEAT,1` only for a flow sensor with a heater; `PUMP_HZ` is the pump's PWM frequency; `WDT` is the microcontroller watchdog's timeout in ms, the shortest the chip offers at or above `MCU_WATCHDOG_MS`; `RST,WDT` is added after that watchdog has restarted the board, see below). `UNITS,1` tells the app the values are engineering
   units, so it uses the bundled `co2response/config/channels-digital.json` (1:1 trims) and keeps
   that board's calibration in its own file.
 - **Data line:** two values, `D,<seq>,<t_ms>,<CO2 %>,<flow L/min>*<checksum>`. With `FLOW,CABLE` the
@@ -113,7 +113,20 @@ uses the same lines, checksums, sequence numbers, heartbeat and commands, with t
   jobs: the app shows one Flow waveform and computes breaths, VT and MV from it.
 - **A sensor that is not answering** (no CO2 reading for 0.5 s; an I2C error from the flow sensor) is
   sent as `9999`. The app shows `---` and raises "… NOT ANSWERING". The firmware restarts the flow
-  sensor once a second until it answers, and sends `E,FLOW_NOT_FOUND` at boot if it is missing.
+  sensor once a second until it answers, and sends `E,FLOW_NOT_FOUND` at boot if it is missing. While
+  the CO2 sensor is not answering, the firmware sends it its set-up commands again every 2 s
+  (`CO2_REINIT_MS`): the wall adapter that powers it is plugged in after the USB cable, so at the
+  board's start it often misses them, and a dip in its supply can restart it. The first resend after
+  a sensor that had been answering goes silent is reported once as `E,CO2_RESTART`.
+- **A data line never waits for the computer.** If the USB buffer has no room for it (the app has
+  stopped reading), the line is skipped and its `seq` still counted, so the loop, the alarm outputs
+  and the host watchdog keep running.
+- **The microcontroller's own watchdog** (`MCU_WATCHDOG_MS`, 2 s; the RA4M1's watchdog timer)
+  restarts the board if its main loop stops running. After such a restart the info line carries
+  `RST,WDT` (until the board is next powered up or reset), and the board arms the host watchdog
+  straight away, so its buzzer sounds unless heartbeats arrive within `WD`. The app shows the
+  advisory "The board restarted itself (firmware watchdog)" for that connection and writes
+  `DEVICE_ERROR WDT_RESET` into the recording.
 - **Device events:** `A,BUTTON` when the stop / marker button is pressed (during rebreathing the app
   treats it as an emergency stop; otherwise it places a marker). `A,REED,1` / `A,REED,0` when the
   valve handle's reed switch says the valve is at the bag / room air (the app starts the
