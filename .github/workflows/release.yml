@@ -36,8 +36,28 @@ permissions:
   contents: read
 
 jobs:
+  # A release's tag must be the version inside the app. If they differed, every installed app
+  # would see the release as newer than itself, install it, and then do the same again.
+  version:
+    name: The tag matches the app's version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare the tag with co2response.__version__
+        env:
+          TAG: ${{ inputs.publish_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || '') }}
+        run: |
+          V=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' co2response/__init__.py)
+          echo "App version: $V. Release tag: ${TAG:-none (build only)}"
+          test -n "$V"
+          if [ -n "$TAG" ] && [ "$TAG" != "v$V" ]; then
+            echo "::error::The tag $TAG is not the app's version v$V. Set __version__ in co2response/__init__.py to match, merge that, then release."
+            exit 1
+          fi
+
   build:
     name: Build · ${{ matrix.name }}
+    needs: version
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
