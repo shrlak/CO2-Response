@@ -20,7 +20,7 @@ from typing import Callable
 
 import numpy as np
 
-from .. import __version__, keep_awake
+from .. import __version__, firmware, keep_awake
 from ..alarms.audio import AlarmAudio
 from ..alarms.engine import AlarmEngine, AlarmLogEntry, AlarmRecord
 from ..channels import (
@@ -95,7 +95,7 @@ MAX_TRACE = 4 * 3600 * 2  # 4 h at 2 Hz
 MAX_WAVE = 6000
 #: no "Capnostream not answering" alarm before its first CO2 for this long after connecting (ms)
 CAPNO_WARMUP_MS = 45_000
-TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "boardRestart", "dropped", "checksum", "noisyBreaths", "leak", "calibration", "testTime", "spo2NoSignal")
+TECHNICAL = ("noData", "apnea", "railCo2", "railFlow", "railPneumo", "adcError", "boardRestart", "firmware", "dropped", "checksum", "noisyBreaths", "leak", "calibration", "testTime", "spo2NoSignal")
 #: the alarms that turn the valve back to room air when the app switches the valve
 AUTO_STOP = {"co2Stop": "stop limit", "apnea": "apnea", "spo2Low": "low SpO2"}
 #: breaths compared for the inspired-against-expired volume check
@@ -465,6 +465,8 @@ class MonitorEngine:
         #: the board a replayed recording was made with
         self._replay_hardware: str | None = None
         self._info: dict[str, str] | None = None
+        #: the connected board's firmware compared with the one this app expects
+        self._firmware: firmware.FirmwareCheck | None = None
         self._source: Source | None = None
         self.alarms = AlarmEngine(self.settings.alarms, self._on_alarm_log)
         self.audio = audio if audio is not None else AlarmAudio()
@@ -937,6 +939,7 @@ class MonitorEngine:
             made_with = session.channels if session is not None and session.channels else None
             self._replay_hardware = ("digital" if is_digital(made_with) else "analog") if made_with else self.settings.hardware
         self._info = None
+        self._firmware = None
         self._alarm_out = None
         self._capno_on = self.settings.capno.enabled and kind in ("serial", "bridge", "simulator")
         self._valve = False  # a board starts (and restarts) on room air
@@ -1336,6 +1339,11 @@ class MonitorEngine:
                 return
             prev_rate = self._rate()
             self._info = {**(self._info or {}), **p.fields}
+            if self._source is not None and self._source.kind != "replay":  # a replayed file's firmware is history
+                fw = firmware.check(self._info)
+                if fw != self._firmware and fw is not None and fw.state != "ok":
+                    self._add_log(fw.message, "error")
+                self._firmware = fw
             if p.fields.get("RST") == "WDT" and not self._board_restarted:
                 # the Uno R4's own watchdog restarted it: its firmware had stopped running
                 self._board_restarted = True
@@ -1590,6 +1598,8 @@ class MonitorEngine:
         nb = len(self._bad_times)
         a.set_condition("checksum", connected and nb > 0, now, "advisory", f"{nb} corrupt line{'' if nb == 1 else 's'} in the last minute")
         a.set_condition("boardRestart", connected and self._board_restarted, now, "advisory", "The board restarted itself (firmware watchdog): readings are missing around the restart")
+        fw = self._firmware
+        a.set_condition("firmware", connected and fw is not None and fw.state != "ok", now, "advisory", fw.message if fw else "")
 
         bad = sum(1 for q in self._recent_quality if q in ("noisy", "artifact"))
         noisy = connected and (bad >= 3 or (a.is_active("noisyBreaths") and bad > 1))

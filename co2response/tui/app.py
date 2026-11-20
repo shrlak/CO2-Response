@@ -201,6 +201,8 @@ class StatusBar(Static):
             t.append(s.source_label, "bold")
             t.append(f" · {s.measured_rate_hz:.0f} Hz · {s.dropped} dropped", "grey62")
             t.append(f" · {'Uno R4, digital sensors' if s.hardware == 'digital' else 'ADC board'}", "grey62")
+            if (s.info or {}).get("FW"):
+                t.append(f" · FW {s.info['FW']}", "grey62")
             if not getattr(self.app, "graphics", False):
                 t.append(" · text mode", "grey50")
             if s.capno is not None:

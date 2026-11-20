@@ -75,7 +75,7 @@ co2response-tui --sim
 co2response --update
 ```
 
-(or run the install script again). From a copy of the repository, `--update` runs `git pull`. In the standalone app, `--update` downloads and installs the latest release now. The terminal monitor shows its version in the top-left corner, and `co2response --version` prints it.
+(or run the install script again). From a copy of the repository, `--update` runs `git pull`. In the standalone app, `--update` downloads and installs the latest release now. **Which version am I running?** The desktop app and the browser version show it in the header bar (for example `v0.9.0`), and the terminal monitor shows it in the top-left corner. Once a board is connected, its firmware version follows (for example `FW 2.3.0`). If the firmware is older than this version of the app expects, the monitor says so and names the firmware folder to upload again. `co2response --version` prints the app's version.
 
 The whole monitor is drawn in the terminal, so it works in the terminal panel of VS Code or any other editor:
 
@@ -1159,22 +1159,65 @@ Which test covers which design input is in [docs/requirements-traceability.md](d
 
 ## 9. Assumptions and open questions
 
-These are placeholders until the [open questions](docs/open-questions.md) are answered; discuss them in [issue #4](https://github.com/shrlak/CO2-Response/issues/4). Each is marked `TODO` in the code or config.
+These are the values the app uses until the [open questions](docs/open-questions.md) are answered. Discuss them in [issue #4](https://github.com/shrlak/CO2-Response/issues/4). Each one is a default in the code or config, and the open questions page says where to change it. The ones still marked `TODO` in the code are the alarm limits, the SpO2 scaling and the ADC board.
+
+### The Uno R4 board (current build)
+
+- **Parts: settled.** The parts are an Arduino Uno R4 Minima, a Sensirion SFM3300-250-D flow sensor and a GSS SprintIR-R-20 CO2 sensor (sidestream, with a sample pump), behind a USB isolator. They are the team's purchase list ([wiring](docs/wiring.md#uno-r4-board-digital-sensors)).
+- **Firmware:** the app expects firmware **2.3.0** on this board (`FW_VERSION` in `firmware/CO2ResponseR4/config.h`). The header shows the version the board reports. If the board has older firmware, the monitor says so and asks for `firmware/CO2ResponseR4` to be uploaded again.
+- **Flow sensor connection:** the sensor clips into Sensirion's evaluation cable, which plugs into the laptop, not the Arduino (`FLOW_ON_ARDUINO 0`). The cable bypasses the USB isolator, so the laptop must run on battery whenever a person is connected.
+- **Sensor calibration:** both sensors use their factory calibration (gain 1). Before a session, zero the SprintIR in room air and check the flow with a 3 L syringe. A calibration-gas check can trim the CO2 gain.
+- **Flow direction:** inspiration reads positive with the SFM3300's arrow pointing towards the subject (`SFM_FLOW_SIGN 1`). Check this on the first breaths.
+- **Sample flow:** 0.15–0.25 L/min (`PUMP_DUTY 140`, about 0.2 L/min, the SprintIR-R datasheet's test flow). Measure it with the mouthpiece capped ([wiring](docs/wiring.md#setting-the-sample-flow-and-zeroing-the-flow-sensor)). The pump draws through the sample port on the subject's side of the flow sensor. So every breath reads slightly too much inspired volume and too little expired volume, by the sample flow.
+- **CO2 delay:** 0 ms by default, as for a mainstream sensor. The SprintIR is sidestream, so its CO2 arrives late: roughly 1.5 s for 1 m of 2.5 mm tubing at 0.2 L/min. Measure the delay from a minute of quiet breathing and enter it in **Settings → Display & units → CO2 signal delay** before trusting the per-breath pairing.
+- **Valve:** manual. The reed switch on the handle reports its position, and the app only alarms. A valve servo is optional (`SERVO_PIN`, off by default).
+- **Capnostream 35:** the app can use this as the CO2 source in place of the SprintIR ([capnostream.md](docs/capnostream.md)). It has not been tried with a real monitor or a real export.
+
+### Shared by both boards
+
+- **Sample rate:** 100 Hz per channel.
+- **Alarm defaults:**
+  - warning at 60 mmHg and stop at 65 mmHg (the team's design; CHOP ends the test at 60 to 65). **Still to confirm with the PI and the clinicians** (`TODO` in `co2response/settings.py`)
+  - low limit off
+  - 2-breath delay for the warning, 0.5 s for the stop, 2 mmHg hysteresis
+  - 120 s silence
+  - apnea after 20 s
+  - keyed on EtCO2 per breath
+  - rebreathing time limit 5 min
+- **Response analysis:**
+  - The first 30 s of rebreathing are left out of the fit.
+  - The first 4 breaths / 15 s are a calibration: watched, not fitted.
+  - The baseline is "steady" at 6 or more breaths in a minute with EtCO2 SD ≤ 1.5 mmHg and MV variation ≤ 20 %.
+
+  All of these are assumptions to confirm with CHOP and the mentors.
+- **Volumes:** as measured, with no BTPS correction and no bag-gas factor unless those are switched on. Which convention to report is a clinical decision.
+- **Noise screen:** a signal-to-noise ratio of 8, a plateau over 10 % of expiration, and outliers over 5 mmHg. These were tuned on simulated data only. Check them against the first real recordings with `--all-breaths` and adjust them in `co2response/processing/denoise.py` if good breaths are being left out.
+- **Barometric pressure:** 760 mmHg by default; Pittsburgh is usually near 735 mmHg. Set the lab's value in Display & units.
+- **SpO2:** off. Only the ADC board has an SpO2 input. When it is on, the app assumes 1 V = 100 % and alarms below 90 % for 10 s. These are placeholders (`TODO`): use the oximeter's own scaling and the clinicians' limit.
+- **LabChart import:** written from LabChart's documented text-export layout. Not yet tried on a real CHOP export.
+
+### The ADC board (earlier build)
+
+These apply only to the Arduino Uno with the ADS1115.
 
 - **CO2 sensor:** analog output 0–5 V, linear, 0–10 % CO2 (gain 2 %/V). Replace with the real capnograph scaling.
-- **Flow sensor:** bidirectional, 2.5 V = 0 L/min, 40 L/min per volt. It is treated as a second airway flow signal in its own panel. If it measures a gas-delivery line instead, relabel it in `channels.json`.
-- **Pneumotach transducer:** 2.5 V = 0 Pa, 200 Pa per volt; flow = k1·ΔP with k1 = 0.2 L/min/Pa until a syringe calibration is done.
-- **ADC:** ADS1115 at I2C address 0x48, PGA ±6.144 V, 5 V supply (rails at 0 and 5 V).
-- **Arduino:** Uno by default (Mega and Nano also build). **Sample rate:** 100 Hz per channel.
-- **Alarm defaults:** warning at 60 mmHg and stop at 65 mmHg (the team's design; CHOP ends the test at 60 to 65), low off, 2-breath delay for the warning, 0.5 s for the stop, 2 mmHg hysteresis, 120 s silence, apnea after 20 s, keyed on EtCO2 per breath, rebreathing time limit 5 min.
-- **Response analysis:** the first 30 s of rebreathing are left out of the fit, and the first 4 breaths / 15 s are a calibration (watched, not fitted); the baseline is "steady" at 6 or more breaths in a minute with EtCO2 SD ≤ 1.5 mmHg and MV variation ≤ 20 %. Both are assumptions to confirm with CHOP and the mentors.
-- **Volumes:** as measured (no BTPS correction, no bag-gas factor) unless switched on. Which convention to report is a clinical decision.
-- **Noise screen:** signal-to-noise ratio of 8, a plateau over 10 % of expiration, and outliers over 5 mmHg. These were tuned on simulated data. Check them against real recordings with `--all-breaths` and adjust them in `co2response/processing/denoise.py` if real breaths are being left out.
-- **Barometric pressure:** 760 mmHg default; Pittsburgh is usually near 735 mmHg. Set the lab's value in Display & units.
-- **Valve:** a manual valve turned by the operator (the app only alarms) unless **Switch the valve from the app** is on. The valve output's polarity (HIGH = bag) and which events stop the test automatically (stop alarm, apnea, low SpO2) are assumptions to confirm.
-- **SpO2:** off. When on: 1 V = 100 %, alarm below 90 % for 10 s. Use the oximeter's own scaling and the clinicians' limit.
-- **LabChart import:** written from LabChart's documented text-export layout; not yet tried on a real CHOP export.
-- **Hardware:** the firmware (including the heartbeat watchdog and buzzer, the valve output and the SpO2 channel) and the hardware check have not yet been run on a real Arduino with the lab's sensors. The NI and LabJack drivers have been tested against stand-ins for their vendor libraries, not on real devices.
+- **Flow sensor:** bidirectional, 2.5 V = 0 L/min, 40 L/min per volt, shown as a second airway flow signal in its own panel.
+- **Pneumotach transducer:** 2.5 V = 0 Pa, 200 Pa per volt. Flow = k1·ΔP with k1 = 0.2 L/min/Pa until a syringe calibration is done.
+- **ADC:** ADS1115 at I2C address 0x48, PGA ±6.144 V, 5 V supply (rails at 0 and 5 V). Still marked `TODO` in `firmware/CO2Response/config.h`.
+- **Valve output:** HIGH = bag when **Switch the valve from the app** is on. That polarity, and which events stop the test automatically (stop alarm, apnea, low SpO2), are still to confirm.
+
+### Not yet tested on real hardware
+
+- Neither board's firmware has been run on a real Arduino with the lab's sensors yet. That includes the Uno R4's watchdogs and sensor set-up resend, the heartbeat buzzer, the valve output and the hardware check.
+- The SFM3300 and SprintIR-R commands follow the manufacturers' datasheets.
+- The NI and LabJack drivers have only been tested against stand-ins for their vendor libraries, not on real devices.
+- The first bench session should confirm, in this order:
+  1. the board's firmware version in the header
+  2. the flow sign
+  3. the sample flow
+  4. the CO2 delay
+  5. a 3 L syringe volume
+  6. the noise screen on real breaths
 
 ## 10. Documentation
 

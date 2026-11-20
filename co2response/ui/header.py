@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import firmware
 from ..alarms.engine import AlarmRecord
 from ..engine.monitor import Snapshot
 from . import theme
@@ -50,12 +51,14 @@ class Header(QFrame):
         self.clock = QLabel()
         self.clock.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.clock.setMinimumWidth(110)
+        self.version = QLabel()  # the app's version, and the board's firmware once it has said
         st = QHBoxLayout()
         st.setSpacing(8)
         st.addWidget(self.dot)
         st.addWidget(self.status)
         lay.addWidget(self.study)
         lay.addLayout(st)
+        lay.addWidget(self.version)
         lay.addStretch(1)
         for w in (self.rec, self.pill, self.runtime, self.clock):
             lay.addWidget(w)
@@ -90,6 +93,7 @@ class Header(QFrame):
             }.get(pill[0], (p.text, "transparent", p.muted))
             self.pill.setStyleSheet(f"font-weight:700; font-size:13px; letter-spacing:1.3px; padding:3px 10px; border-radius:11px; color:{fg}; background:{bg}; border:1px solid {border};")
             self.clock.setStyleSheet("font-size:24px; font-weight:600;")
+            self.version.setStyleSheet(f"color:{p.muted};")
         self.study.setText(f"<span style='color:{p.muted}'>Study</span> <b>{s.settings.study_code or '—'}</b>")
         if s.status == "connected":
             text = f"<b>{s.source_label}</b>"
@@ -110,6 +114,8 @@ class Header(QFrame):
             text += f"<span style='color:{m}'> · {round(s.replay_progress * 100)} %</span>"
         self.status.setText(text)
         self.status.setToolTip(s.status_detail)
+        self.version.setText(firmware.short_version(s.info))
+        self.version.setToolTip(firmware.version_line(s.info))
         self.rec.setText(f"● REC {duration(s.now - s.recording.started_at)}" if s.recording.active else "Not recording")
         self.pill.setText(pill[1])
         self.clock.setText(hms(s.now))
