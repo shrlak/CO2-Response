@@ -313,11 +313,26 @@ def _swap_in(target: Path, new: Path) -> Path:
 
 
 def _safe_extract(tar_path: Path, into: Path) -> None:
+    """Unpack the Linux app, refusing anything that could land or point outside ``into``.
+
+    Links are kept when they stay inside the app: PyInstaller's Linux build links its Qt and
+    Pillow libraries within the folder. An absolute link, one that leads outside, and a device
+    are refused. (The release packs the app with no links at all, so that the updaters of
+    0.9.0 and earlier, which refused every link, can install it too.)"""
     with tarfile.open(tar_path, "r:gz") as tar:
         root = into.resolve()
+
+        def inside(p: Path) -> bool:
+            return p == root or root in p.parents
+
         for m in tar.getmembers():
             dest = (into / m.name).resolve()
-            if not (dest == root or root in dest.parents) or m.issym() or m.islnk() or m.isdev():
+            bad = not inside(dest) or m.isdev()
+            if m.issym():
+                bad = bad or os.path.isabs(m.linkname) or not inside((dest.parent / m.linkname).resolve())
+            elif m.islnk():
+                bad = bad or os.path.isabs(m.linkname) or not inside((into / m.linkname).resolve())
+            if bad:
                 raise UpdateError(f"The update file holds an unsafe entry ({m.name}), so it was not used.")
         if hasattr(tarfile, "data_filter"):
             tar.extractall(into, filter="data")  # noqa: S202  (every member was checked above, too)
